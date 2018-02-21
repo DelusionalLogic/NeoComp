@@ -22,9 +22,13 @@ CFG = -std=c99
 LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
+OBJS += vmath.o
+
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
   # CFG += -DDEBUG_GLX_PAINTREG
+  CFG += -DDEBUG_GLX_DEBUG_CONTEXT
+  CFG += -DDEBUG_GLX_GLSL
 endif
 
 # ==== Xinerama ====
@@ -96,16 +100,16 @@ endif
 COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1 --date=short --pretty=format:%cd)
 CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""
 
-LDFLAGS ?= -Wl,-O1 -Wl,--as-needed
+LDFLAGS ?= -Wl,-O1 -Wl,--as-needed -Wl,--export-dynamic
 
 ifeq "$(CFG_DEV)" ""
   CFLAGS ?= -DNDEBUG -O2 -D_FORTIFY_SOURCE=2
 else
   CC = clang
   export LD_ALTEXEC = /usr/bin/ld.gold
-  OBJS += backtrace-symbols.o
+  # OBJS += backtrace-symbols.o
   LIBS += -lbfd
-  CFLAGS += -ggdb -Wshadow
+  CFLAGS += -O0 -ggdb -Wshadow -rdynamic
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif
 

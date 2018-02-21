@@ -122,6 +122,8 @@
 
 #include <GL/glx.h>
 
+#include "vmath.h"
+
 // Workarounds for missing definitions in some broken GL drivers, thanks to
 // douglasp and consolers for reporting
 #ifndef GL_TEXTURE_RECTANGLE
@@ -356,9 +358,9 @@ typedef struct _glx_texture glx_texture_t;
 typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
     GLXFBConfig config, GLXContext share_context, Bool direct,
     const int *attrib_list);
-typedef void (*GLDEBUGPROC) (GLenum source, GLenum type,
-    GLuint id, GLenum severity, GLsizei length, const GLchar* message,
-    GLvoid* userParam);
+/* typedef void (*GLDEBUGPROC) (GLenum source, GLenum type, */
+/*     GLuint id, GLenum severity, GLsizei length, const GLchar* message, */
+/*     GLvoid* userParam); */
 typedef void (*f_DebugMessageCallback) (GLDEBUGPROC, void *userParam);
 #endif
 
@@ -446,17 +448,25 @@ typedef struct {
   /// Fragment shader for blur.
   GLuint frag_shader;
   GLuint upscale_shader;
+  GLuint vertex_shader;
   /// GLSL program for blur.
   GLuint prog;
   GLuint upscale_prog;
+
+  GLuint vertexArrayID;
+  GLuint vertexBuffer;
+  GLuint uvBuffer;
+
   /// Location of uniform "pixeluv" in blur GLSL program.
   GLint unifm_pixeluv;
   /// Location of uniform "extent" in the blur GLSL program.
   GLint unifm_extent;
-  /// Location of uniform "factor_center" in blur GLSL program.
-  GLint unifm_factor_center;
-
+  GLint unifm_uvscale;
+  /// Location of uniform "tex_scr" in blur GLSL program.
   GLint unifm_tex;
+
+  //Vertex buffer position.
+  GLint unifm_mvp;
 } glx_blur_pass_t;
 
 typedef struct {
@@ -772,6 +782,8 @@ typedef struct {
 #endif
   /// Current GLX Z value.
   int z;
+  // Standard view matrix
+  Matrix view;
   /// FBConfig-s for GLX pixmap of different depths.
   glx_fbconfig_t *fbconfigs[OPENGL_MAX_DEPTH + 1];
   glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
@@ -2178,7 +2190,7 @@ GLuint
 glx_create_shader(GLenum shader_type, const char *shader_str);
 
 GLuint
-glx_create_program(const GLuint * const shaders, int nshaders);
+glx_create_program(const GLuint * const shaders, int nshaders, const bool isVertex);
 
 GLuint
 glx_create_program_from_str(const char *vert_shader_str,
@@ -2336,10 +2348,10 @@ xr_sync_(session_t *ps, Drawable d
       /* if (XSyncQueryFence(ps->dpy, *pfence, &triggered) && triggered)
         XSyncResetFence(ps->dpy, *pfence); */
       // The fence may fail to be created (e.g. because of died drawable)
-      assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || !triggered);
+      /* assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || !triggered); */
       XSyncTriggerFence(ps->dpy, *pfence);
       XSyncAwaitFence(ps->dpy, pfence, 1);
-      assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || triggered);
+      /* assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || triggered); */
     }
     else {
       printf_errf("(%#010lx): Failed to create X Sync fence.", d);
