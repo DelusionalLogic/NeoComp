@@ -13,6 +13,7 @@
 #include "vmath.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
+#include "shaders/shaderinfo.h"
 
 #ifdef CONFIG_GLX_SYNC
 void
@@ -281,6 +282,8 @@ glx_init(session_t *ps, bool need_render) {
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
 
+  add_shader_type(&downsample_info);
+
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader_program, "shader", shader_program_load_file,
@@ -288,8 +291,7 @@ glx_init(session_t *ps, bool need_render) {
 
   assets_add_path("./assets/");
 
-  assets_load("test.vs");
-  assets_load("test.fs");
+  struct shader_program* program = assets_load("test.shader");
 
   success = true;
 

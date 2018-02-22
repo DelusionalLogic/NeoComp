@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "assets.h"
+#include "../shaders/shaderinfo.h"
 
 static struct shader* shader_load_file(const char* path, GLenum type) {
 
@@ -93,9 +94,15 @@ static void shader_program_link(struct shader_program* program) {
     glAttachShader(program->gl_program, program->fragment->gl_shader);
     glAttachShader(program->gl_program, program->vertex->gl_shader);
 
-    //@INCOMPLETE We need some way of getting the variables
-    glBindAttribLocation(program->gl_program, 0, "vertex");
-    glBindAttribLocation(program->gl_program, 1, "uv");
+    // @FRAGILE 64 here is has to be the same as the MAXIMUM length of a shader
+    // variable name
+    char name[64] = {0};
+    int* key;
+    JSLF(key, program->attributes, name);
+    while(key != NULL) {
+        glBindAttribLocation(program->gl_program, key, name);
+        JSLN(key, program->attributes, name);
+    }
 
     glLinkProgram(program->gl_program);
 
@@ -127,32 +134,95 @@ struct shader_program* shader_program_load_file(const char* path) {
     struct shader_program* program = malloc(sizeof(struct shader_program));
     program->vertex = NULL;
     program->fragment = NULL;
+    program->attributes = NULL;
     program->gl_program = -1;
+
+    char* shader_type = NULL;
 
     char* line = NULL;
     size_t line_size = 0;
 
     size_t read;
-    while((read = getline(&line, &line_size, file)) != -1) {
-        char type[64];
-        char path[64];
-        int matches = sscanf(line, "%511s %511s", type, path);
+    read = getline(&line, &line_size, file);
+    if(read <= 0 || strcmp(line, "#version 1\n") != 0) {
+        printf("No version found at the start of file %s\n", path);
+        return NULL;
+    }
 
-        if(matches != 2)
+    while((read = getline(&line, &line_size, file)) != -1) {
+        if(read == 0 || line[0] == '#')
             continue;
 
-        if(strcmp(type, "vertex")) {
+        // Remove the trailing newlines
+        line[strcspn(line, "\r\n")] = '\0';
+
+        char type[64];
+        char value[64];
+        int matches = sscanf(line, "%63s %63[^\n]", type, value);
+
+        // An EOF from matching means either an error or empty line. We will
+        // just swallow those.
+        if(matches == EOF)
+            continue;
+
+        if(matches != 2) {
+            printf("Wrongly formatted line \"%s\", ignoring\n", line);
+            continue;
+        }
+
+        if(strcmp(type, "vertex") == 0) {
             if(program->vertex != NULL) {
-                printf("Multiple vertex shader defs in file %s, ignoring %s\n", path, line);
+                printf("Multiple vertex shader defs in file %s, ignoring \"%s\"\n", path, line);
                 continue;
             }
-            program->vertex = assets_load(path);
-        } else if(strcmp(type, "fragment")) {
+            program->vertex = assets_load(value);
+            if(program->vertex == NULL) {
+                printf("Failed loading vertex shader for %s, ignoring \"%s\"\n", path, line);
+            }
+        } else if(strcmp(type, "fragment") == 0) {
             if(program->fragment != NULL) {
-                printf("Multiple fragment shader defs in file %s, ignoring %s\n", path, line);
+                printf("Multiple fragment shader defs in file %s, ignoring \"%s\"\n", path, line);
                 continue;
             }
-            program->fragment = assets_load(path);
+            program->fragment = assets_load(value);
+            if(program->fragment == NULL) {
+                printf("Failed loading fragment shader for %s, ignoring \"%s\"\n", path, line);
+                continue;
+            }
+        } else if(strcmp(type, "type") == 0) {
+            if(shader_type != NULL) {
+                printf("Multiple type defs in file %s, ignoring \"%s\"\n", path, line);
+                continue;
+            }
+            shader_type = strdup(value);
+            if(shader_type == NULL) {
+                printf("Failed duplicating type string for %s, ignoring \"%s\"\n", path, line);
+                continue;
+            }
+        } else if(strcmp(type, "attrib") == 0) {
+            int key;
+            char name[64];
+            int matches = sscanf(value, "%d %63s", &key, name);
+
+            if(matches != 2) {
+                printf("Couldn't parse the attrib definition \"%s\"\n", value);
+                continue;
+            }
+
+            int* index;
+            JSLG(index, program->attributes, name);
+            if(index != NULL) {
+                printf("Attrib name %d redefine ignored\n", name);
+                continue;
+            }
+
+            JSLI(index, program->attributes, name);
+            if(index == NULL) {
+                printf("Failed inserting %s into the attribute array, ignoring\n", name);
+            }
+            *index = key;
+        } else {
+            printf("Unknown directive \"%s\" in shader file %s, ignoring\n", line, path);
         }
     }
 
@@ -160,21 +230,60 @@ struct shader_program* shader_program_load_file(const char* path) {
     fclose(file);
 
     if(program->vertex == NULL) {
-        printf("vertex shader not set in %s\n", path);
+        printf("Vertex shader not set in %s\n", path);
         // @LEAK We might be leaking the fragment shader, but the assets manager
         // still has a hold of it
+        if(shader_type != NULL)
+            free(shader_type);
         free(program);
         return NULL;
     }
     if(program->fragment == NULL) {
-        printf("fragment shader not set in %s\n", path);
+        printf("Fragment shader not set in %s\n", path);
         // @LEAK We might be leaking the vertex shader, but the assets manager
         // still has a hold of it
+        if(shader_type != NULL)
+            free(shader_type);
+        free(program);
+        return NULL;
+    }
+    if(shader_type == NULL) {
+        printf("Type not set in %s\n", path);
+        // @LEAK We might be leaking the vertex shader, but the assets manager
+        // still has a hold of it
+        free(shader_type);
         free(program);
         return NULL;
     }
 
     shader_program_link(program);
+
+    struct shader_type_info* shader_info = get_shader_type_info(shader_type);
+    if(shader_info == NULL) {
+        printf("Failed to find shader type info for %s\n", shader_type);
+        free(shader_type);
+        glDeleteProgram(program->gl_program);
+        free(program);
+        return NULL;
+    }
+
+    program->shader_type_info = shader_info;
+
+    program->shader_type = malloc(shader_info->size);
+    if(program->shader_type == NULL) {
+        printf("Failed to allocate space for the shader type\n");
+        free(shader_type);
+        glDeleteProgram(program->gl_program);
+        free(program);
+        return NULL;
+    }
+
+    for(int i = 0; i < shader_info->member_count; i++) {
+        struct shader_uniform_info* uniform_info = &shader_info->members[i];
+        GLint* field = (GLint*)(program->shader_type + uniform_info->offset);
+        *field = glGetUniformLocation(program->gl_program, uniform_info->name);
+    }
+
 
     return program;
 }
