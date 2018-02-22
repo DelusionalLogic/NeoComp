@@ -11,6 +11,8 @@
 #include "opengl.h"
 #include <execinfo.h>
 #include "vmath.h"
+#include "assets/assets.h"
+#include "assets/shader.h"
 
 #ifdef CONFIG_GLX_SYNC
 void
@@ -278,6 +280,14 @@ glx_init(session_t *ps, bool need_render) {
     // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
+
+  assets_add_handler(1, "vs", vert_shader_load_file, shader_unload_file);
+  assets_add_handler(1, "fs", frag_shader_load_file, shader_unload_file);
+
+  assets_add_path("/home/delusional/");
+
+  assets_load("test.vs");
+  assets_load("test.fs");
 
   success = true;
 

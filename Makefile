@@ -10,7 +10,7 @@ APPDIR ?= $(PREFIX)/share/applications
 ICODIR ?= $(PREFIX)/share/icons/hicolor/
 
 PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr
-LIBS = -lm -lrt
+LIBS = -lm -lrt -lJudy
 INCS =
 
 OBJS = compton.o
@@ -23,6 +23,7 @@ LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
 OBJS += vmath.o
+OBJS += assets.o shader.o
 
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
@@ -130,6 +131,9 @@ src/.clang_complete: Makefile
 
 %.o: src/%.c src/%.h src/common.h
 	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -c src/$*.c
+
+%.o: src/*/%.c src/*/%.h
+	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -c $<
 
 compton: $(OBJS)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
