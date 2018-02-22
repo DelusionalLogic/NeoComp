@@ -456,30 +456,6 @@ glx_init_blur(session_t *ps) {
     // Thanks to hiciu for reporting.
     setlocale(LC_NUMERIC, "C");
 
-    static const char *FRAG_SHADER_BLUR_PREFIX =
-      "#version 130\n"
-      "uniform vec2 pixeluv;\n"
-      "in vec2 fragmentUV;\n"
-      "uniform vec2 extent;\n"
-      "uniform sampler2D tex_scr;\n"
-      "\n"
-      "vec4 sample(vec2 uv) {\n"
-      /* "if(extent.x < uv.x) return vec4(1.0, 0.0, 1.0, 1.0);\n" */
-      /* "if(extent.y < uv.y) return vec4(1.0, 0.0, 1.0, 1.0);\n" */
-      "return texture2D(tex_scr, clamp(uv, vec2(0.0), extent));\n"
-      "}\n"
-      "\n"
-      "void main() {\n"
-      "vec2 uv = fragmentUV;\n"
-      "vec4 sum = sample(uv) * 4.0;\n"
-      "sum += sample(uv + pixeluv);\n"
-      "sum += sample(uv + -pixeluv);\n"
-      "sum += sample(uv + vec2(pixeluv.x, pixeluv.y));\n"
-      "sum += sample(uv + vec2(pixeluv.x, pixeluv.y));\n"
-      "gl_FragColor = sum / 8.0;\n"
-      /* "gl_FragColor = vec4(fragmentUV.xy, 0.0, 1.0)\n;" */
-      "}\n";
-
     static const char *FRAG_SHADER_BLUR_UPSCALE =
       "#version 130\n"
       "uniform vec2 pixeluv;\n"
@@ -530,40 +506,9 @@ glx_init_blur(session_t *ps) {
 
       glx_blur_pass_t *ppass = &ps->psglx->blur_passes[i];
 
-      // Build shader
-      {
-        /* ppass->frag_shader = glx_create_shader(GL_FRAGMENT_SHADER, FRAG_SHADER_BLUR_PREFIX); */
-        /* ppass->upscale_shader = glx_create_shader(GL_FRAGMENT_SHADER, FRAG_SHADER_BLUR_UPSCALE); */
-        /* ppass->vertex_shader = glx_create_shader(GL_VERTEX_SHADER, VERTEX_SHADER_BLUR); */
-
-        /* { */
-        /*     FILE* fd = fopen("shader.glsl", "w"); */
-        /*     fprintf(fd, "%s\n", FRAG_SHADER_BLUR_PREFIX); */
-        /*     fflush(fd); */
-        /* } */
-      }
-
-      /* if (!ppass->frag_shader) { */
-      /*   printf_errf("(): Failed to create fragment shader %d.", i); */
-      /*   return false; */
-      /* } */
-      /* if (!ppass->upscale_shader) { */
-      /*   printf_errf("(): Failed to create upscale shader %d.", i); */
-      /*   return false; */
-      /* } */
-      /* if (!ppass->vertex_shader) { */
-      /*   printf_errf("(): Failed to create upscale shader %d.", i); */
-      /*   return false; */
-      /* } */
-
       // Build program
-      ppass->prog = glx_create_program_from_str(VERTEX_SHADER_BLUR, FRAG_SHADER_BLUR_PREFIX);
+      ppass->prog = glx_create_program_from_str(VERTEX_SHADER_BLUR, FRAG_SHADER_BLUR_UPSCALE);
       if (!ppass->prog) {
-        printf_errf("(): Failed to create GLSL program.");
-        return false;
-      }
-      ppass->upscale_prog = glx_create_program_from_str(VERTEX_SHADER_BLUR, FRAG_SHADER_BLUR_UPSCALE);
-      if (!ppass->upscale_prog) {
         printf_errf("(): Failed to create GLSL program.");
         return false;
       }
@@ -1280,8 +1225,16 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
     int level = 3;
 
+    struct shader_program* downscale_program = assets_load("test.shader");
+    if(downscale_program->shader_type_info != &downsample_info) {
+        printf_errf("test.shader was not a downsample shader");
+        goto glx_blur_dst_end;
+    }
+
+    struct Downsample* downscale_type = downscale_program->shader_type;
+
     // Use the shader
-    glUseProgram(ppass->prog);
+    glUseProgram(downscale_program->gl_program);
 
     // Downscale
     for (int i = 0; i < level; i++) {
@@ -1314,11 +1267,9 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
         // Set the shader parameters
-        if (ppass->unifm_pixeluv >= 0)
-            glUniform2f(ppass->unifm_pixeluv, texfac_x, texfac_y);
+        glUniform2f(downscale_type->pixeluv, texfac_x, texfac_y);
         // Set the source texture
-        if (ppass->unifm_tex >= 0)
-            glUniform1i(ppass->unifm_tex, 0);
+        glUniform1i(downscale_type->tex_scr, 0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
@@ -1350,12 +1301,9 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            if (ppass->unifm_extent >= 0)
-                glUniform2f(ppass->unifm_extent, maxU, maxV);
-            if (ppass->unifm_mvp >= 0)
-                glUniformMatrix4fv(ppass->unifm_mvp, 1, GL_FALSE, &scalei.m);
-            if (ppass->unifm_uvscale >= 0)
-                glUniform2f(ppass->unifm_uvscale, scaleU, scaleV);
+            glUniform2f(downscale_type->extent, maxU, maxV);
+            glUniformMatrix4fv(downscale_type->mvp, 1, GL_FALSE, &scalei.m);
+            glUniform2f(downscale_type->uvscale, scaleU, scaleV);
 
 #ifdef DEBUG_GLX
             printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, maxU, maxV, scaleX, scaleY);
@@ -1373,59 +1321,6 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
 
-        { // {{{
-        /*     glUseProgram(0); */
-        /*     // Set up to draw to the secondary texture */
-        /*     static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT }; */
-        /*     glBindFramebuffer(GL_FRAMEBUFFER, 0); */
-        /*     glDrawBuffers(1, DRAWBUFS); */
-        /*     /1* if (have_scissors) *1/ */
-        /*     /1*     glEnable(GL_SCISSOR_TEST); *1/ */
-        /*     /1* if (have_stencil) *1/ */
-        /*     /1*     glEnable(GL_STENCIL_TEST); *1/ */
-
-        /*     // @CLEANUP Do we place this here or after the swap? */
-        /*     glBindTexture(GL_TEXTURE_2D, tex_scr2); */
-
-        /*     // Set the blend function, since we don't want any blending */
-        /*     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); */
-
-        /*     // Do the render */
-        /*     { */
-        /*         const GLfloat rx = 0; */
-        /*         const GLfloat ry = 0; */
-        /*         const GLfloat rxe = 1.0; */
-        /*         const GLfloat rye = 1.0; */
-        /*         GLfloat rdx = i * 200 + 0; */
-        /*         GLfloat rdy = 200; */
-        /*         GLfloat rdxe = i * 200 + 200; */
-        /*         GLfloat rdye = 400; */
-
-        /*         glBegin(GL_QUADS); */
-
-/* #ifdef DEBUG_GLX */
-        /*         printf_dbgf("(): dbgdraw: %f, %f, %f, %f -> %f, %f, %f, %f\n", rx, ry, rxe, */
-        /*                 rye, rdx, rdy, rdxe, rdye); */
-/* #endif */
-
-        /*         glTexCoord2f(rx, rye); */
-        /*         glVertex3f(rdx, rdye, z); */
-
-        /*         glTexCoord2f(rxe, rye); */
-        /*         glVertex3f(rdxe, rdye, z); */
-
-        /*         glTexCoord2f(rxe, ry); */
-        /*         glVertex3f(rdxe, rdy, z); */
-
-        /*         glTexCoord2f(rx, ry); */
-        /*         glVertex3f(rdx, rdy, z); */
-
-
-        /*         glEnd(); */
-        /*     } */
-        /*     glUseProgram(ppass->prog); */
-        } // }}}
-
         // Swap main and secondary
         {
             GLuint tmp = tex_scr2;
@@ -1435,7 +1330,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     }
 
     // Switch to the upsample shader
-    glUseProgram(ppass->upscale_prog);
+    glUseProgram(ppass->prog);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex_scr);
@@ -1526,59 +1421,6 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             glDisableVertexAttribArray(0);
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
-
-        { // {{{
-        /*     glUseProgram(0); */
-        /*     // Set up to draw to the secondary texture */
-        /*     static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT }; */
-        /*     glBindFramebuffer(GL_FRAMEBUFFER, 0); */
-        /*     glDrawBuffers(1, DRAWBUFS); */
-        /*     /1* if (have_scissors) *1/ */
-        /*     /1*     glEnable(GL_SCISSOR_TEST); *1/ */
-        /*     /1* if (have_stencil) *1/ */
-        /*     /1*     glEnable(GL_STENCIL_TEST); *1/ */
-
-        /*     // @CLEANUP Do we place this here or after the swap? */
-        /*     glBindTexture(GL_TEXTURE_2D, tex_scr2); */
-
-        /*     // Set the blend function, since we don't want any blending */
-        /*     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); */
-
-        /*     // Do the render */
-        /*     { */
-        /*         const GLfloat rx = 0; */
-        /*         const GLfloat ry = 0; */
-        /*         const GLfloat rxe = 1.0; */
-        /*         const GLfloat rye = 1.0; */
-        /*         GLfloat rdx = i * 200 + level * 200; */
-        /*         GLfloat rdy = 200; */
-        /*         GLfloat rdxe = (i + 1) * 200 + level * 200; */
-        /*         GLfloat rdye = 400; */
-
-        /*         glBegin(GL_QUADS); */
-
-/* #ifdef DEBUG_GLX */
-        /*         printf_dbgf("(): dbgdraw: %f, %f, %f, %f -> %f, %f, %f, %f\n", rx, ry, rxe, */
-        /*                 rye, rdx, rdy, rdxe, rdye); */
-/* #endif */
-
-        /*         glTexCoord2f(rx, rye); */
-        /*         glVertex3f(rdx, rdye, z); */
-
-        /*         glTexCoord2f(rxe, rye); */
-        /*         glVertex3f(rdxe, rdye, z); */
-
-        /*         glTexCoord2f(rxe, ry); */
-        /*         glVertex3f(rdxe, rdy, z); */
-
-        /*         glTexCoord2f(rx, ry); */
-        /*         glVertex3f(rdx, rdy, z); */
-
-
-        /*         glEnd(); */
-        /*     } */
-        /*     glUseProgram(ppass->upscale_prog); */
-        } // }}}
 
         // Swap main and secondary
         {
