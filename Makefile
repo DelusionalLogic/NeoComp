@@ -16,7 +16,7 @@ INCS =
 OBJS = compton.o
 
 # === Configuration flags ===
-CFG = -std=c99
+CFG = -std=gnu11
 
 # -lGL must precede some other libraries, or it segfaults on FreeBSD (#74)
 LIBS := -lGL $(LIBS)

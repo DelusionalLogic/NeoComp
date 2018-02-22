@@ -281,10 +281,12 @@ glx_init(session_t *ps, bool need_render) {
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
 
-  assets_add_handler(1, "vs", vert_shader_load_file, shader_unload_file);
-  assets_add_handler(1, "fs", frag_shader_load_file, shader_unload_file);
+  assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
+  assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
+  assets_add_handler(struct shader_program, "shader", shader_program_load_file,
+    shader_program_unload_file);
 
-  assets_add_path("/home/delusional/");
+  assets_add_path("./assets/");
 
   assets_load("test.vs");
   assets_load("test.fs");
@@ -1274,7 +1276,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     //@HACK Use the first blur pass
     const glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
 
-    int level = 1;
+    int level = 3;
 
     // Use the shader
     glUseProgram(ppass->prog);

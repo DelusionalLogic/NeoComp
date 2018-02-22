@@ -7,6 +7,36 @@
 #include <libgen.h>
 #include <Judy.h>
 
+// Types {{{
+struct type_info {
+    type_id id;
+    size_t size;
+};
+
+static Pvoid_t types = NULL;
+static int next_type_id;
+
+type_id type_find(char* type_name, size_t size) {
+    struct type_info** type = NULL;
+    JSLG(type, types, type_name);
+    if(type != NULL) {
+        return *type;
+    }
+
+    JSLI(type, types, type_name);
+    if(type == NULL) {
+        printf("Couldn't allocate space for type_info for %s\n", type_name);
+        return NULL;
+    }
+    *type = malloc(sizeof(struct type_info));
+
+    (*type)->id = next_type_id++;
+    (*type)->size = size;
+
+    return *type;
+}
+// }}}
+
 #define MAX_EXTENSION 16
 struct asset_handler {
     char extension[MAX_EXTENSION];
@@ -24,7 +54,7 @@ static size_t num_handlers = 0;
 char paths[MAX_PATHS][MAX_PATH_LENGTH];
 static size_t num_paths = 0;
 
-void assets_add_handler(asset_type type, const char* extension,
+void assets_add_handler_internal(asset_type type, const char* extension,
         asset_loader* loader, asset_unloader* unloader) {
     struct asset_handler* handler = &asset_handlers[num_handlers++];
 
