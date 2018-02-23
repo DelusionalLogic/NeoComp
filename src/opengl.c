@@ -1034,29 +1034,36 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
   free_region(ps, &reg_new); \
 
 static inline GLuint
-glx_gen_texture(session_t *ps, GLenum tex_tgt, int width, int height) {
+glx_gen_texture_vector(session_t *ps, GLenum tex_tgt, const Vector2* size) {
   GLuint tex = 0;
   glGenTextures(1, &tex);
   if (!tex) return 0;
-  glEnable(tex_tgt);
   glBindTexture(tex_tgt, tex);
   glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(tex_tgt, 0, GL_RGB, width, height, 0, GL_RGB,
-      GL_UNSIGNED_BYTE, NULL);
+  glTexImage2D(tex_tgt, 0, GL_RGB, size->x, size->y, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
   glBindTexture(tex_tgt, 0);
 
   return tex;
 }
 
-static inline void
-glx_copy_region_to_tex(session_t *ps, GLenum tex_tgt, int basex, int basey,
-    int dx, int dy, int width, int height) {
-  if (width > 0 && height > 0)
-    glCopyTexSubImage2D(tex_tgt, 0, dx - basex, dy - basey,
-        dx, ps->root_height - dy - height, width, height);
+static inline GLuint
+glx_gen_texture(session_t *ps, GLenum tex_tgt, int width, int height) {
+    Vector2 size = {{
+        width, height,
+    }};
+    return glx_gen_texture_vector(ps, tex_tgt, &size);
+}
+
+static inline void glx_copy_region_to_tex(session_t *ps, GLenum tex_tgt,
+        const Vector2* pos, const Vector2* size) {
+    if (size->x > 0 && size->y > 0) {
+        Vector2 offset = {{0, 0}};
+        glCopyTexSubImage2D(tex_tgt, 0, offset.x, offset.y,
+                pos->x, ps->root_height - pos->y - size->y, size->x, size->y);
+    }
 }
 
 void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
@@ -1084,7 +1091,7 @@ void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
  * Blur contents in a particular region.
  */
 bool
-glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
+glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
@@ -1092,30 +1099,26 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
     bool ret = false;
 
-    // Calculate copy region size
-    glx_blur_cache_t ibc = { .width = 0, .height = 0 };
+#ifdef DEBUG_GLX
+    printf_dbgf("(): %d, %d, %d, %d\n", pos->x, pos->y, size->x, size->y);
+#endif
+
+    // If they didn't give us a cache we'll just use a local stack cache
+    glx_blur_cache_t ibc = {0};
     if (!pbc)
         pbc = &ibc;
 
-    int mdx = dx, mdy = dy, mwidth = width, mheight = height;
-#ifdef DEBUG_GLX
-    printf_dbgf("(): %d, %d, %d, %d\n", mdx, mdy, mwidth, mheight);
-#endif
-
-    GLenum tex_tgt = GL_TEXTURE_2D;
-
     // Free textures if size inconsistency discovered
-    if (mwidth != pbc->width || mheight != pbc->height)
+    if (!vec2_eq(size, &pbc->size))
         free_glx_bc_resize(ps, pbc);
 
     // Generate FBO and textures if needed
     if (!pbc->textures[0])
-        pbc->textures[0] = glx_gen_texture(ps, tex_tgt, mwidth, mheight);
+        pbc->textures[0] = glx_gen_texture_vector(ps, GL_TEXTURE_2D, size);
     GLuint tex_scr = pbc->textures[0];
     if (!pbc->textures[1])
-        pbc->textures[1] = glx_gen_texture(ps, tex_tgt, mwidth, mheight);
-    pbc->width = mwidth;
-    pbc->height = mheight;
+        pbc->textures[1] = glx_gen_texture_vector(ps, GL_TEXTURE_2D, size);
+    pbc->size = *size;
     GLuint tex_scr2 = pbc->textures[1];
     if (!pbc->fbo)
         glGenFramebuffers(1, &pbc->fbo);
@@ -1133,11 +1136,13 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     // Read destination pixels into a texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex_scr);
-    glx_copy_region_to_tex(ps, GL_TEXTURE_2D, mdx, mdy, mdx, mdy, mwidth, mheight);
+    glx_copy_region_to_tex(ps, GL_TEXTURE_2D, pos, size);
 
+    Vector2 pixeluv = {{
+        1.0f / size->x,
+        1.0f / size->y,
+    }};
     // Texture scaling factor
-    GLfloat texfac_x = 1.0f / mwidth;
-    GLfloat texfac_y = 1.0f / mheight;
 
     // Paint it back
     glDisable(GL_STENCIL_TEST);
@@ -1160,16 +1165,18 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     glUseProgram(downscale_program->gl_program);
 
     const Vector2 halfpixel = {{
-        1.0/(mwidth * 2),
-        1.0/(mheight * 2),
+        1.0f/(size->x * 2),
+        1.0f/(size->y * 2),
     }};
 
     // Downscale
     for (int i = 0; i < level; i++) {
-        double subwidth = (double)width / pow(2, i);
-        double subheight = (double)height / pow(2, i);
-        double targetWidth = subwidth / 2;
-        double targetHeight = subheight / 2;
+        Vector2 sourceSize = *size;
+        vec2_idiv(&sourceSize, pow(2, i));
+
+        Vector2 targetSize = sourceSize;
+        vec2_idiv(&targetSize, 2);
+
         /* printf("Down: SubWidth %lf SubHeigth %lf\n", subwidth, subheight); */
         //Bind the main texture
         assert(tex_scr);
@@ -1185,7 +1192,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             printf_errf("(): Framebuffer attachment failed.");
             goto glx_blur_dst_end;
         }
-        glViewport(0, 0, mwidth, mheight);
+        glViewport(0, 0, size->x, size->y);
 
         // @CLEANUP Do we place this here or after the swap?
         glActiveTexture(GL_TEXTURE0);
@@ -1195,7 +1202,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
         // Set the shader parameters
-        glUniform2f(downscale_type->pixeluv, texfac_x, texfac_y);
+        glUniform2f(downscale_type->pixeluv, pixeluv.u, pixeluv.v);
         // Set the source texture
         glUniform1i(downscale_type->tex_scr, 0);
 
@@ -1203,14 +1210,20 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
         // Do the render
         {
-            const GLfloat scaleU = texfac_x * ceil(subwidth);
-            const GLfloat scaleV = texfac_y * ceil(subheight);
-            const GLfloat scaleX = texfac_x * ceil(targetWidth);
-            const GLfloat scaleY = texfac_y * ceil(targetHeight);
-            const Vector2 uv_max = {{
-                (texfac_x * subwidth),
-                (texfac_y * subheight),
+            const Vector2 roundSource = {{
+                ceil(sourceSize.x), ceil(sourceSize.y),
             }};
+            Vector2 uv_scale = pixeluv;
+            vec2_mul(&uv_scale, &roundSource);
+
+            const Vector2 roundTarget = {{
+                ceil(targetSize.x), ceil(targetSize.y),
+            }};
+            Vector2 scale = pixeluv;
+            vec2_mul(&scale, &roundTarget);
+
+            Vector2 uv_max = pixeluv;
+            vec2_mul(&uv_max, &sourceSize);
             vec2_sub(&uv_max, &halfpixel);
 
 #ifdef DEBUG_GLX
@@ -1219,14 +1232,13 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 #endif
 
             glUniform2f(downscale_type->extent, uv_max.u, uv_max.v);
-            glUniform2f(downscale_type->uvscale, scaleU, scaleV);
+            glUniform2f(downscale_type->uvscale, uv_scale.x, uv_scale.y);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, uv_max.u, uv_max.v, scaleX, scaleY);
+            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
-            // 1rst attribute buffer : vertices
-            Vector2 size = {{scaleX, scaleY}};
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, size);
+
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, scale);
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
 
@@ -1255,10 +1267,12 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
     // Upscale
     for (int i = 0; i < level; i++) {
-        double subwidth = (double)width / pow(2, level - i);
-        double subheight = (double)height / pow(2, level - i);
-        double targetWidth = subwidth * 2;
-        double targetHeight = subheight * 2;
+        Vector2 sourceSize = *size;
+        vec2_idiv(&sourceSize, pow(2, level - i));
+
+        Vector2 targetSize = sourceSize;
+        vec2_imul(&targetSize, 2);
+
         /* printf("UP: SubWidth %lf SubHeigth %lf\n", subwidth, subheight); */
         //Bind the main texture
         assert(tex_scr);
@@ -1274,7 +1288,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             printf_errf("(): Framebuffer attachment failed.");
             goto glx_blur_dst_end;
         }
-        glViewport(0, 0, mwidth, mheight);
+        glViewport(0, 0, size->x, size->y);
 
         // @CLEANUP Do we place this here or after the swap?
         glBindTexture(GL_TEXTURE_2D, tex_scr);
@@ -1283,23 +1297,26 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
         // Set the shader parameters
-        glUniform2f(upsample_type->pixeluv, texfac_x, texfac_y);
+        glUniform2f(upsample_type->pixeluv, pixeluv.u, pixeluv.v);
         glUniform1i(upsample_type->tex_scr, 0);
 
         // Do the render
         {
-            const Vector2 uv_scale = {
-                .u = texfac_x * ceil(subwidth),
-                .v = texfac_y * ceil(subheight),
-            };
-            const Vector2 size = {
-                .x = texfac_x * ceil(targetWidth),
-                .y = texfac_y * ceil(targetHeight),
-            };
-            const Vector2 uv_max = {
-                .u = (texfac_x * subwidth) - 1.0/(mwidth * 2),
-                .v = (texfac_y * subheight) - 1.0/(mheight * 2),
-            };
+            const Vector2 roundSource = {{
+                ceil(sourceSize.x), ceil(sourceSize.y),
+            }};
+            Vector2 uv_scale = pixeluv;
+            vec2_mul(&uv_scale, &roundSource);
+
+            const Vector2 roundTarget = {{
+                ceil(targetSize.x), ceil(targetSize.y),
+            }};
+            Vector2 scale = pixeluv;
+            vec2_mul(&scale, &roundTarget);
+
+            Vector2 uv_max = pixeluv;
+            vec2_mul(&uv_max, &sourceSize);
+            vec2_sub(&uv_max, &halfpixel);
 
 #ifdef DEBUG_GLX
             glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -1310,10 +1327,10 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             glUniform2f(upsample_type->uvscale, uv_scale.u, uv_scale.v);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, size.x, size.y);
+            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, size);
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, scale);
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
 
@@ -1338,8 +1355,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDrawBuffers(1, DRAWBUFS);
         if (have_scissors)
-            /* glEnable(GL_SCISSOR_TEST); */
-            ;
+            glEnable(GL_SCISSOR_TEST);
         if (have_stencil)
             glEnable(GL_STENCIL_TEST);
 
@@ -1347,14 +1363,18 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
     // Do the render
     {
+        int dx = pos->x;
+        int dy = pos->y;
+        int width = size->x;
+        int height = size->y;
         P_PAINTREG_START();
         {
-            const GLfloat rx = (crect.x - mdx) * texfac_x;
-            const GLfloat ry = (mheight - (crect.y - mdy)) * texfac_y;
-            const GLfloat rxe = rx + crect.width * texfac_x;
-            const GLfloat rye = ry - crect.height * texfac_y;
-            GLfloat rdx = crect.x - mdx;
-            GLfloat rdy = mheight - crect.y + mdy;
+            const GLfloat rx = (crect.x - pos->x) * pixeluv.x;
+            const GLfloat ry = (size->y - (crect.y - pos->y)) * pixeluv.y;
+            const GLfloat rxe = rx + crect.width * pixeluv.x;
+            const GLfloat rye = ry - crect.height * pixeluv.y;
+            GLfloat rdx = crect.x - pos->x;
+            GLfloat rdy = size->y - crect.y + pos->y;
             GLfloat rdxe = rdx + crect.width;
             GLfloat rdye = rdy - crect.height;
 
@@ -1389,10 +1409,9 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
 glx_blur_dst_end:
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(tex_tgt, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
     if (have_scissors)
-        /* glEnable(GL_SCISSOR_TEST); */
-        ;
+        glEnable(GL_SCISSOR_TEST);
     if (have_stencil)
         glEnable(GL_STENCIL_TEST);
 

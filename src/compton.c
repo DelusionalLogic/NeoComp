@@ -11,6 +11,8 @@
 #include "compton.h"
 #include <ctype.h>
 
+#include "vmath.h"
+
 // === Global constants ===
 
 /// Name strings for window types.
@@ -1333,10 +1335,12 @@ xr_take_screenshot(session_t *ps) {
 static inline void
 win_blur_background(session_t *ps, win *w, Picture tgt_buffer,
     XserverRegion reg_paint, const reg_data_t *pcache_reg) {
-  const int x = w->a.x;
-  const int y = w->a.y;
-  const int wid = w->widthb;
-  const int hei = w->heightb;
+  const Vector2 pos = {{
+      w->a.x, w->a.y,
+  }};
+  const Vector2 size = {{
+      w->widthb, w->heightb,
+  }};
 
   double factor_center = 1.0;
   // Adjust blur strength according to window opacity, to make it appear
@@ -1347,7 +1351,7 @@ win_blur_background(session_t *ps, win *w, Picture tgt_buffer,
   }
 
   // TODO: Handle frame opacity
-  glx_blur_dst(ps, x, y, wid, hei, ps->psglx->z - 0.5, factor_center,
+  glx_blur_dst(ps, &pos, &size, ps->psglx->z - 0.5, factor_center,
           reg_paint, pcache_reg, &w->glx_blur_cache);
 }
 

@@ -474,6 +474,7 @@ typedef struct {
   GLuint fbo;
   /// Textures used for blurring.
   GLuint textures[2];
+  Vector2 size;
   /// Width of the textures.
   int width;
   /// Height of the textures.
@@ -2159,7 +2160,7 @@ void
 glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg);
 
 bool
-glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
+glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc);

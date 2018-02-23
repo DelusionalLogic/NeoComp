@@ -100,7 +100,7 @@ static void shader_program_link(struct shader_program* program) {
     int* key;
     JSLF(key, program->attributes, name);
     while(key != NULL) {
-        glBindAttribLocation(program->gl_program, key, name);
+        glBindAttribLocation(program->gl_program, *key, name);
         JSLN(key, program->attributes, name);
     }
 

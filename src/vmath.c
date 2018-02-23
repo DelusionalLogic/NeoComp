@@ -2,54 +2,68 @@
 
 #include <string.h>
 
-#define DEFINE_VEC_OPS(n)                                                         \
+#define DEFINE_VEC_OPS(n)                                                \
 void vec##n##_add(Vector##n * r, const Vector##n * const a)              \
-{                                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        r->m[i] = r->m[i] + a->m[i];                                              \
-}                                                                                 \
+{                                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        r->m[i] = r->m[i] + a->m[i];                                     \
+}                                                                        \
 void vec##n##_sub(Vector##n * r, const Vector##n * const a)              \
-{                                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        r->m[i] = r->m[i] - a->m[i];                                              \
-}                                                                                 \
-void vec##n##_scale(Vector##n * const v, float const s)                           \
-{                                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        v->m[i] = v->m[i] * s;                                                    \
-}                                                                                 \
+{                                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        r->m[i] = r->m[i] - a->m[i];                                     \
+}                                                                        \
+void vec##n##_scale(Vector##n * const v, float const s)                  \
+{                                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        v->m[i] = v->m[i] * s;                                           \
+}                                                                        \
 float vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b) \
-{                                                                                 \
-    float p = 0.;                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        p += b->m[i]*a->m[i];                                                     \
-    return p;                                                                     \
-}                                                                                 \
-float vec##n##_len(const Vector##n * const v)                                     \
-{                                                                                 \
-    Vector##n c = *v;                                                             \
+{                                                                        \
+    float p = 0.;                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        p += b->m[i] * a->m[i];                                          \
+    return p;                                                            \
+}                                                                        \
+void vec##n##_idiv(Vector##n * const a, float x) {                       \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] /= x;                                                    \
+}                                                                        \
+void vec##n##_imul(Vector##n * const a, float x) {                       \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] *= x;                                                    \
+}                                                                        \
+void vec##n##_mul(Vector##n * const a, const Vector##n * const b) {      \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] = a->m[i] * b->m[i];                                     \
+}                                                                        \
+float vec##n##_len(const Vector##n * const v)                            \
+{                                                                        \
+    Vector##n c = *v;                                                    \
     return sqrtf(vec##n##_mul_inner(&c,v));                              \
-}                                                                                 \
-void vec##n##_norm(Vector##n * const v)                                           \
-{                                                                                 \
-    float k = 1.0 / vec##n##_len(v);                                              \
-    vec##n##_scale(v, k);                                                         \
-}                                                                                 \
+}                                                                        \
+void vec##n##_norm(Vector##n * const v)                                  \
+{                                                                        \
+    float k = 1.0 / vec##n##_len(v);                                     \
+    vec##n##_scale(v, k);                                                \
+}                                                                        \
 void vec##n##_min(Vector##n * a, const Vector##n * b)                    \
-{                                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        a->m[i] = a->m[i]<b->m[i] ? a->m[i] : b->m[i];                            \
-}                                                                                 \
-void vec##n##_max(Vector##n * a, const Vector##n * b)                          \
-{                                                                                 \
-    int i;                                                                        \
-    for(i=0; i<n; ++i)                                                            \
-        a->m[i] = a->m[i]>b->m[i] ? a->m[i] : b->m[i];                            \
+{                                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] = a->m[i] < b->m[i] ? a->m[i] : b->m[i];                 \
+}                                                                        \
+void vec##n##_max(Vector##n * a, const Vector##n * b)                    \
+{                                                                        \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] = a->m[i]>b->m[i] ? a->m[i] : b->m[i];                   \
+}                                                                        \
+bool vec##n##_eq(const Vector##n * a, const Vector##n * b)               \
+{                                                                        \
+    for(int i = 0; i < n; i++) {                                         \
+        if(a->m[i] != b->m[i])                                           \
+            return false;                                                \
+    }                                                                    \
+    return false;                                                        \
 }
 
 #define DEFINE_VEC_CONST(n, k)                                          \
