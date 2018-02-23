@@ -289,4 +289,9 @@ struct shader_program* shader_program_load_file(const char* path) {
 }
 
 void shader_program_unload_file(struct shader_program* asset) {
+    glDeleteProgram(asset->gl_program);
+    free(asset->shader_type);
+    Word_t freed;
+    JSLFA(freed, asset->attributes);
+    free(asset);
 }
