@@ -17,3 +17,7 @@ struct shader_type_info {
 #define HEADER "downsample.h"
 #include "shader.h"
 #undef HEADER
+
+#define HEADER "upsample.h"
+#include "shader.h"
+#undef HEADER

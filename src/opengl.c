@@ -121,11 +121,6 @@ glx_init(session_t *ps, bool need_render) {
 
     for (int i = 0; i < MAX_BLUR_PASS; ++i) {
       glx_blur_pass_t *ppass = &ps->psglx->blur_passes[i];
-      ppass->unifm_pixeluv = -1;
-      ppass->unifm_extent = -1;
-      ppass->unifm_tex = -1;
-      ppass->unifm_mvp = -1;
-      ppass->unifm_uvscale = -1;
     }
   }
 
@@ -283,6 +278,7 @@ glx_init(session_t *ps, bool need_render) {
   }
 
   add_shader_type(&downsample_info);
+  add_shader_type(&upsample_info);
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
@@ -290,8 +286,6 @@ glx_init(session_t *ps, bool need_render) {
     shader_program_unload_file);
 
   assets_add_path("./assets/");
-
-  struct shader_program* program = assets_load("test.shader");
 
   success = true;
 
@@ -449,93 +443,6 @@ glx_init_blur(session_t *ps) {
       glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
 
   }
-
-  {
-    char *lc_numeric_old = mstrcpy(setlocale(LC_NUMERIC, NULL));
-    // Enforce LC_NUMERIC locale "C" here to make sure decimal point is sane
-    // Thanks to hiciu for reporting.
-    setlocale(LC_NUMERIC, "C");
-
-    static const char *FRAG_SHADER_BLUR_UPSCALE =
-      "#version 130\n"
-      "uniform vec2 pixeluv;\n"
-      "in vec2 fragmentUV;\n"
-      "uniform vec2 extent;\n"
-      "uniform sampler2D tex_scr;\n"
-      "\n"
-      "vec4 sample(vec2 uv) {\n"
-      /* "if(extent.x < uv.x) return vec4(1.0, 0.0, 1.0, 1.0);\n" */
-      /* "if(extent.y <= uv.y) return vec4(1.0, 0.0, 1.0, 1.0);\n" */
-      "return texture2D(tex_scr, clamp(uv, vec2(0.0), extent));\n"
-      "}\n"
-      "\n"
-      "void main() {\n"
-      "vec2 uv = fragmentUV;\n"
-      "vec4 sum = sample(uv + vec2(-pixeluv.x * 2.0, 0.0));\n"
-      "sum += sample(uv + vec2(-pixeluv.x, pixeluv.y)) * 2.0;\n"
-      "sum += sample(uv + vec2(0.0, pixeluv.y * 2.0));\n"
-      "sum += sample(uv + vec2(pixeluv.x, pixeluv.y)) * 2.0;\n"
-      "sum += sample(uv + vec2(pixeluv.x * 2.0, 0.0));\n"
-      "sum += sample(uv + vec2(pixeluv.x, -pixeluv.y)) * 2.0;\n"
-      "sum += sample(uv + vec2(0.0, -pixeluv.y * 2.0));\n"
-      "sum += sample(uv + vec2(-pixeluv.x, -pixeluv.y)) * 2.0;\n"
-      "gl_FragColor = sum / 12.0;\n"
-      /* "gl_FragColor = vec4(fragmentUV.xy, 0.0, 1.0)\n;" */
-      "}\n";
-
-    static const char *VERTEX_SHADER_BLUR =
-      "#version 130\n"
-      "in vec3 vertex;\n"
-      "in vec2 uv;\n"
-      "out vec2 fragmentUV;\n"
-
-      "uniform mat4 MVP;\n"
-      "uniform vec2 uvscale;\n"
-      "\n"
-      "void main() {\n"
-      "fragmentUV = uv * uvscale;\n"
-      "gl_Position = MVP * vec4(vertex, 1.0);\n"
-      "}\n";
-
-    char *extension = mstrcpy("");
-
-    for (int i = 0; i < MAX_BLUR_PASS && ps->o.blur_kerns[i]; ++i) {
-      XFixed *kern = ps->o.blur_kerns[i];
-      if (!kern)
-        break;
-
-      glx_blur_pass_t *ppass = &ps->psglx->blur_passes[i];
-
-      // Build program
-      ppass->prog = glx_create_program_from_str(VERTEX_SHADER_BLUR, FRAG_SHADER_BLUR_UPSCALE);
-      if (!ppass->prog) {
-        printf_errf("(): Failed to create GLSL program.");
-        return false;
-      }
-
-      // Get uniform addresses
-#define P_GET_UNIFM_LOC(name, target) { \
-      ppass->target = glGetUniformLocation(ppass->prog, name); \
-      if (ppass->target < 0) { \
-        printf_errf("(): Failed to get location of %d-th uniform '" name "'. Might be troublesome.", i); \
-      } \
-    }
-
-      P_GET_UNIFM_LOC("pixeluv", unifm_pixeluv);
-      P_GET_UNIFM_LOC("extent", unifm_extent);
-      P_GET_UNIFM_LOC("uvscale", unifm_uvscale);
-      P_GET_UNIFM_LOC("tex_scr", unifm_tex);
-      P_GET_UNIFM_LOC("MVP", unifm_mvp);
-
-#undef P_GET_UNIFM_LOC
-    }
-    free(extension);
-
-    // Restore LC_NUMERIC
-    setlocale(LC_NUMERIC, lc_numeric_old);
-    free(lc_numeric_old);
-  }
-
 
   glx_check_err(ps);
 
@@ -1225,9 +1132,9 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
     int level = 3;
 
-    struct shader_program* downscale_program = assets_load("test.shader");
+    struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
-        printf_errf("test.shader was not a downsample shader");
+        printf_errf("shader was not a downsample shader");
         goto glx_blur_dst_end;
     }
 
@@ -1330,7 +1237,16 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     }
 
     // Switch to the upsample shader
-    glUseProgram(ppass->prog);
+
+    struct shader_program* upsample_program = assets_load("upsample.shader");
+    if(upsample_program->shader_type_info != &upsample_info) {
+        printf_errf("Shader was not a upsample shader");
+        goto glx_blur_dst_end;
+    }
+
+    struct Upsample* upsample_type = upsample_program->shader_type;
+
+    glUseProgram(upsample_program->gl_program);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex_scr);
@@ -1365,10 +1281,8 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
         // Set the shader parameters
-        if (ppass->unifm_pixeluv >= 0)
-            glUniform2f(ppass->unifm_pixeluv, texfac_x, texfac_y);
-        if (ppass->unifm_tex >= 0)
-            glUniform1i(ppass->unifm_tex, 0);
+        glUniform2f(upsample_type->pixeluv, texfac_x, texfac_y);
+        glUniform1i(upsample_type->tex_scr, 0);
 
         // Do the render
         {
@@ -1399,12 +1313,9 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            if (ppass->unifm_extent >= 0)
-                glUniform2f(ppass->unifm_extent, maxU, maxV);
-            if (ppass->unifm_mvp >= 0)
-                glUniformMatrix4fv(ppass->unifm_mvp, 1, GL_FALSE, &scalei.m);
-            if (ppass->unifm_uvscale >= 0)
-                glUniform2f(ppass->unifm_uvscale, scaleU, scaleV);
+            glUniform2f(upsample_type->extent, maxU, maxV);
+            glUniformMatrix4fv(upsample_type->mvp, 1, GL_FALSE, &scalei.m);
+            glUniform2f(upsample_type->uvscale, scaleU, scaleV);
 
 #ifdef DEBUG_GLX
             printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, maxU, maxV, scaleX, scaleY);
