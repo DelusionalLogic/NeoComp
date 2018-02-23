@@ -118,10 +118,6 @@ glx_init(session_t *ps, bool need_render) {
     static const glx_session_t CGLX_SESSION_DEF = CGLX_SESSION_INIT;
     ps->psglx = cmalloc(1, glx_session_t);
     memcpy(ps->psglx, &CGLX_SESSION_DEF, sizeof(glx_session_t));
-
-    for (int i = 0; i < MAX_BLUR_PASS; ++i) {
-      glx_blur_pass_t *ppass = &ps->psglx->blur_passes[i];
-    }
   }
 
   glx_session_t *psglx = ps->psglx;
@@ -417,10 +413,10 @@ glx_init_blur(session_t *ps) {
 
       // An array of 3 vectors which represents 3 vertices
       static const GLfloat g_vertex_buffer_data[] = {
-          -0.0f, -1.0f, 1.0f,
-          -0.0f,  0.0f, 1.0f,
-          1.0f,   0.0f, 1.0f,
-          1.0f,  -1.0f, 1.0f,
+          0.0f, 1.0f, 1.0f,
+          0.0f, 0.0f, 1.0f,
+          1.0f, 0.0f, 1.0f,
+          1.0f, 1.0f, 1.0f,
       };
       static const GLfloat g_uv_buffer_data[] = {
           0.0f, 0.0f,
@@ -1063,6 +1059,27 @@ glx_copy_region_to_tex(session_t *ps, GLenum tex_tgt, int basex, int basey,
         dx, ps->root_height - dy - height, width, height);
 }
 
+void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
+    Matrix scalei2 = {{
+        2 * size.x , 0          , 0 , 0 ,
+        0          , 2 * size.y , 0 , 0 ,
+        0          , 0          , 1 , 0 ,
+        -1         , -1         , 0 , 1 ,
+    }};
+
+    glUniformMatrix4fv(mvp, 1, GL_FALSE, &scalei2.m);
+
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertex);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, uv);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glDrawArrays(GL_QUADS, 0, 4);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(0);
+}
+
 /**
  * Blur contents in a particular region.
  */
@@ -1129,7 +1146,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     //@HACK Use the first blur pass
     const glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
 
-    int level = 3;
+    int level = 2;
 
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
@@ -1141,6 +1158,11 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
     // Use the shader
     glUseProgram(downscale_program->gl_program);
+
+    const Vector2 halfpixel = {{
+        1.0/(mwidth * 2),
+        1.0/(mheight * 2),
+    }};
 
     // Downscale
     for (int i = 0; i < level; i++) {
@@ -1185,45 +1207,26 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             const GLfloat scaleV = texfac_y * ceil(subheight);
             const GLfloat scaleX = texfac_x * ceil(targetWidth);
             const GLfloat scaleY = texfac_y * ceil(targetHeight);
-            const GLfloat maxU = (texfac_x * subwidth) - 1.0/(mwidth * 2);
-            const GLfloat maxV = (texfac_y * subheight) - 1.0/(mheight * 2);
+            const Vector2 uv_max = {{
+                (texfac_x * subwidth),
+                (texfac_y * subheight),
+            }};
+            vec2_vec2_sub(&uv_max, &halfpixel);
 
-            Matrix scalei = IDENTITY_MATRIX;
-            scale(&scalei, 2, 2, 1.0);
-            translate(&scalei, -1.0, 1.0, 0.0);
-
-            Matrix moveb = IDENTITY_MATRIX;
-            translate(&moveb, 0.0, -1.0, 0.0);
-            scalei = mat4_multiply(&moveb, &scalei);
-
-            Matrix scalem = IDENTITY_MATRIX;
-            scale(&scalem, scaleX, scaleY, 1.0);
-            scalei = mat4_multiply(&scalem, &scalei);
-
-            Matrix movef = IDENTITY_MATRIX;
-            translate(&movef, 0.0, 1.0, 0.0);
-            scalei = mat4_multiply(&movef, &scalei);
-
+#ifdef DEBUG_GLX
             glClearColor(0.0, 0.0, 0.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
+#endif
 
-            glUniform2f(downscale_type->extent, maxU, maxV);
-            glUniformMatrix4fv(downscale_type->mvp, 1, GL_FALSE, &scalei.m);
+            glUniform2f(downscale_type->extent, uv_max.u, uv_max.v);
             glUniform2f(downscale_type->uvscale, scaleU, scaleV);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, maxU, maxV, scaleX, scaleY);
+            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, uv_max.u, uv_max.v, scaleX, scaleY);
 #endif
             // 1rst attribute buffer : vertices
-            glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, ppass->vertexBuffer);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-            glEnableVertexAttribArray(1);
-            glBindBuffer(GL_ARRAY_BUFFER, ppass->uvBuffer);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-            glDrawArrays(GL_QUADS, 0, 4);
-            glDisableVertexAttribArray(1);
-            glDisableVertexAttribArray(0);
+            Vector2 size = {{scaleX, scaleY}};
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, size);
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
 
@@ -1285,50 +1288,32 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 
         // Do the render
         {
-            const GLfloat scaleU = texfac_x * ceil(subwidth);
-            const GLfloat scaleV = texfac_y * ceil(subheight);
-            const GLfloat scaleX = texfac_x * ceil(targetWidth);
-            const GLfloat scaleY = texfac_y * ceil(targetHeight);
-            const GLfloat maxU = (texfac_x * subwidth) - 1.0/(mwidth * 2);
-            const GLfloat maxV = (texfac_y * subheight) - 1.0/(mheight * 2);
-
-
-            Matrix scalei = IDENTITY_MATRIX;
-            scale(&scalei, 2, 2, 1.0);
-            translate(&scalei, -1.0, 1.0, 0.0);
-
-            Matrix moveb = IDENTITY_MATRIX;
-            translate(&moveb, 0.0, -1.0, 0.0);
-            scalei = mat4_multiply(&moveb, &scalei);
-
-            Matrix scalem = IDENTITY_MATRIX;
-            scale(&scalem, scaleX, scaleY, 1.0);
-            scalei = mat4_multiply(&scalem, &scalei);
-
-            Matrix movef = IDENTITY_MATRIX;
-            translate(&movef, 0.0, 1.0, 0.0);
-            scalei = mat4_multiply(&movef, &scalei);
-
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            glUniform2f(upsample_type->extent, maxU, maxV);
-            glUniformMatrix4fv(upsample_type->mvp, 1, GL_FALSE, &scalei.m);
-            glUniform2f(upsample_type->uvscale, scaleU, scaleV);
+            const Vector2 uv_scale = {
+                .u = texfac_x * ceil(subwidth),
+                .v = texfac_y * ceil(subheight),
+            };
+            const Vector2 size = {
+                .x = texfac_x * ceil(targetWidth),
+                .y = texfac_y * ceil(targetHeight),
+            };
+            const Vector2 uv_max = {
+                .u = (texfac_x * subwidth) - 1.0/(mwidth * 2),
+                .v = (texfac_y * subheight) - 1.0/(mheight * 2),
+            };
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", scaleU, scaleV, maxU, maxV, scaleX, scaleY);
+            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT);
 #endif
-            // 1rst attribute buffer : vertices
-            glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, ppass->vertexBuffer);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-            glEnableVertexAttribArray(1);
-            glBindBuffer(GL_ARRAY_BUFFER, ppass->uvBuffer);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-            glDrawArrays(GL_QUADS, 0, 4);
-            glDisableVertexAttribArray(1);
-            glDisableVertexAttribArray(0);
+
+            glUniform2f(upsample_type->extent, uv_max.u, uv_max.v);
+            glUniform2f(upsample_type->uvscale, uv_scale.u, uv_scale.v);
+
+#ifdef DEBUG_GLX
+            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, size.x, size.y);
+#endif
+
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, size);
         }
         glViewport(0, 0, ps->root_width, ps->root_height);
 
