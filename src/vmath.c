@@ -3,13 +3,13 @@
 #include <string.h>
 
 #define DEFINE_VEC_OPS(n)                                                         \
-void vec##n##_vec##n##_add(Vector##n * r, const Vector##n * const a)              \
+void vec##n##_add(Vector##n * r, const Vector##n * const a)              \
 {                                                                                 \
     int i;                                                                        \
     for(i=0; i<n; ++i)                                                            \
         r->m[i] = r->m[i] + a->m[i];                                              \
 }                                                                                 \
-void vec##n##_vec##n##_sub(Vector##n * r, const Vector##n * const a)              \
+void vec##n##_sub(Vector##n * r, const Vector##n * const a)              \
 {                                                                                 \
     int i;                                                                        \
     for(i=0; i<n; ++i)                                                            \
@@ -21,7 +21,7 @@ void vec##n##_scale(Vector##n * const v, float const s)                         
     for(i=0; i<n; ++i)                                                            \
         v->m[i] = v->m[i] * s;                                                    \
 }                                                                                 \
-float vec##n##_vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b) \
+float vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b) \
 {                                                                                 \
     float p = 0.;                                                                 \
     int i;                                                                        \
@@ -32,20 +32,20 @@ float vec##n##_vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b
 float vec##n##_len(const Vector##n * const v)                                     \
 {                                                                                 \
     Vector##n c = *v;                                                             \
-    return sqrtf(vec##n##_vec##n##_mul_inner(&c,v));                              \
+    return sqrtf(vec##n##_mul_inner(&c,v));                              \
 }                                                                                 \
 void vec##n##_norm(Vector##n * const v)                                           \
 {                                                                                 \
     float k = 1.0 / vec##n##_len(v);                                              \
     vec##n##_scale(v, k);                                                         \
 }                                                                                 \
-void vec##n##_vec##n##_min(Vector##n * a, const Vector##n * b)                    \
+void vec##n##_min(Vector##n * a, const Vector##n * b)                    \
 {                                                                                 \
     int i;                                                                        \
     for(i=0; i<n; ++i)                                                            \
         a->m[i] = a->m[i]<b->m[i] ? a->m[i] : b->m[i];                            \
 }                                                                                 \
-void vec##n##_vec##n##_max(Vector##n * a, Vector##n * b)                          \
+void vec##n##_max(Vector##n * a, const Vector##n * b)                          \
 {                                                                                 \
     int i;                                                                        \
     for(i=0; i<n; ++i)                                                            \
@@ -111,12 +111,12 @@ void vec4_normalize(Vector4* v) {
     v->m[2] *= invrt;
 }
 
-float vec4_vec4_dot(const Vector4* v1, const Vector4* v2) {
+float vec4_dot(const Vector4* v1, const Vector4* v2) {
     return v1->m[0] * v2->m[0] + v1->m[1] * v2->m[1] + v1->m[2] * v2->m[2]
         + v1->m[3] * v2->m[3];
 }
 
-Vector4 vec4_vec4_cross(const Vector4* v1, const Vector4* v2) {
+Vector4 vec4_cross(const Vector4* v1, const Vector4* v2) {
     Vector4 out = {{0}};
     out.m[0] = v1->m[1]*v2->m[2] - v1->m[2]*v2->m[1];
     out.m[1] = v1->m[2]*v2->m[0] - v1->m[0]*v2->m[2];
@@ -211,9 +211,9 @@ Matrix lookAt(Vector4 pos, Vector4 dir) {
     Vector4 f = dir;
     vec4_normalize(&f);
     Vector4 u = {{0, 1, 0, 0}};
-    Vector4 s = vec4_vec4_cross(&f, &u);
+    Vector4 s = vec4_cross(&f, &u);
     vec4_normalize(&s);
-    u = vec4_vec4_cross(&s, &f);
+    u = vec4_cross(&s, &f);
 
     Matrix out = IDENTITY_MATRIX;
     out.m[0] = s.x;
@@ -228,8 +228,8 @@ Matrix lookAt(Vector4 pos, Vector4 dir) {
     out.m[6] = -f.y;
     out.m[10] = -f.z;
 
-    out.m[12] = -vec4_vec4_dot(&s, &pos);
-    out.m[13] = -vec4_vec4_dot(&u, &pos);
-    out.m[14] =  vec4_vec4_dot(&f, &pos);
+    out.m[12] = -vec4_dot(&s, &pos);
+    out.m[13] = -vec4_dot(&u, &pos);
+    out.m[14] =  vec4_dot(&f, &pos);
     return out;
 }

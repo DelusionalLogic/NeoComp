@@ -1211,7 +1211,7 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
                 (texfac_x * subwidth),
                 (texfac_y * subheight),
             }};
-            vec2_vec2_sub(&uv_max, &halfpixel);
+            vec2_sub(&uv_max, &halfpixel);
 
 #ifdef DEBUG_GLX
             glClearColor(0.0, 0.0, 0.0, 1.0);
