@@ -1,3 +1,4 @@
+#pragma once
 /*
  * Compton - a compositor for X11
  *

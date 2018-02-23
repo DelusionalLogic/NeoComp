@@ -23,7 +23,7 @@ LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
 OBJS += vmath.o
-OBJS += assets.o shader.o shaderinfo.o
+OBJS += assets.o shader.o shaderinfo.o blur.o
 
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX

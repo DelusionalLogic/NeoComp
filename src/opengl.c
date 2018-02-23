@@ -1033,30 +1033,6 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     cxfree(rects); \
   free_region(ps, &reg_new); \
 
-static inline GLuint
-glx_gen_texture_vector(session_t *ps, GLenum tex_tgt, const Vector2* size) {
-  GLuint tex = 0;
-  glGenTextures(1, &tex);
-  if (!tex) return 0;
-  glBindTexture(tex_tgt, tex);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(tex_tgt, 0, GL_RGB, size->x, size->y, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-  glBindTexture(tex_tgt, 0);
-
-  return tex;
-}
-
-static inline GLuint
-glx_gen_texture(session_t *ps, GLenum tex_tgt, int width, int height) {
-    Vector2 size = {{
-        width, height,
-    }};
-    return glx_gen_texture_vector(ps, tex_tgt, &size);
-}
-
 static inline void glx_copy_region_to_tex(session_t *ps, GLenum tex_tgt,
         const Vector2* pos, const Vector2* size) {
     if (size->x > 0 && size->y > 0) {
@@ -1095,33 +1071,21 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
-    const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
-    const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
-    bool ret = false;
-
 #ifdef DEBUG_GLX
     printf_dbgf("(): %d, %d, %d, %d\n", pos->x, pos->y, size->x, size->y);
 #endif
 
-    // If they didn't give us a cache we'll just use a local stack cache
-    glx_blur_cache_t ibc = {0};
-    if (!pbc)
-        pbc = &ibc;
+    const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
+    const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
 
-    // Free textures if size inconsistency discovered
-    if (!vec2_eq(size, &pbc->size))
-        free_glx_bc_resize(ps, pbc);
+    bool ret = false;
 
-    // Generate FBO and textures if needed
-    if (!pbc->textures[0])
-        pbc->textures[0] = glx_gen_texture_vector(ps, GL_TEXTURE_2D, size);
+    // Make sure the blur cache is initialized. This is a noop if it's already
+    // initialized
+    blur_cache_init(pbc, size);
+
     GLuint tex_scr = pbc->textures[0];
-    if (!pbc->textures[1])
-        pbc->textures[1] = glx_gen_texture_vector(ps, GL_TEXTURE_2D, size);
-    pbc->size = *size;
     GLuint tex_scr2 = pbc->textures[1];
-    if (!pbc->fbo)
-        glGenFramebuffers(1, &pbc->fbo);
     const GLuint fbo = pbc->fbo;
 
     if (!tex_scr || !tex_scr2) {
@@ -1144,7 +1108,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     }};
     // Texture scaling factor
 
-    // Paint it back
+    // Save the options and disable. We will enable this later
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
@@ -1414,10 +1378,6 @@ glx_blur_dst_end:
         glEnable(GL_SCISSOR_TEST);
     if (have_stencil)
         glEnable(GL_STENCIL_TEST);
-
-    if (&ibc == pbc) {
-        free_glx_bc(ps, pbc);
-    }
 
     glx_check_err(ps);
 
