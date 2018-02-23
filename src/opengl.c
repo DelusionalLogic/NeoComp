@@ -1071,7 +1071,6 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     GLfloat factor_center,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
-    assert(ps->psglx->blur_passes[0].prog);
     const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
     bool ret = false;
@@ -1186,8 +1185,8 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             const GLfloat scaleV = texfac_y * ceil(subheight);
             const GLfloat scaleX = texfac_x * ceil(targetWidth);
             const GLfloat scaleY = texfac_y * ceil(targetHeight);
-            const GLfloat maxU = (texfac_x * subwidth) - (texfac_x * subwidth)/(subwidth * 2);
-            const GLfloat maxV = (texfac_y * subheight) - (texfac_y * subheight)/(subheight * 2);
+            const GLfloat maxU = (texfac_x * subwidth) - 1.0/(mwidth * 2);
+            const GLfloat maxV = (texfac_y * subheight) - 1.0/(mheight * 2);
 
             Matrix scalei = IDENTITY_MATRIX;
             scale(&scalei, 2, 2, 1.0);
@@ -1290,8 +1289,8 @@ glx_blur_dst(session_t *ps, int dx, int dy, int width, int height, float z,
             const GLfloat scaleV = texfac_y * ceil(subheight);
             const GLfloat scaleX = texfac_x * ceil(targetWidth);
             const GLfloat scaleY = texfac_y * ceil(targetHeight);
-            const GLfloat maxU = (texfac_x * subwidth) - (texfac_x * subwidth)/(subwidth * 2);
-            const GLfloat maxV = (texfac_y * subheight) - (texfac_y * subheight)/(subheight * 2);
+            const GLfloat maxU = (texfac_x * subwidth) - 1.0/(mwidth * 2);
+            const GLfloat maxV = (texfac_y * subheight) - 1.0/(mheight * 2);
 
 
             Matrix scalei = IDENTITY_MATRIX;
