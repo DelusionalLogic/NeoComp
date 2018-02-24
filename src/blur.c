@@ -1,4 +1,7 @@
+#define GL_GLEXT_PROTOTYPES
 #include "blur.h"
+
+#include <stdio.h>
 
 static inline GLuint
 generate_texture(GLenum tex_tgt, const Vector2* size) {
@@ -22,29 +25,32 @@ generate_texture(GLenum tex_tgt, const Vector2* size) {
 
 int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
     if(!vec2_eq(size, &cache->size)) {
-        if(cache->textures[0] != 0) {
-            glDeleteTextures(1, &cache->textures[0]);
-            cache->textures[0] = 0;
-        }
-        if(cache->textures[1] != 0) {
-            glDeleteTextures(1, &cache->textures[1]);
-            cache->textures[1] = 0;
-        }
-        cache->width = 0;
-        cache->height = 0;
+        if(texture_initialized(&cache->texture[0]))
+            texture_delete(&cache->texture[0]);
+
+        if(texture_initialized(&cache->texture[1]))
+            texture_delete(&cache->texture[1]);
     }
 
     // Generate textures if needed
-    if(cache->textures[0] == 0)
-        cache->textures[0] = generate_texture(GL_TEXTURE_2D, size);
+    if(!texture_initialized(&cache->texture[0])) {
+        texture_init(&cache->texture[0], GL_TEXTURE_2D, size);
+        cache->textures[0] = cache->texture[0].gl_texture;
+    }
+    /* if(cache->textures[0] == 0) */
+    /*     cache->textures[0] = generate_texture(GL_TEXTURE_2D, size); */
 
     if(cache->textures[0] == 0) {
         printf("Failed allocating texture for cache\n");
         return 1;
     }
 
-    if(cache->textures[1] == 0)
-        cache->textures[1] = generate_texture(GL_TEXTURE_2D, size);
+    if(!texture_initialized(&cache->texture[1])) {
+        texture_init(&cache->texture[1], GL_TEXTURE_2D, size);
+        cache->textures[1] = cache->texture[1].gl_texture;
+    }
+    /* if(cache->textures[1] == 0) */
+    /*     cache->textures[1] = generate_texture(GL_TEXTURE_2D, size); */
 
     if(cache->textures[1] == 0) {
         printf("Failed allocating texture for cache\n");

@@ -41,6 +41,7 @@ void vec##n##_sub(Vector##n * r, const Vector##n * const a);              \
 void vec##n##_scale(Vector##n * const v, float const s);                  \
 float vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b); \
 void vec##n##_idiv(Vector##n * a, float x);                               \
+void vec##n##_div(Vector##n * const a, const Vector##n * const b);        \
 void vec##n##_imul(Vector##n * a, float x);                               \
 void vec##n##_mul(Vector##n * const a, const Vector##n * const b);        \
 float vec##n##_len(const Vector##n * const v);                            \
@@ -88,3 +89,6 @@ typedef union Vector2 {
 
 DEFINE_VEC_OPS(2)
 DEFINE_VEC_CONST(4, 2)
+
+#undef DEFINE_VEC_CONST
+#undef DEFINE_VEC_OPS

@@ -29,6 +29,10 @@ void vec##n##_idiv(Vector##n * const a, float x) {                       \
     for(int i = 0; i < n; i++)                                           \
         a->m[i] /= x;                                                    \
 }                                                                        \
+void vec##n##_div(Vector##n * const a, const Vector##n * const b) {      \
+    for(int i = 0; i < n; i++)                                           \
+        a->m[i] = a->m[i] / b->m[i];                                     \
+}                                                                        \
 void vec##n##_imul(Vector##n * const a, float x) {                       \
     for(int i = 0; i < n; i++)                                           \
         a->m[i] *= x;                                                    \
@@ -85,19 +89,22 @@ DEFINE_VEC_OPS(2)
 DEFINE_VEC_OPS(4)
 DEFINE_VEC_CONST(4, 2)
 
+#undef DEFINE_VEC_CONST
+#undef DEFINE_VEC_OPS
+
 static const double PI = 3.14159265358979323846;
 
 Matrix mat4_multiply(const Matrix* m1, const Matrix* m2) {
-    Matrix out = IDENTITY_MATRIX;
+    Matrix out;;
     unsigned int row, column, row_offset;
 
     for (row = 0, row_offset = row * 4; row < 4; ++row, row_offset = row * 4)
         for (column = 0; column < 4; ++column)
             out.m[row_offset + column] =
-                (m1->m[row_offset + 0] * m2->m[column + 0]) +
-                (m1->m[row_offset + 1] * m2->m[column + 4]) +
-                (m1->m[row_offset + 2] * m2->m[column + 8]) +
-                (m1->m[row_offset + 3] * m2->m[column + 12]);
+                (m2->m[row_offset + 0] * m1->m[column + 0]) +
+                (m2->m[row_offset + 1] * m1->m[column + 4]) +
+                (m2->m[row_offset + 2] * m1->m[column + 8]) +
+                (m2->m[row_offset + 3] * m1->m[column + 12]);
 
     return out;
 }

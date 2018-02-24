@@ -153,12 +153,12 @@
 
 /// Print out an error message with function name.
 #define printf_errf(format, ...) \
-  printf_err("%s" format,  __func__, ## __VA_ARGS__)
+  printf_err("%s(): " format,  __func__, ## __VA_ARGS__)
 
 /// Print out an error message with function name, and quit with a
 /// specific exit code.
 #define printf_errfq(code, format, ...) { \
-  printf_err("%s" format,  __func__, ## __VA_ARGS__); \
+  printf_err("%s(): " format,  __func__, ## __VA_ARGS__); \
   exit(code); \
 }
 
@@ -169,7 +169,7 @@
 
 /// Print out a debug message with function name.
 #define printf_dbgf(format, ...) \
-  printf_dbg("%s" format, __func__, ## __VA_ARGS__)
+  printf_dbg("%s(): " format, __func__, ## __VA_ARGS__)
 
 // Use #s here to prevent macro expansion
 /// Macro used for shortening some debugging code.

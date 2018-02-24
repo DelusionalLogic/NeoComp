@@ -1,11 +1,8 @@
-#define SHADER_NAME downsample
-#define SHADER_INFO_NAME downsample_info
-#define SHADER_STRUCT_NAME Downsample
+#define SHADER_NAME passthough
+#define SHADER_INFO_NAME passthough_info
+#define SHADER_STRUCT_NAME Passthough
 
 #define UNIFORMS_FOREACH(M) \
     M(mvp)                  \
-    M(uvscale)              \
-    M(pixeluv)              \
-    M(tex_scr)              \
-    M(extent)
-#define UNIFORMS_COUNT 5
+    M(tex_scr)
+#define UNIFORMS_COUNT 2

@@ -276,6 +276,7 @@ glx_init(session_t *ps, bool need_render) {
 
   add_shader_type(&downsample_info);
   add_shader_type(&upsample_info);
+  add_shader_type(&passthough_info);
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
@@ -420,10 +421,10 @@ glx_init_blur(session_t *ps) {
           1.0f, 1.0f, 1.0f,
       };
       static const GLfloat g_uv_buffer_data[] = {
-          0.0f, 0.0f,
           0.0f, 1.0f,
-          1.0f, 1.0f,
+          0.0f, 0.0f,
           1.0f, 0.0f,
+          1.0f, 1.0f,
       };
 
       glBindVertexArray(ppass->vertexArrayID);
@@ -1034,15 +1035,29 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     cxfree(rects); \
   free_region(ps, &reg_new); \
 
-void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
-    Matrix scalei2 = {{
-        2 * size.x , 0          , 0 , 0 ,
-        0          , 2 * size.y , 0 , 0 ,
-        0          , 0          , 1 , 0 ,
-        -1         , -1         , 0 , 1 ,
-    }};
+void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 pos, Vector2 size) {
 
-    glUniformMatrix4fv(mvp, 1, GL_FALSE, &scalei2.m);
+    Matrix root = IDENTITY_MATRIX;
+    {
+        Matrix op = {{
+        2  , 0  , 0 , 0 ,
+        0  , 2  , 0 , 0 ,
+        0  , 0  , 1 , 0 ,
+        -1 , -1 , 0 , 1 ,
+        }};
+        root = mat4_multiply(&root, &op);
+    }
+    {
+        Matrix op = {{
+        size.x , 0      , 0 , 0 ,
+        0      , size.y , 0 , 0 ,
+        0      , 0      , 1 , 0 ,
+        pos.x  , pos.y  , 0 , 1 ,
+        }};
+        root = mat4_multiply(&root, &op);
+    }
+
+    glUniformMatrix4fv(mvp, 1, GL_FALSE, root.m);
 
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, vertex);
@@ -1071,67 +1086,62 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
 #ifdef DEBUG_GLX
-    printf_dbgf("(): %d, %d, %d, %d\n", pos->x, pos->y, size->x, size->y);
+    printf_dbgf("(): %f, %f, %f, %f\n", pos->x, pos->y, size->x, size->y);
 #endif
     const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
-
-    Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
-
-    // @LCEANUP: I want to get rid of this
-    bool ret = false;
 
     // Make sure the blur cache is initialized. This is a noop if it's already
     // initialized
     if(blur_cache_init(pbc, size) != 0) {
         printf_errf("(): Failed to initializing cache");
-        goto glx_blur_dst_end;
+        glx_check_err(ps);
+        return false;
     }
 
-    GLuint tex_scr = pbc->textures[0];
-    GLuint tex_scr2 = pbc->textures[1];
     const GLuint fbo = pbc->fbo;
 
-    struct Texture tex_scr1 = {
-        .gl_texture = tex_scr,
-        .target = GL_TEXTURE_2D,
-        .size = *size,
-    };
-
-
+    struct Texture* tex_scr = &pbc->texture[0];
+    struct Texture* tex_scr2 = &pbc->texture[1];
     // Read destination pixels into a texture
-    texture_read_from(&tex_scr1, 0, GL_BACK, &glpos, size);
 
-    Vector2 pixeluv = {{
-        1.0f / size->x,
-        1.0f / size->y,
-    }};
+    Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
+    texture_read_from(tex_scr, 0, GL_BACK, &glpos, size);
+
     // Texture scaling factor
+    Vector2 pixeluv = {{1.0f, 1.0f}};
+    vec2_div(&pixeluv, size);
+    Vector2 halfpixel = pixeluv;
+    vec2_idiv(&halfpixel, 2);
 
-    // Save the options and disable. We will enable this later
+    // Disable the options. We will restore later
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
     //@HACK Use the first blur pass
     const glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
 
-    int level = 2;
+    int level = ps->o.blur_level;
 
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
         printf_errf("shader was not a downsample shader");
-        goto glx_blur_dst_end;
+
+        if (have_scissors)
+            glEnable(GL_SCISSOR_TEST);
+        if (have_stencil)
+            glEnable(GL_STENCIL_TEST);
+
+        glx_check_err(ps);
+        return false;
     }
 
     struct Downsample* downscale_type = downscale_program->shader_type;
 
     // Use the shader
-    glUseProgram(downscale_program->gl_program);
+    shader_use(downscale_program);
 
-    const Vector2 halfpixel = {{
-        1.0f/(size->x * 2),
-        1.0f/(size->y * 2),
-    }};
+    Vector2 zero_vec = {{0.0, 0.0}};
 
     // Downscale
     for (int i = 0; i < level; i++) {
@@ -1141,36 +1151,30 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
         Vector2 targetSize = sourceSize;
         vec2_idiv(&targetSize, 2);
 
-        /* printf("Down: SubWidth %lf SubHeigth %lf\n", subwidth, subheight); */
-        //Bind the main texture
-        assert(tex_scr);
-
         // Set up to draw to the secondary texture
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, tex_scr2, 0);
+        if(texture_bind_to_framebuffer(tex_scr2, fbo, GL_COLOR_ATTACHMENT0) != 0) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            if (have_scissors)
+                glEnable(GL_SCISSOR_TEST);
+            if (have_stencil)
+                glEnable(GL_STENCIL_TEST);
+            glx_check_err(ps);
+            return false;
+        }
+
         static const GLenum DRAWBUFS[1] = { GL_COLOR_ATTACHMENT0 };
         glDrawBuffers(1, DRAWBUFS);
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
-                GL_FRAMEBUFFER_COMPLETE) {
-            printf_errf("(): Framebuffer attachment failed.");
-            goto glx_blur_dst_end;
-        }
+
         glViewport(0, 0, size->x, size->y);
 
         // @CLEANUP Do we place this here or after the swap?
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex_scr);
-
-        // Set the blend function, since we don't want any blending
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        texture_bind(tex_scr, GL_TEXTURE0);
 
         // Set the shader parameters
-        glUniform2f(downscale_type->pixeluv, pixeluv.u, pixeluv.v);
+        shader_set_uniform_vec2(downscale_type->pixeluv, &pixeluv);
         // Set the source texture
-        glUniform1i(downscale_type->tex_scr, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        shader_set_uniform_sampler(downscale_type->tex_scr, 0);
 
         // Do the render
         {
@@ -1195,39 +1199,45 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             glClear(GL_COLOR_BUFFER_BIT);
 #endif
 
-            glUniform2f(downscale_type->extent, uv_max.u, uv_max.v);
-            glUniform2f(downscale_type->uvscale, uv_scale.x, uv_scale.y);
+            shader_set_uniform_vec2(downscale_type->extent, &uv_max);
+            shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
 
 #ifdef DEBUG_GLX
             printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, scale);
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, zero_vec, scale);
         }
-        glViewport(0, 0, ps->root_width, ps->root_height);
 
         // Swap main and secondary
         {
-            GLuint tmp = tex_scr2;
+            struct Texture* tmp = tex_scr2;
             tex_scr2 = tex_scr;
             tex_scr = tmp;
         }
     }
+    glViewport(0, 0, ps->root_width, ps->root_height);
 
     // Switch to the upsample shader
 
     struct shader_program* upsample_program = assets_load("upsample.shader");
     if(upsample_program->shader_type_info != &upsample_info) {
         printf_errf("Shader was not a upsample shader");
-        goto glx_blur_dst_end;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        if (have_scissors)
+            glEnable(GL_SCISSOR_TEST);
+        if (have_stencil)
+            glEnable(GL_STENCIL_TEST);
+        glx_check_err(ps);
+        return false;
     }
 
     struct Upsample* upsample_type = upsample_program->shader_type;
 
-    glUseProgram(upsample_program->gl_program);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex_scr);
+    // Use the shader
+    shader_use(upsample_program);
 
     // Upscale
     for (int i = 0; i < level; i++) {
@@ -1237,32 +1247,33 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
         Vector2 targetSize = sourceSize;
         vec2_imul(&targetSize, 2);
 
-        /* printf("UP: SubWidth %lf SubHeigth %lf\n", subwidth, subheight); */
-        //Bind the main texture
-        assert(tex_scr);
-
         // Set up to draw to the secondary texture
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, tex_scr2, 0);
+        if(texture_bind_to_framebuffer(tex_scr2, fbo, GL_COLOR_ATTACHMENT0) != 0) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            if (have_scissors)
+                glEnable(GL_SCISSOR_TEST);
+            if (have_stencil)
+                glEnable(GL_STENCIL_TEST);
+            glx_check_err(ps);
+            return false;
+        }
+
         static const GLenum DRAWBUFS[1] = { GL_COLOR_ATTACHMENT0 };
         glDrawBuffers(1, DRAWBUFS);
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
-                GL_FRAMEBUFFER_COMPLETE) {
-            printf_errf("(): Framebuffer attachment failed.");
-            goto glx_blur_dst_end;
-        }
+
         glViewport(0, 0, size->x, size->y);
 
         // @CLEANUP Do we place this here or after the swap?
-        glBindTexture(GL_TEXTURE_2D, tex_scr);
+        texture_bind(tex_scr, GL_TEXTURE0);
 
         // Set the blend function, since we don't want any blending
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
         // Set the shader parameters
-        glUniform2f(upsample_type->pixeluv, pixeluv.u, pixeluv.v);
-        glUniform1i(upsample_type->tex_scr, 0);
+        shader_set_uniform_vec2(upsample_type->pixeluv, &pixeluv);
+        // Set the source texture
+        shader_set_uniform_sampler(upsample_type->tex_scr, 0);
 
         // Do the render
         {
@@ -1287,91 +1298,118 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             glClear(GL_COLOR_BUFFER_BIT);
 #endif
 
-            glUniform2f(upsample_type->extent, uv_max.u, uv_max.v);
-            glUniform2f(upsample_type->uvscale, uv_scale.u, uv_scale.v);
+            shader_set_uniform_vec2(upsample_type->extent, &uv_max);
+            shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
+            printf_dbgf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, scale);
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, zero_vec, scale);
         }
-        glViewport(0, 0, ps->root_width, ps->root_height);
 
         // Swap main and secondary
         {
-            GLuint tmp = tex_scr2;
+            struct Texture* tmp = tex_scr2;
             tex_scr2 = tex_scr;
             tex_scr = tmp;
         }
     }
+    glViewport(0, 0, ps->root_width, ps->root_height);
 
-    glUseProgram(0);
-
-    //Bind the main texture
-    assert(tex_scr);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex_scr);
-
-    //Draw the buffer back to the backbuffer
-    {
-        static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
+    struct shader_program* passthough_program = assets_load("passthough.shader");
+    if(passthough_program->shader_type_info != &passthough_info) {
+        printf_errf("Shader was not a passthough shader");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDrawBuffers(1, DRAWBUFS);
+        glBindTexture(GL_TEXTURE_2D, 0);
         if (have_scissors)
             glEnable(GL_SCISSOR_TEST);
         if (have_stencil)
             glEnable(GL_STENCIL_TEST);
-
+        glx_check_err(ps);
+        return false;
     }
 
-    // Do the render
-    {
-        int dx = pos->x;
-        int dy = pos->y;
-        int width = size->x;
-        int height = size->y;
-        P_PAINTREG_START();
-        {
-            const GLfloat rx = (crect.x - pos->x) * pixeluv.x;
-            const GLfloat ry = (size->y - (crect.y - pos->y)) * pixeluv.y;
-            const GLfloat rxe = rx + crect.width * pixeluv.x;
-            const GLfloat rye = ry - crect.height * pixeluv.y;
-            GLfloat rdx = crect.x - pos->x;
-            GLfloat rdy = size->y - crect.y + pos->y;
-            GLfloat rdxe = rdx + crect.width;
-            GLfloat rdye = rdy - crect.height;
+    struct Passthough* passthough_type = passthough_program->shader_type;
+    shader_use(passthough_program);
 
-            rdx = crect.x;
-            rdy = ps->root_height - crect.y;
-            rdxe = rdx + crect.width;
-            rdye = rdy - crect.height;
+    // Bind the final blur texture
+    texture_bind(tex_scr, GL_TEXTURE0);
+
+    // Bind the default framebuffer and draw back to the backbuffer to actually
+    // render the frame to screen
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
+        glDrawBuffers(1, DRAWBUFS);
+
+        // Reenable those configs saved at the start
+        if (have_scissors)
+            glEnable(GL_SCISSOR_TEST);
+        if (have_stencil)
+            glEnable(GL_STENCIL_TEST);
+    }
+
+    //Final render
+    {
+        Vector2 root_size = {{ps->root_width, ps->root_height}};
+        Vector2 pixeluv = {{1.0f, 1.0f}};
+        vec2_div(&pixeluv, &root_size);
+
+        XserverRegion reg_new = None;
+        XRectangle rec_all = { .x = pos->x, .y = pos->y, .width = size->x, .height = size->y };
+        XRectangle *rects = &rec_all;
+        int nrects = 1;
+
+        if (ps->o.glx_no_stencil && reg_tgt) {
+            if (pcache_reg) {
+                rects = pcache_reg->rects;
+                nrects = pcache_reg->nrects;
+            }
+            else {
+                reg_new = XFixesCreateRegion(ps->dpy, &rec_all, 1);
+                XFixesIntersectRegion(ps->dpy, reg_new, reg_new, reg_tgt);
+
+                nrects = 0;
+                rects = XFixesFetchRegion(ps->dpy, reg_new, &nrects);
+            }
+        }
+
+        for (int ri = 0; ri < nrects; ++ri) {
+            XRectangle crect;
+            rect_crop(&crect, &rects[ri], &rec_all);
+
+            Vector2 rectPos = {{crect.x, crect.y}};
+            Vector2 rectSize = {{crect.width, crect.height}};
+            Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+
+            if (!crect.width || !crect.height)
+                continue;
+
+            Vector2 scale = pixeluv;
+            vec2_mul(&scale, &rectSize);
+
+            Vector2 relpos = pixeluv;
+            vec2_mul(&relpos, &glRectPos);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): %f, %f, %f, %f -> %f, %f, %f, %f\n", rx, ry, rxe, rye,
-                    rdx, rdy, rdxe, rdye);
+            printf_dbgf("glpos: %f %f, relpos %f %f scale %f %f\n",
+                    glRectPos.x, glRectPos.y, relpos.x, relpos.y, scale.x,
+                    scale.y);
 #endif
 
-
-            glTexCoord2f(rx, ry);
-            glVertex3f(rdx, rdy, z);
-
-            glTexCoord2f(rxe, ry);
-            glVertex3f(rdxe, rdy, z);
-
-            glTexCoord2f(rxe, rye);
-            glVertex3f(rdxe, rdye, z);
-
-            glTexCoord2f(rx, rye);
-            glVertex3f(rdx, rdye, z);
+            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, passthough_type->mvp, relpos, scale);
         }
-        P_PAINTREG_END();
+
+        if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects))
+            cxfree(rects);
+        free_region(ps, &reg_new);
     }
 
+    // Restore the default rendering context
+    glUseProgram(0);
 
-    ret = true;
-
-glx_blur_dst_end:
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
     if (have_scissors)
@@ -1381,7 +1419,7 @@ glx_blur_dst_end:
 
     glx_check_err(ps);
 
-    return ret;
+    return true;
 }
 
 bool

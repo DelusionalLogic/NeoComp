@@ -295,3 +295,15 @@ void shader_program_unload_file(struct shader_program* asset) {
     JSLFA(freed, asset->attributes);
     free(asset);
 }
+
+void shader_use(const struct shader_program* shader) {
+    glUseProgram(shader->gl_program);
+}
+
+void shader_set_uniform_vec2(GLint location, const Vector2* value) {
+    glUniform2f(location, value->x, value->y);
+}
+
+void shader_set_uniform_sampler(GLint location, int value) {
+    glUniform1i(location, value);
+}

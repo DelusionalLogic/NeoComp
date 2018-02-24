@@ -1,14 +1,17 @@
 #pragma once
 
+#include "vmath.h"
+#include "texture.h"
+
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
-#include "vmath.h"
 
 typedef struct {
   /// Framebuffer used for blurring.
   GLuint fbo;
   /// Textures used for blurring.
   GLuint textures[2];
+  struct Texture texture[2];
   Vector2 size;
   /// Width of the textures.
   int width;

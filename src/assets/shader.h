@@ -2,6 +2,8 @@
 
 #define GL_GLEXT_PROTOTYPES
 
+#include "../vmath.h"
+
 #include <GL/glx.h>
 #include <Judy.h>
 
@@ -25,3 +27,7 @@ struct shader_program {
 struct shader_program* shader_program_load_file(const char* path);
 void shader_program_unload_file(struct shader_program* asset);
 
+void shader_use(const struct shader_program* shader);
+
+void shader_set_uniform_vec2(GLint location, const Vector2* value);
+void shader_set_uniform_sampler(GLint location, int value);

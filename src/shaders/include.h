@@ -21,3 +21,7 @@ struct shader_type_info {
 #define HEADER "upsample.h"
 #include "shader.h"
 #undef HEADER
+
+#define HEADER "passthough.h"
+#include "shader.h"
+#undef HEADER
