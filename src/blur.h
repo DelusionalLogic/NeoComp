@@ -16,4 +16,4 @@ typedef struct {
   int height;
 } glx_blur_cache_t;
 
-void blur_cache_init(glx_blur_cache_t* cache, const Vector2* size);
+int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size);

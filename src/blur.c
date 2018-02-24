@@ -20,13 +20,13 @@ generate_texture(GLenum tex_tgt, const Vector2* size) {
   return tex;
 }
 
-void blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
-    if (!vec2_eq(size, &cache->size)) {
-        if (cache->textures[0] != 0) {
+int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
+    if(!vec2_eq(size, &cache->size)) {
+        if(cache->textures[0] != 0) {
             glDeleteTextures(1, &cache->textures[0]);
             cache->textures[0] = 0;
         }
-        if (cache->textures[1] != 0) {
+        if(cache->textures[1] != 0) {
             glDeleteTextures(1, &cache->textures[1]);
             cache->textures[1] = 0;
         }
@@ -35,16 +35,33 @@ void blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
     }
 
     // Generate textures if needed
-    if (cache->textures[0] == 0)
+    if(cache->textures[0] == 0)
         cache->textures[0] = generate_texture(GL_TEXTURE_2D, size);
 
-    if (cache->textures[1] == 0)
+    if(cache->textures[0] == 0) {
+        printf("Failed allocating texture for cache\n");
+        return 1;
+    }
+
+    if(cache->textures[1] == 0)
         cache->textures[1] = generate_texture(GL_TEXTURE_2D, size);
 
+    if(cache->textures[1] == 0) {
+        printf("Failed allocating texture for cache\n");
+        return 1;
+    }
+
     // Generate FBO if needed
-    if (cache->fbo == 0)
+    if(cache->fbo == 0)
         glGenFramebuffers(1, &cache->fbo);
+
+    if(cache->fbo == 0) {
+        printf("Failed allocating framebuffer for cache\n");
+        return 1;
+    }
 
     // Set the size
     cache->size = *size;
+
+    return 0;
 }

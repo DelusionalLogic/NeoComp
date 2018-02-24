@@ -11,6 +11,7 @@
 #include "opengl.h"
 #include <execinfo.h>
 #include "vmath.h"
+#include "texture.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "shaders/shaderinfo.h"
@@ -1033,15 +1034,6 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     cxfree(rects); \
   free_region(ps, &reg_new); \
 
-static inline void glx_copy_region_to_tex(session_t *ps, GLenum tex_tgt,
-        const Vector2* pos, const Vector2* size) {
-    if (size->x > 0 && size->y > 0) {
-        Vector2 offset = {{0, 0}};
-        glCopyTexSubImage2D(tex_tgt, 0, offset.x, offset.y,
-                pos->x, ps->root_height - pos->y - size->y, size->x, size->y);
-    }
-}
-
 void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
     Matrix scalei2 = {{
         2 * size.x , 0          , 0 , 0 ,
@@ -1063,6 +1055,13 @@ void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 size) {
     glDisableVertexAttribArray(0);
 }
 
+static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
+    Vector2 glpos = {{
+        xpos->x, ps->root_height - xpos->y - size->y
+    }};
+    return glpos;
+}
+
 /**
  * Blur contents in a particular region.
  */
@@ -1074,33 +1073,34 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
 #ifdef DEBUG_GLX
     printf_dbgf("(): %d, %d, %d, %d\n", pos->x, pos->y, size->x, size->y);
 #endif
-
     const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
 
+    Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
+
+    // @LCEANUP: I want to get rid of this
     bool ret = false;
 
     // Make sure the blur cache is initialized. This is a noop if it's already
     // initialized
-    blur_cache_init(pbc, size);
+    if(blur_cache_init(pbc, size) != 0) {
+        printf_errf("(): Failed to initializing cache");
+        goto glx_blur_dst_end;
+    }
 
     GLuint tex_scr = pbc->textures[0];
     GLuint tex_scr2 = pbc->textures[1];
     const GLuint fbo = pbc->fbo;
 
-    if (!tex_scr || !tex_scr2) {
-        printf_errf("(): Failed to allocate texture.");
-        goto glx_blur_dst_end;
-    }
-    if (!fbo) {
-        printf_errf("(): Failed to allocate framebuffer.");
-        goto glx_blur_dst_end;
-    }
+    struct Texture tex_scr1 = {
+        .gl_texture = tex_scr,
+        .target = GL_TEXTURE_2D,
+        .size = *size,
+    };
+
 
     // Read destination pixels into a texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex_scr);
-    glx_copy_region_to_tex(ps, GL_TEXTURE_2D, pos, size);
+    texture_read_from(&tex_scr1, 0, GL_BACK, &glpos, size);
 
     Vector2 pixeluv = {{
         1.0f / size->x,
@@ -1191,7 +1191,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             vec2_sub(&uv_max, &halfpixel);
 
 #ifdef DEBUG_GLX
-            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClearColor(1.0, 0.0, 1.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
 #endif
 
@@ -1283,7 +1283,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             vec2_sub(&uv_max, &halfpixel);
 
 #ifdef DEBUG_GLX
-            glClearColor(0.0, 0.0, 0.0, 1.0);
+            glClearColor(1.0, 0.0, 1.0, 1.0);
             glClear(GL_COLOR_BUFFER_BIT);
 #endif
 
