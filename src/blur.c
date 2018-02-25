@@ -4,6 +4,8 @@
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "shaders/shaderinfo.h"
+#include "renderutil.h"
+
 #include <stdio.h>
 
 static inline GLuint
@@ -373,7 +375,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 }
 
 void blur_destroy(struct blur* blur) {
-    glDeleteVertexArrays(1, blur->array);
+    glDeleteVertexArrays(1, &blur->array);
     free(blur);
 }
 
