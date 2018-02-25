@@ -1042,9 +1042,9 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
     XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
-	bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, reg_tgt, pcache_reg, pbc);
-	glx_check_err(ps);
-	return ret;
+    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, reg_tgt, pcache_reg, pbc);
+    glx_check_err(ps);
+    return ret;
 }
 
 bool
