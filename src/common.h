@@ -1,4 +1,3 @@
-#pragma once
 /*
  * Compton - a compositor for X11
  *
@@ -124,7 +123,35 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
-#include "blur.h"
+#include "texture.h"
+
+// @CLEANUP @HACK We don't actually want this here, but because everything is in
+// here i do now.
+// FUCK
+// FUCK
+// FUCK
+// FUCK
+struct blur {
+    struct face* face;
+    GLuint array;
+};
+
+typedef struct {
+  /// Framebuffer used for blurring.
+  GLuint fbo;
+  /// Textures used for blurring.
+  GLuint textures[2];
+  struct Texture texture[2];
+  Vector2 size;
+  /// Width of the textures.
+  int width;
+  /// Height of the textures.
+  int height;
+} glx_blur_cache_t;
+// FUCK
+// FUCK
+// FUCK
+
 
 // Workarounds for missing definitions in some broken GL drivers, thanks to
 // douglasp and consolers for reporting

@@ -2,15 +2,10 @@
 #error "You need to define header before trying to create the shader"
 #endif
 
-#define TO_STR(A) #A
-
-#define WRITE_MEMBER(name) \
-    GLint name;
-
 #define WRITE_MEMBER_INFO(name)    \
     {TO_STR(name), offsetof(struct SHADER_STRUCT_NAME, name)},
 
-#include HEADER
+#include THIS
 
 #ifndef SHADER_NAME
 #error "Shader must have a name"
@@ -32,16 +27,11 @@
 #error "SHADER_STRUCT_NAME most be defined by the shader"
 #endif
 
-struct SHADER_STRUCT_NAME {
-    UNIFORMS_FOREACH(WRITE_MEMBER)
-};
-
-#define MEMBER_COUNT (sizeof(struct SHADER_STRUCT_NAME) / sizeof(GLint))
-
+#define TO_STR(A) #A
 #define EVAL2(name) TO_STR(name)
 #define EVAL() EVAL2(SHADER_NAME)
 
-static struct shader_type_info SHADER_INFO_NAME = {
+extern struct shader_type_info SHADER_INFO_NAME = {
     .name = EVAL(),
     .size = sizeof(struct SHADER_STRUCT_NAME),
     .member_count = UNIFORMS_COUNT,
@@ -50,6 +40,10 @@ static struct shader_type_info SHADER_INFO_NAME = {
     }
 };
 
+#undef EVAL
+#undef EVAL2
+#undef TO_STR
+
 #undef SHADER_NAME
 #undef UNIFORMS_FOREACH
 #undef UNIFORMS_COUNT
@@ -57,6 +51,3 @@ static struct shader_type_info SHADER_INFO_NAME = {
 #undef SHADER_STRUCT_NAME
 
 #undef WRITE_MEMBER_INFO
-#undef WRITE_MEMBER
-
-#undef TO_STR

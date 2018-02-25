@@ -14,14 +14,6 @@ struct shader_type_info {
     struct shader_uniform_info members[];
 };
 
-#define HEADER "downsample.h"
-#include "shader.h"
-#undef HEADER
-
-#define HEADER "upsample.h"
-#include "shader.h"
-#undef HEADER
-
-#define HEADER "passthough.h"
-#include "shader.h"
+#define HEADER "shadertype.h"
+#include "fortypes.h"
 #undef HEADER
