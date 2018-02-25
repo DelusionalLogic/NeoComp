@@ -8,7 +8,6 @@
 #include "../shaders/shaderinfo.h"
 
 static struct shader* shader_load_file(const char* path, GLenum type) {
-
     FILE* file = fopen(path, "r");
     if(file == NULL) {
         printf("Failed loading shader file %s\n", path);

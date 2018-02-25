@@ -14,6 +14,7 @@
 #include "texture.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
+#include "assets/face.h"
 #include "shaders/shaderinfo.h"
 
 #ifdef CONFIG_GLX_SYNC
@@ -280,6 +281,7 @@ glx_init(session_t *ps, bool need_render) {
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
+  assets_add_handler(struct face, "face", face_load_file, face_unload_file);
   assets_add_handler(struct shader_program, "shader", shader_program_load_file,
     shader_program_unload_file);
 
@@ -412,34 +414,11 @@ glx_init_blur(session_t *ps) {
   {
       glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
       glGenVertexArrays(1, &ppass->vertexArrayID);
-
-      // An array of 3 vectors which represents 3 vertices
-      static const GLfloat g_vertex_buffer_data[] = {
-          0.0f, 1.0f, 1.0f,
-          0.0f, 0.0f, 1.0f,
-          1.0f, 0.0f, 1.0f,
-          1.0f, 1.0f, 1.0f,
-      };
-      static const GLfloat g_uv_buffer_data[] = {
-          0.0f, 1.0f,
-          0.0f, 0.0f,
-          1.0f, 0.0f,
-          1.0f, 1.0f,
-      };
-
       glBindVertexArray(ppass->vertexArrayID);
 
-      // Generate 1 buffer, put the resulting identifier in vertexbuffer
-      glGenBuffers(1, &ppass->vertexBuffer);
-      // The following commands will talk about our 'vertexbuffer' buffer
-      glBindBuffer(GL_ARRAY_BUFFER, ppass->vertexBuffer);
-      // Give our vertices to OpenGL.
-      glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
-
-      glGenBuffers(1, &ppass->uvBuffer);
-      glBindBuffer(GL_ARRAY_BUFFER, ppass->uvBuffer);
-      glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
-
+      struct face* face = assets_load("window.face");
+      ppass->vertexBuffer = face->vertex;
+      ppass->uvBuffer = face->uv;
   }
 
   glx_check_err(ps);
