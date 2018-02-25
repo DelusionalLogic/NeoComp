@@ -323,14 +323,7 @@ glx_destroy(session_t *ps) {
   for (win *w = ps->list; w; w = w->next)
     free_win_res_glx(ps, w);
 
-  // Free GLSL shaders/programs
-  for (int i = 0; i < MAX_BLUR_PASS; ++i) {
-    glx_blur_pass_t *ppass = &ps->psglx->blur_passes[i];
-    if (ppass->frag_shader)
-      glDeleteShader(ppass->frag_shader);
-    if (ppass->prog)
-      glDeleteProgram(ppass->prog);
-  }
+  blur_destroy(&ps->psglx->blur);
 
   glx_free_prog_main(ps, &ps->o.glx_prog_win);
 
@@ -411,15 +404,7 @@ glx_init_blur(session_t *ps) {
     glDeleteFramebuffers(1, &fbo);
   }
 
-  {
-      glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
-      glGenVertexArrays(1, &ppass->vertexArrayID);
-      glBindVertexArray(ppass->vertexArrayID);
-
-      struct face* face = assets_load("window.face");
-      ppass->vertexBuffer = face->vertex;
-      ppass->uvBuffer = face->uv;
-  }
+  blur_init(&ps->psglx->blur);
 
   glx_check_err(ps);
 
@@ -1014,8 +999,7 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     cxfree(rects); \
   free_region(ps, &reg_new); \
 
-void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 pos, Vector2 size) {
-
+void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size) {
     Matrix root = IDENTITY_MATRIX;
     {
         Matrix op = {{
@@ -1039,10 +1023,10 @@ void draw_rect(GLuint vertex, GLuint uv, GLuint mvp, Vector2 pos, Vector2 size) 
     glUniformMatrix4fv(mvp, 1, GL_FALSE, root.m);
 
     glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, vertex);
+    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, uv);
+    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glDrawArrays(GL_QUADS, 0, 4);
     glDisableVertexAttribArray(1);
@@ -1096,9 +1080,6 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     // Disable the options. We will restore later
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
-
-    //@HACK Use the first blur pass
-    const glx_blur_pass_t *ppass = &ps->psglx->blur_passes[0];
 
     int level = ps->o.blur_level;
 
@@ -1185,7 +1166,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, downscale_type->mvp, zero_vec, scale);
+            draw_rect(ps->psglx->blur.face, downscale_type->mvp, zero_vec, scale);
         }
 
         // Swap main and secondary
@@ -1284,7 +1265,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
             printf_dbgf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, upsample_type->mvp, zero_vec, scale);
+            draw_rect(ps->psglx->blur.face, upsample_type->mvp, zero_vec, scale);
         }
 
         // Swap main and secondary
@@ -1378,7 +1359,7 @@ glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
                     scale.y);
 #endif
 
-            draw_rect(ppass->vertexBuffer, ppass->uvBuffer, passthough_type->mvp, relpos, scale);
+            draw_rect(ps->psglx->blur.face, passthough_type->mvp, relpos, scale);
         }
 
         if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects))

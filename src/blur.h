@@ -2,8 +2,8 @@
 
 #include "vmath.h"
 #include "texture.h"
+#include "assets/face.h"
 
-#define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
 
 typedef struct {
@@ -18,5 +18,13 @@ typedef struct {
   /// Height of the textures.
   int height;
 } glx_blur_cache_t;
+
+struct blur {
+    struct face* face;
+    GLuint array;
+};
+
+void blur_init(struct blur* blur);
+void blur_destroy(struct blur* blur);
 
 int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size);

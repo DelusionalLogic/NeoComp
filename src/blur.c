@@ -1,6 +1,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include "blur.h"
 
+#include "assets/assets.h"
 #include <stdio.h>
 
 static inline GLuint
@@ -21,6 +22,21 @@ generate_texture(GLenum tex_tgt, const Vector2* size) {
   glBindTexture(tex_tgt, 0);
 
   return tex;
+}
+
+void blur_init(struct blur* blur) {
+    glGenVertexArrays(1, &blur->array);
+    glBindVertexArray(blur->array);
+
+    blur->face = assets_load("window.face");
+    if(blur->face == NULL) {
+        printf("Failed loading window drawing face\n");
+    }
+}
+
+void blur_destroy(struct blur* blur) {
+    glDeleteVertexArrays(1, blur->array);
+    free(blur);
 }
 
 int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {

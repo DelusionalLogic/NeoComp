@@ -67,7 +67,7 @@ struct face* face_load_file(const char* path) {
                     break;
 
                 if(matches != 3) {
-                    printf("Wrongly formatted line \"%s\", stopping\n", line);
+                    printf("Wrongly formatted line \"%s\", ignoring\n", line);
                     continue;
                 }
 
@@ -97,7 +97,7 @@ struct face* face_load_file(const char* path) {
                     break;
 
                 if(matches != 2) {
-                    printf("Wrongly formatted line \"%s\", stopping\n", line);
+                    printf("Wrongly formatted line \"%s\", ignoring\n", line);
                     continue;
                 }
 
