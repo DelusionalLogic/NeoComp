@@ -222,9 +222,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         // @CLEANUP Do we place this here or after the swap?
         texture_bind(tex_scr, GL_TEXTURE0);
 
-        // Set the blend function, since we don't want any blending
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-
         // Set the shader parameters
         shader_set_uniform_vec2(upsample_type->pixeluv, &pixeluv);
         // Set the source texture

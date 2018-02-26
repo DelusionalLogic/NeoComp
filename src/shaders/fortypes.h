@@ -9,3 +9,7 @@
 #define THIS "types/passthough.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/global.h"
+#include HEADER
+#undef THIS

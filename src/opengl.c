@@ -150,7 +150,7 @@ glx_init(session_t *ps, bool need_render) {
 
       static const int attrib_list[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
-        GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 2,
         GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_DEBUG_BIT_ARB,
         None
       };
@@ -278,6 +278,7 @@ glx_init(session_t *ps, bool need_render) {
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
 
+  add_shader_type(&global_info);
   add_shader_type(&downsample_info);
   add_shader_type(&upsample_info);
   add_shader_type(&passthough_info);
@@ -1094,193 +1095,95 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
 
   argb = argb || (GLX_TEXTURE_FORMAT_RGBA_EXT ==
       ps->psglx->fbconfigs[ptex->depth]->texture_fmt);
-  const bool has_prog = pprogram && pprogram->prog;
-  bool dual_texture = false;
+  glEnable(GL_BLEND);
 
-  // It's required by legacy versions of OpenGL to enable texture target
-  // before specifying environment. Thanks to madsy for telling me.
+  // This is all weird, but X Render is using premultiplied ARGB format, and
+  // we need to use those things to correct it. Thanks to derhass for help.
+  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  /* glColor4f(opacity, opacity, opacity, opacity); */
 
-  // Enable blending if needed
-  if (opacity < 1.0 || argb) {
-
-    glEnable(GL_BLEND);
-
-    // Needed for handling opacity of ARGB texture
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-    // This is all weird, but X Render is using premultiplied ARGB format, and
-    // we need to use those things to correct it. Thanks to derhass for help.
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(opacity, opacity, opacity, opacity);
+  struct shader_program* global_program = assets_load("global.shader");
+  if(global_program->shader_type_info != &global_info) {
+      printf_errf("Shader was not a global shader");
+      // @INCOMPLETE: Make sure the config is correct
+      return true;
   }
 
-  if (!has_prog)
-  {
-    glEnable(GL_TEXTURE_2D);
-    // The default, fixed-function path
-    // Color negation
-    if (neg) {
-      // Simple color negation
-      if (!glIsEnabled(GL_BLEND)) {
-        glEnable(GL_COLOR_LOGIC_OP);
-        glLogicOp(GL_COPY_INVERTED);
-      }
-      // ARGB texture color negation
-      else if (argb) {
-        dual_texture = true;
+  struct Global* global_type = global_program->shader_type;
+  shader_use(global_program);
 
-        // Use two texture stages because the calculation is too complicated,
-        // thanks to madsy for providing code
-        // Texture stage 0
-        glActiveTexture(GL_TEXTURE0);
+  // Bind texture
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, ptex->texture);
 
-        // Negation for premultiplied color: color = A - C
-        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_SUBTRACT);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_ALPHA);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR);
-
-        // Pass texture alpha through
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_TEXTURE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA);
-
-        // Texture stage 1
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, ptex->texture);
-
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
-
-        // Modulation with constant factor
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PRIMARY_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_ALPHA);
-
-        // Modulation with constant factor
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_PRIMARY_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA);
-
-        glActiveTexture(GL_TEXTURE0);
-      }
-      // RGB blend color negation
-      else {
-        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
-
-        // Modulation with constant factor
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_ONE_MINUS_SRC_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PRIMARY_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR);
-
-        // Modulation with constant factor
-        glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_TEXTURE);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA);
-        glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_PRIMARY_COLOR);
-        glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA);
-      }
-    }
-  }
-  else {
-    // Programmable path
-    /* assert(pprogram->prog); */
-    glUseProgram(0);
-    if (pprogram->unifm_opacity >= 0)
-      glUniform1f(pprogram->unifm_opacity, opacity);
-    if (pprogram->unifm_invert_color >= 0)
-      glUniform1i(pprogram->unifm_invert_color, neg);
-    if (pprogram->unifm_tex >= 0)
-      glUniform1i(pprogram->unifm_tex, 0);
-  }
+  shader_set_uniform_float(global_type->invert, neg);
+  shader_set_uniform_float(global_type->flip, !ptex->y_inverted);
+  shader_set_uniform_float(global_type->opacity, opacity);
+  shader_set_uniform_sampler(global_type->tex_scr, 0);
 
 #ifdef DEBUG_GLX
   printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
 #endif
 
-  // Bind texture
-  glBindTexture(GL_TEXTURE_2D, ptex->texture);
-  if (dual_texture) {
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, ptex->texture);
-    glActiveTexture(GL_TEXTURE0);
-  }
+  // @CLEANUP: remove this
+  Vector2 root_size = {{ps->root_width, ps->root_height}};
+  Vector2 pixeluv = {{1.0f, 1.0f}};
+  vec2_div(&pixeluv, &root_size);
+
+  struct face* face = assets_load("window.face");
 
   // Painting
   {
-    P_PAINTREG_START();
-    {
-      GLfloat rx = (double) (crect.x - dx + x);
-      GLfloat ry = (double) (crect.y - dy + y);
-      GLfloat rxe = rx + (double) crect.width;
-      GLfloat rye = ry + (double) crect.height;
-      // Rectangle textures have [0-w] [0-h] while 2D texture has [0-1] [0-1]
-      // Thanks to amonakov for pointing out!
-      //@CLEANUP Collapse this back into the previous
-      rx = rx / ptex->width;
-      ry = ry / ptex->height;
-      rxe = rxe / ptex->width;
-      rye = rye / ptex->height;
-      GLint rdx = crect.x;
-      GLint rdy = ps->root_height - crect.y;
-      GLint rdxe = rdx + crect.width;
-      GLint rdye = rdy - crect.height;
+    XserverRegion reg_new = None;
+    XRectangle rec_all = { .x = dx, .y = dy, .width = width, .height = height };
+    XRectangle *rects = &rec_all;
+    int nrects = 1;
 
-      // Invert Y if needed, this may not work as expected, though. I don't
-      // have such a FBConfig to test with.
-      if (!ptex->y_inverted) {
-        ry = 1.0 - ry;
-        rye = 1.0 - rye;
-      }
+    if (ps->o.glx_no_stencil && reg_tgt) {
+        if (pcache_reg) {
+            rects = pcache_reg->rects;
+            nrects = pcache_reg->nrects;
+        }
+        else {
+            reg_new = XFixesCreateRegion(ps->dpy, &rec_all, 1);
+            XFixesIntersectRegion(ps->dpy, reg_new, reg_new, reg_tgt);
+
+            nrects = 0;
+            rects = XFixesFetchRegion(ps->dpy, reg_new, &nrects);
+        }
+    }
+
+    for (int ri = 0; ri < nrects; ++ri) {
+      XRectangle crect;
+      rect_crop(&crect, &rects[ri], &rec_all);
+
+      Vector2 rectPos = {{crect.x, crect.y}};
+      Vector2 rectSize = {{crect.width, crect.height}};
+      Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+
+      Vector2 scale = pixeluv;
+      vec2_mul(&scale, &rectSize);
+
+      Vector2 relpos = pixeluv;
+      vec2_mul(&relpos, &glRectPos);
 
 #ifdef DEBUG_GLX
-      printf_dbgf("(): Rect %d: %f, %f, %f, %f -> %d, %d, %d, %d\n", ri, rx, ry, rxe, rye, rdx, rdy, rdxe, rdye);
+      printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-#define P_TEXCOORD(cx, cy) { \
-  if (dual_texture) { \
-    glMultiTexCoord2f(GL_TEXTURE0, cx, cy); \
-    glMultiTexCoord2f(GL_TEXTURE1, cx, cy); \
-  } \
-  else glTexCoord2f(cx, cy); \
-}
-      P_TEXCOORD(rx, ry);
-      glVertex3i(rdx, rdy, z);
-
-      P_TEXCOORD(rxe, ry);
-      glVertex3i(rdxe, rdy, z);
-
-      P_TEXCOORD(rxe, rye);
-      glVertex3i(rdxe, rdye, z);
-
-      P_TEXCOORD(rx, rye);
-      glVertex3i(rdx, rdye, z);
+      draw_rect(face, global_type->mvp, relpos, scale);
     }
-    P_PAINTREG_END();
+
+    if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects))
+        cxfree(rects);
+    free_region(ps, &reg_new);
   }
+
+  glUseProgram(0);
 
   // Cleanup
   glBindTexture(GL_TEXTURE_2D, 0);
-  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
   glDisable(GL_BLEND);
-  glDisable(GL_COLOR_LOGIC_OP);
-
-  if (dual_texture) {
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(GL_TEXTURE0);
-  }
-
-  if (has_prog)
-    glUseProgram(0);
 
   glx_check_err(ps);
 

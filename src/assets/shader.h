@@ -29,5 +29,6 @@ void shader_program_unload_file(struct shader_program* asset);
 
 void shader_use(const struct shader_program* shader);
 
+void shader_set_uniform_float(GLint location, float value);
 void shader_set_uniform_vec2(GLint location, const Vector2* value);
 void shader_set_uniform_sampler(GLint location, int value);
