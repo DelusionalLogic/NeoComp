@@ -299,6 +299,10 @@ void shader_use(const struct shader_program* shader) {
     glUseProgram(shader->gl_program);
 }
 
+void shader_set_uniform_bool(GLint location, bool value) {
+    glUniform1i(location, value);
+}
+
 void shader_set_uniform_float(GLint location, float value) {
     glUniform1f(location, value);
 }

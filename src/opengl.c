@@ -61,10 +61,10 @@ glx_debug_msg_callback(GLenum source, GLenum type,
     GLvoid *userParam) {
   printf_dbgf("(): source 0x%04X, type 0x%04X, id %u, severity 0x%0X, \"%s\"\n",
       source, type, id, severity, message);
-  void* returns[4];
-  backtrace(returns, 4);
-  char** names = backtrace_symbols(returns, 4);
-  for(int i = 3; i < 4; i++) {
+  void* returns[5];
+  backtrace(returns, 5);
+  char** names = backtrace_symbols(returns, 5);
+  for(int i = 0; i < 5; i++) {
       char* str = names[i];
       if(str == NULL)
           break;
@@ -1117,7 +1117,7 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
   glBindTexture(GL_TEXTURE_2D, ptex->texture);
 
   shader_set_uniform_float(global_type->invert, neg);
-  shader_set_uniform_float(global_type->flip, !ptex->y_inverted);
+  shader_set_uniform_float(global_type->flip, ptex->y_inverted);
   shader_set_uniform_float(global_type->opacity, opacity);
   shader_set_uniform_sampler(global_type->tex_scr, 0);
 

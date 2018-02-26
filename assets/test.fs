@@ -10,6 +10,6 @@ void main() {
     vec2 uv = fragmentUV;
     gl_FragColor = texture2D(tex_scr, uv);
     if(invert)
-        gl_FragColor.rgb = vec3(1.0) - gl_FragColor.rgb;
-    gl_FragColor.a *= opacity;
+        gl_FragColor.rgb = vec3(gl_FragColor.a) - gl_FragColor.rgb;
+    gl_FragColor *= opacity;
 }

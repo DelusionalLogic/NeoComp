@@ -10,22 +10,22 @@
 
 static inline GLuint
 generate_texture(GLenum tex_tgt, const Vector2* size) {
-  GLuint tex = 0;
+    GLuint tex = 0;
 
-  glGenTextures(1, &tex);
-  if (!tex)
-      return 0;
+    glGenTextures(1, &tex);
+    if (!tex)
+        return 0;
 
-  glBindTexture(tex_tgt, tex);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(tex_tgt, 0, GL_RGB, size->x, size->y, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glBindTexture(tex_tgt, tex);
+    glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(tex_tgt, 0, GL_RGB, size->x, size->y, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
-  glBindTexture(tex_tgt, 0);
+    glBindTexture(tex_tgt, 0);
 
-  return tex;
+    return tex;
 }
 
 void blur_init(struct blur* blur) {
@@ -98,6 +98,8 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     // Use the shader
     shader_use(downscale_program);
+
+    shader_set_uniform_bool(downscale_type->flip, false);
 
     Vector2 zero_vec = {{0.0, 0.0}};
 
@@ -194,6 +196,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     // Use the shader
     shader_use(upsample_program);
+    shader_set_uniform_bool(upsample_type->flip, false);
 
     // Upscale
     for (int i = 0; i < level; i++) {
@@ -283,6 +286,8 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     struct Passthough* passthough_type = passthough_program->shader_type;
     shader_use(passthough_program);
+
+    shader_set_uniform_bool(passthough_type->flip, false);
 
     // Bind the final blur texture
     texture_bind(tex_scr, GL_TEXTURE0);

@@ -9,7 +9,7 @@ uniform vec2 uvscale = vec2(1.0, 1.0);
 uniform bool flip = false;
 
 void main() {
-    fragmentUV = flip ? uv : vec2(uv.x, 1 - uv.y);
-    fragmentUV = fragmentUV * uvscale;
+    fragmentUV = flip ? vec2(uv.x, 1 - uv.y) : uv;
+    fragmentUV *= uvscale;
     gl_Position = mvp * vec4(vertex, 1.0);
 }

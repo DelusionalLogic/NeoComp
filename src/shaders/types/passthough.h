@@ -6,6 +6,7 @@
     M(mvp)                  \
     M(uvscale)              \
     M(pixeluv)              \
+    M(flip)                 \
     M(tex_scr)              \
     M(extent)
-#define UNIFORMS_COUNT 5
+#define UNIFORMS_COUNT 6
