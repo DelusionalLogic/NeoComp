@@ -884,6 +884,13 @@ glx_paint_pre(session_t *ps, XserverRegion *preg) {
   glx_check_err(ps);
 }
 
+static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
+    Vector2 glpos = {{
+        xpos->x, ps->root_height - xpos->y - size->y
+    }};
+    return glpos;
+}
+
 /**
  * Set clipping region on the target window.
  */
@@ -922,8 +929,7 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
 
   assert(nrects);
   if (1 == nrects) {
-    /* glEnable(GL_SCISSOR_TEST); */
-      ;
+    glEnable(GL_SCISSOR_TEST);
     glScissor(rects[0].x, ps->root_height - rects[0].y - rects[0].height,
         rects[0].width, rects[0].height);
   }
@@ -935,26 +941,42 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     glDepthMask(GL_FALSE);
     glStencilOp(GL_REPLACE, GL_KEEP, GL_KEEP);
 
-    glBegin(GL_QUADS);
+    // @CLEANUP: remove this
+    Vector2 root_size = {{ps->root_width, ps->root_height}};
+    Vector2 pixeluv = {{1.0f, 1.0f}};
+    vec2_div(&pixeluv, &root_size);
 
-    for (int i = 0; i < nrects; ++i) {
-      GLint rx = rects[i].x;
-      GLint ry = ps->root_height - rects[i].y;
-      GLint rxe = rx + rects[i].width;
-      GLint rye = ry - rects[i].height;
-      GLint z = 0;
-
-#ifdef DEBUG_GLX
-      printf_dbgf("(): Rect %d: %d, %d, %d, %d\n", i, rx, ry, rxe, rye);
-#endif
-
-      glVertex3i(rx, ry, z);
-      glVertex3i(rxe, ry, z);
-      glVertex3i(rxe, rye, z);
-      glVertex3i(rx, rye, z);
+    struct shader_program* passthough_program = assets_load("passthough.shader");
+    if(passthough_program->shader_type_info != &passthough_info) {
+        printf_errf("Shader was not a passthough shader");
+        return;
     }
 
-    glEnd();
+    struct Passthough* passthough_type = passthough_program->shader_type;
+    shader_use(passthough_program);
+
+    struct face* face = assets_load("window.face");
+
+    for (int i = 0; i < nrects; ++i) {
+      Vector2 rectPos = {{rects[i].x, rects[i].y}};
+      Vector2 rectSize = {{rects[i].width, rects[i].height}};
+      Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+
+      Vector2 scale = pixeluv;
+      vec2_mul(&scale, &rectSize);
+
+      Vector2 relpos = pixeluv;
+      vec2_mul(&relpos, &glRectPos);
+
+
+#ifdef DEBUG_GLX
+      printf_dbgf("(): Rect %d: %f, %f, %f, %f\n", i, relpos.x, relpos.y, scale.x, scale.y);
+#endif
+
+      draw_rect(face, passthough_type->mvp, relpos, scale);
+    }
+
+    glUseProgram(0);
 
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
