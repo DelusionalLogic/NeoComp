@@ -85,6 +85,11 @@ int texture_bind_to_framebuffer(struct Texture* texture, GLuint framebuffer,
     return 0;
 }
 
+void texture_bind_to_framebuffer_2(struct Texture* texture, GLenum target) {
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, target, texture->target,
+            texture->gl_texture, 0);
+}
+
 void texture_bind(const struct Texture* texture, GLenum unit) {
     glActiveTexture(unit);
     glBindTexture(texture->target, texture->gl_texture);

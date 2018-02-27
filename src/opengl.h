@@ -35,6 +35,8 @@ glx_dump_err_str(GLenum err) {
   return NULL;
 }
 
+void glx_shadow_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z);
+
 /**
  * Check for GLX error.
  *

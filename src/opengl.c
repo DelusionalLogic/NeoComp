@@ -1073,6 +1073,55 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
   return true;
 }
 
+void glx_shadow_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z) {
+    struct Texture texture;
+    texture_init(&texture, GL_TEXTURE_2D, size);
+    glViewport(0, 0, ps->root_width, ps->root_height);
+    glEnable(GL_BLEND);
+
+    struct shader_program* global_program = assets_load("shadow.shader");
+    if(global_program->shader_type_info != &global_info) {
+        printf_errf("Shader was not a global shader");
+        // @INCOMPLETE: Make sure the config is correct
+        return;
+    }
+
+    Vector2 glRectPos = X11_rectpos_to_gl(ps, pos, size);
+
+    Vector2 offset = {{-10, -10}};
+    vec2_add(&offset, &glRectPos);
+    Vector2 larger = {{20, 20}};
+    vec2_add(&larger, size);
+
+    struct Global* global_type = global_program->shader_type;
+    shader_use(global_program);
+
+    shader_set_uniform_float(global_type->invert, false);
+    shader_set_uniform_float(global_type->flip, false);
+    shader_set_uniform_float(global_type->opacity, 1.0);
+
+    // @CLEANUP: remove this
+    Vector2 root_size = {{ps->root_width, ps->root_height}};
+    Vector2 pixeluv = {{1.0f, 1.0f}};
+    vec2_div(&pixeluv, &root_size);
+
+    struct face* face = assets_load("window.face");
+
+    Vector2 scale = pixeluv;
+    vec2_mul(&scale, &larger);
+
+    Vector2 relpos = pixeluv;
+    vec2_mul(&relpos, &offset);
+
+#ifdef DEBUG_GLX
+    printf_dbgf("SHADOW %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
+#endif
+
+    draw_rect(face, global_type->mvp, relpos, scale);
+
+    glDisable(GL_BLEND);
+}
+
 /**
  * @brief Render a region with texture data.
  */

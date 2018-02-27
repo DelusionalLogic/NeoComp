@@ -11,6 +11,7 @@
 #include "compton.h"
 #include <ctype.h>
 
+#include "opengl.h"
 #include "vmath.h"
 
 // === Global constants ===
@@ -1303,16 +1304,23 @@ static inline void
 win_paint_shadow(session_t *ps, win *w,
     XserverRegion reg_paint, const reg_data_t *pcache_reg) {
   // Bind shadow pixmap to GLX texture if needed
-  paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false);
+  /* paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false); */
 
-  if (!paint_isvalid(ps, &w->shadow_paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
+  /* if (!paint_isvalid(ps, &w->shadow_paint)) { */
+  /*   printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id); */
+  /*   return; */
+  /* } */
+  const Vector2 pos = {{
+      w->a.x, w->a.y,
+  }};
+  const Vector2 size = {{
+      w->widthb, w->heightb,
+  }};
+  glx_shadow_dst(ps, &pos, &size, ps->psglx->z);
 
-  render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy,
-      w->shadow_width, w->shadow_height, w->shadow_opacity, true, false,
-      w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL);
+  /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
+  /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
+  /*     w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL); */
 }
 
 /*

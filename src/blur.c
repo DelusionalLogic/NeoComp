@@ -5,6 +5,7 @@
 #include "assets/shader.h"
 #include "shaders/shaderinfo.h"
 #include "renderutil.h"
+#include "textureeffects.h"
 
 #include <stdio.h>
 
@@ -83,9 +84,9 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     int level = ps->o.blur_level;
 
-    struct shader_program* downscale_program = assets_load("downscale.shader");
-    if(downscale_program->shader_type_info != &downsample_info) {
-        printf_errf("shader was not a downsample shader");
+    // Do the blur
+    if(!texture_blur(tex_scr, level)) {
+        printf_errf("Failed blurring the background texture");
 
         if (have_scissors)
             glEnable(GL_SCISSOR_TEST);
@@ -94,184 +95,15 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         return false;
     }
 
-    struct Downsample* downscale_type = downscale_program->shader_type;
-
-    // Use the shader
-    shader_use(downscale_program);
-
-    shader_set_uniform_bool(downscale_type->flip, false);
-
-    Vector2 zero_vec = {{0.0, 0.0}};
-
-    // Downscale
-    for (int i = 0; i < level; i++) {
-        Vector2 sourceSize = *size;
-        vec2_idiv(&sourceSize, pow(2, i));
-
-        Vector2 targetSize = sourceSize;
-        vec2_idiv(&targetSize, 2);
-
-        // Set up to draw to the secondary texture
-        if(texture_bind_to_framebuffer(tex_scr2, fbo, GL_COLOR_ATTACHMENT0) != 0) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            if (have_scissors)
-                glEnable(GL_SCISSOR_TEST);
-            if (have_stencil)
-                glEnable(GL_STENCIL_TEST);
-            return false;
-        }
-
-        static const GLenum DRAWBUFS[1] = { GL_COLOR_ATTACHMENT0 };
-        glDrawBuffers(1, DRAWBUFS);
-
-        glViewport(0, 0, size->x, size->y);
-
-        // @CLEANUP Do we place this here or after the swap?
-        texture_bind(tex_scr, GL_TEXTURE0);
-
-        // Set the shader parameters
-        shader_set_uniform_vec2(downscale_type->pixeluv, &pixeluv);
-        // Set the source texture
-        shader_set_uniform_sampler(downscale_type->tex_scr, 0);
-
-        // Do the render
-        {
-            const Vector2 roundSource = {{
-                ceil(sourceSize.x), ceil(sourceSize.y),
-            }};
-            Vector2 uv_scale = pixeluv;
-            vec2_mul(&uv_scale, &roundSource);
-
-            const Vector2 roundTarget = {{
-                ceil(targetSize.x), ceil(targetSize.y),
-            }};
-            Vector2 scale = pixeluv;
-            vec2_mul(&scale, &roundTarget);
-
-            Vector2 uv_max = pixeluv;
-            vec2_mul(&uv_max, &sourceSize);
-            vec2_sub(&uv_max, &halfpixel);
-
-#ifdef DEBUG_GLX
-            glClearColor(1.0, 0.0, 1.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT);
-#endif
-
-            shader_set_uniform_vec2(downscale_type->extent, &uv_max);
-            shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
-
-#ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
-#endif
-
-            draw_rect(ps->psglx->blur.face, downscale_type->mvp, zero_vec, scale);
-        }
-
-        // Swap main and secondary
-        {
-            struct Texture* tmp = tex_scr2;
-            tex_scr2 = tex_scr;
-            tex_scr = tmp;
-        }
-    }
     glViewport(0, 0, ps->root_width, ps->root_height);
 
-    // Switch to the upsample shader
+    // Lets just make sure we write this back into the stenctil buffer
+    if (have_scissors)
+        glEnable(GL_SCISSOR_TEST);
+    if (have_stencil)
+        glEnable(GL_STENCIL_TEST);
 
-    struct shader_program* upsample_program = assets_load("upsample.shader");
-    if(upsample_program->shader_type_info != &upsample_info) {
-        printf_errf("Shader was not a upsample shader");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        if (have_scissors)
-            glEnable(GL_SCISSOR_TEST);
-        if (have_stencil)
-            glEnable(GL_STENCIL_TEST);
-        return false;
-    }
-
-    struct Upsample* upsample_type = upsample_program->shader_type;
-
-
-    // Use the shader
-    shader_use(upsample_program);
-    shader_set_uniform_bool(upsample_type->flip, false);
-
-    // Upscale
-    for (int i = 0; i < level; i++) {
-        Vector2 sourceSize = *size;
-        vec2_idiv(&sourceSize, pow(2, level - i));
-
-        Vector2 targetSize = sourceSize;
-        vec2_imul(&targetSize, 2);
-
-        // Set up to draw to the secondary texture
-        if(texture_bind_to_framebuffer(tex_scr2, fbo, GL_COLOR_ATTACHMENT0) != 0) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            if (have_scissors)
-                glEnable(GL_SCISSOR_TEST);
-            if (have_stencil)
-                glEnable(GL_STENCIL_TEST);
-            return false;
-        }
-
-        static const GLenum DRAWBUFS[1] = { GL_COLOR_ATTACHMENT0 };
-        glDrawBuffers(1, DRAWBUFS);
-
-        glViewport(0, 0, size->x, size->y);
-
-        // @CLEANUP Do we place this here or after the swap?
-        texture_bind(tex_scr, GL_TEXTURE0);
-
-        // Set the shader parameters
-        shader_set_uniform_vec2(upsample_type->pixeluv, &pixeluv);
-        // Set the source texture
-        shader_set_uniform_sampler(upsample_type->tex_scr, 0);
-
-        // Do the render
-        {
-            const Vector2 roundSource = {{
-                ceil(sourceSize.x), ceil(sourceSize.y),
-            }};
-            Vector2 uv_scale = pixeluv;
-            vec2_mul(&uv_scale, &roundSource);
-
-            const Vector2 roundTarget = {{
-                ceil(targetSize.x), ceil(targetSize.y),
-            }};
-            Vector2 scale = pixeluv;
-            vec2_mul(&scale, &roundTarget);
-
-            Vector2 uv_max = pixeluv;
-            vec2_mul(&uv_max, &sourceSize);
-            vec2_sub(&uv_max, &halfpixel);
-
-#ifdef DEBUG_GLX
-            glClearColor(1.0, 0.0, 1.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT);
-#endif
-
-            shader_set_uniform_vec2(upsample_type->extent, &uv_max);
-            shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
-
-#ifdef DEBUG_GLX
-            printf_dbgf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
-#endif
-
-            draw_rect(ps->psglx->blur.face, upsample_type->mvp, zero_vec, scale);
-        }
-
-        // Swap main and secondary
-        {
-            struct Texture* tmp = tex_scr2;
-            tex_scr2 = tex_scr;
-            tex_scr = tmp;
-        }
-    }
-    glViewport(0, 0, ps->root_width, ps->root_height);
-
+    // Render back to the backbuffer
     struct shader_program* passthough_program = assets_load("passthough.shader");
     if(passthough_program->shader_type_info != &passthough_info) {
         printf_errf("Shader was not a passthough shader");

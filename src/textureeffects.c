@@ -1,0 +1,205 @@
+#define GL_GLEXT_PROTOTYPES
+#include <GL/glx.h>
+
+#include "textureeffects.h"
+
+#include "framebuffer.h"
+
+#include "renderutil.h"
+#include "assets/assets.h"
+#include "assets/shader.h"
+#include "shaders/shaderinfo.h"
+
+#include <assert.h>
+
+// Blurs a texture into that same texture.
+bool texture_blur(struct Texture* texture, int stength) {
+    assert(texture_initialized(texture));
+
+    struct Texture other;
+    if(texture_init(&other, GL_TEXTURE_2D, &texture->size)) {
+        printf("Failed allocating swap texture");
+        return false;
+    }
+    struct Texture* otherPtr = &other;
+
+    struct Framebuffer framebuffer;
+    framebuffer_init(&framebuffer);
+
+    assert(texture_initialized(otherPtr));
+
+    // Disable the options. We will restore later
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST);
+
+    struct shader_program* downscale_program = assets_load("downscale.shader");
+    if(downscale_program->shader_type_info != &downsample_info) {
+        printf("shader was not a downsample shader");
+        texture_delete(otherPtr);
+        return false;
+    }
+
+    struct Downsample* downscale_type = downscale_program->shader_type;
+
+    // Use the shader
+    shader_use(downscale_program);
+
+    shader_set_uniform_bool(downscale_type->flip, false);
+
+    Vector2 pixeluv = {{1.0f, 1.0f}};
+    vec2_div(&pixeluv, &texture->size);
+    Vector2 halfpixel = pixeluv;
+    vec2_idiv(&halfpixel, 2);
+    Vector2 zero_vec = {{0.0, 0.0}};
+
+    struct face* face = assets_load("window.face");
+
+    // Downscale
+    for (int i = 0; i < stength; i++) {
+        Vector2 sourceSize = texture->size;
+        vec2_idiv(&sourceSize, pow(2, i));
+
+        Vector2 targetSize = sourceSize;
+        vec2_idiv(&targetSize, 2);
+
+        // Set up to draw to the secondary texture
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, otherPtr);
+        framebuffer_bind(&framebuffer);
+
+        glViewport(0, 0, texture->size.x, texture->size.y);
+
+        // @CLEANUP Do we place this here or after the swap?
+        texture_bind(texture, GL_TEXTURE0);
+
+        // Set the shader parameters
+        shader_set_uniform_vec2(downscale_type->pixeluv, &pixeluv);
+        // Set the source texture
+        shader_set_uniform_sampler(downscale_type->tex_scr, 0);
+
+        // Do the render
+        {
+            const Vector2 roundSource = {{
+                ceil(sourceSize.x), ceil(sourceSize.y),
+            }};
+            Vector2 uv_scale = pixeluv;
+            vec2_mul(&uv_scale, &roundSource);
+
+            const Vector2 roundTarget = {{
+                ceil(targetSize.x), ceil(targetSize.y),
+            }};
+            Vector2 scale = pixeluv;
+            vec2_mul(&scale, &roundTarget);
+
+            Vector2 uv_max = pixeluv;
+            vec2_mul(&uv_max, &sourceSize);
+            vec2_sub(&uv_max, &halfpixel);
+
+#ifdef DEBUG_GLX
+            glClearColor(1.0, 0.0, 1.0, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT);
+#endif
+
+            shader_set_uniform_vec2(downscale_type->extent, &uv_max);
+            shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
+
+#ifdef DEBUG_GLX
+            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
+#endif
+
+            draw_rect(face, downscale_type->mvp, zero_vec, scale);
+        }
+
+        // Swap main and secondary
+        {
+            struct Texture* tmp = otherPtr;
+            otherPtr = texture;
+            texture = tmp;
+        }
+    }
+
+    // Switch to the upsample shader
+
+    struct shader_program* upsample_program = assets_load("upsample.shader");
+    if(upsample_program->shader_type_info != &upsample_info) {
+        printf("Shader was not a upsample shader");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        texture_delete(otherPtr);
+        return false;
+    }
+
+    struct Upsample* upsample_type = upsample_program->shader_type;
+
+
+    // Use the shader
+    shader_use(upsample_program);
+    shader_set_uniform_bool(upsample_type->flip, false);
+
+    // Upscale
+    for (int i = 0; i < stength; i++) {
+        Vector2 sourceSize = texture->size;
+        vec2_idiv(&sourceSize, pow(2, stength - i));
+
+        Vector2 targetSize = sourceSize;
+        vec2_imul(&targetSize, 2);
+
+        // Set up to draw to the secondary texture
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, otherPtr);
+        framebuffer_bind(&framebuffer);
+
+        glViewport(0, 0, texture->size.x, texture->size.y);
+
+        // @CLEANUP Do we place this here or after the swap?
+        texture_bind(texture, GL_TEXTURE0);
+
+        // Set the shader parameters
+        shader_set_uniform_vec2(upsample_type->pixeluv, &pixeluv);
+        // Set the source texture
+        shader_set_uniform_sampler(upsample_type->tex_scr, 0);
+
+        // Do the render
+        {
+            const Vector2 roundSource = {{
+                ceil(sourceSize.x), ceil(sourceSize.y),
+            }};
+            Vector2 uv_scale = pixeluv;
+            vec2_mul(&uv_scale, &roundSource);
+
+            const Vector2 roundTarget = {{
+                ceil(targetSize.x), ceil(targetSize.y),
+            }};
+            Vector2 scale = pixeluv;
+            vec2_mul(&scale, &roundTarget);
+
+            Vector2 uv_max = pixeluv;
+            vec2_mul(&uv_max, &sourceSize);
+            vec2_sub(&uv_max, &halfpixel);
+
+#ifdef DEBUG_GLX
+            glClearColor(1.0, 0.0, 1.0, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT);
+#endif
+
+            shader_set_uniform_vec2(upsample_type->extent, &uv_max);
+            shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
+
+#ifdef DEBUG_GLX
+            printf_dbgf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
+#endif
+
+            draw_rect(face, upsample_type->mvp, zero_vec, scale);
+        }
+
+        // Swap main and secondary
+        {
+            struct Texture* tmp = otherPtr;
+            otherPtr = texture;
+            texture = tmp;
+        }
+    }
+
+    texture_delete(otherPtr);
+    return true;
+}

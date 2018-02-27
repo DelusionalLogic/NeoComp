@@ -20,4 +20,6 @@ int texture_read_from(struct Texture* texture, GLuint framebuffer,
 int texture_bind_to_framebuffer(struct Texture* texture, GLuint framebuffer,
         GLenum buffer);
 
+void texture_bind_to_framebuffer_2(struct Texture* texture, GLenum target);
+
 void texture_bind(const struct Texture* texture, GLenum unit);
