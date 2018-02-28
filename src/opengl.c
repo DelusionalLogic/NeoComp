@@ -1120,6 +1120,7 @@ void glx_shadow_dst(session_t *ps, const Vector2* pos, const Vector2* size, floa
     draw_rect(face, global_type->mvp, relpos, scale);
 
     glDisable(GL_BLEND);
+	texture_delete(&texture);
 }
 
 /**

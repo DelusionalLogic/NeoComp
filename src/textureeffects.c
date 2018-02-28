@@ -104,7 +104,7 @@ bool texture_blur(struct Texture* texture, int stength) {
             shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
+            printf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
             draw_rect(face, downscale_type->mvp, zero_vec, scale);
@@ -186,7 +186,7 @@ bool texture_blur(struct Texture* texture, int stength) {
             shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
+            printf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
 #endif
 
             draw_rect(face, upsample_type->mvp, zero_vec, scale);
@@ -200,6 +200,7 @@ bool texture_blur(struct Texture* texture, int stength) {
         }
     }
 
+	framebuffer_delete(&framebuffer);
     texture_delete(otherPtr);
     return true;
 }
