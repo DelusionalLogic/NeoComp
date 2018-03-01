@@ -24,7 +24,7 @@ OBJS += opengl.o
 
 OBJS += vmath.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o texture.o include.o
-OBJS += renderutil.o textureeffects.o framebuffer.o zone.o
+OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o
 
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX

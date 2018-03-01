@@ -13,3 +13,7 @@
 #define THIS "types/global.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/profiler.h"
+#include HEADER
+#undef THIS

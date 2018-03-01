@@ -15,6 +15,7 @@
 #include "vmath.h"
 
 #include "profiler/zone.h"
+#include "profiler/render.h"
 
 
 // === Global constants ===
@@ -1309,23 +1310,23 @@ static inline void
 win_paint_shadow(session_t *ps, win *w,
     XserverRegion reg_paint, const reg_data_t *pcache_reg) {
   // Bind shadow pixmap to GLX texture if needed
-  /* paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false); */
+  paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false);
 
-  /* if (!paint_isvalid(ps, &w->shadow_paint)) { */
-  /*   printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id); */
-  /*   return; */
-  /* } */
-  const Vector2 pos = {{
-      w->a.x, w->a.y,
-  }};
-  const Vector2 size = {{
-      w->widthb, w->heightb,
-  }};
-  glx_shadow_dst(ps, &pos, &size, ps->psglx->z);
+  if (!paint_isvalid(ps, &w->shadow_paint)) {
+    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
+    return;
+  }
+  /* const Vector2 pos = {{ */
+  /*     w->a.x, w->a.y, */
+  /* }}; */
+  /* const Vector2 size = {{ */
+  /*     w->widthb, w->heightb, */
+  /* }}; */
+  /* glx_shadow_dst(ps, &pos, &size, ps->psglx->z); */
 
-  /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
-  /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
-  /*     w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL); */
+  render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy,
+      w->shadow_width, w->shadow_height, w->shadow_opacity, true, false,
+      w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL);
 }
 
 /*
@@ -1702,6 +1703,12 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
   if (!ps->o.dbe)
     set_tgt_clip(ps, None, NULL);
 
+  // Finish the profiling before the vsync, since we don't want that to drag out the time
+  struct ProgramZone* rootZone = zone_package(&ZONE_global);
+  Vector2 root_size = {{ps->root_width, ps->root_height}};
+  profiler_render(rootZone, &root_size);
+
+
   if (ps->o.vsync) {
     // Make sure all previous requests are processed to achieve best
     // effect
@@ -1714,12 +1721,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
         glXWaitX();
     }
   }
-
-  // Finish the profiling before the vsync, since we don't want that to drag out the time
-  struct ProgramZone* rootZone = zone_package(&ZONE_global);
-  struct timespec diff = { 0 };
-  timespec_subtract(&diff, &rootZone->endTime, &rootZone->startTime);
-  printf("Frametime: [ %5ld:%09ld ]\n", diff.tv_sec, diff.tv_nsec);
 
   // Wait for VBlank. We could do it aggressively (send the painting
   // request and XFlush() on VBlank) or conservatively (send the request
