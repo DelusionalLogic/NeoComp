@@ -6,4 +6,4 @@
 #include "zone.h"
 #include "../vmath.h"
 
-void profiler_render(struct ProgramZone* root, const Vector2* rootSize);
+void profiler_render(struct ProgramZone* root);

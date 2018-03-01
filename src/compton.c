@@ -1705,8 +1705,9 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
 
   // Finish the profiling before the vsync, since we don't want that to drag out the time
   struct ProgramZone* rootZone = zone_package(&ZONE_global);
-  Vector2 root_size = {{ps->root_width, ps->root_height}};
-  profiler_render(rootZone, &root_size);
+#ifdef DEBUG_PROFILE
+  profiler_render(rootZone);
+#endif
 
 
   if (ps->o.vsync) {

@@ -60,11 +60,8 @@ static void process(struct ProgramZone* root, struct Measurement* measurement) {
     measurement->height = ((float)diff.tv_nsec / NS_PER_MS) / 33.33f;
 }
 
-static void draw(size_t head, size_t tail, const Vector2* rootSize) {
-    struct Face* face = assets_load("window.face");
-
-    Vector2 pixeluv = {{1.0f, 1.0f}};
-    vec2_div(&pixeluv, rootSize);
+static void draw(size_t head, size_t tail, const Vector2* size) {
+    struct face* face = assets_load("window.face");
 
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
@@ -85,17 +82,21 @@ static void draw(size_t head, size_t tail, const Vector2* rootSize) {
 
     int steps = 0;
     for(size_t i = head; i != tail; i = getLast(i)) {
-        Vector2 scale = {{pixeluv.x * 2, mbuffer[i].height}};
-        Vector2 relpos = {{pixeluv.x*steps * 2, 0}};
+        Vector2 scale = {{1.0f/255, mbuffer[i].height}};
+        vec2_mul(&scale, size);
+
+        Vector2 relpos = {{scale.x * steps, .2}};
+
         draw_rect(face, profiler_type->mvp, relpos, scale);
         steps++;
     }
 }
 
-void profiler_render(struct ProgramZone* root, const Vector2* rootSize) {
+void profiler_render(struct ProgramZone* root) {
     size_t next = getNext(head);
     process(root, &mbuffer[next]);
     head = next;
 
-    draw(head, getNext(head), rootSize);
+    Vector2 diagramSize = {{0.5, 0.5}};
+    draw(head, getNext(head), &diagramSize);
 }
