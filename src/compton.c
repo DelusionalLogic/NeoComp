@@ -14,7 +14,12 @@
 #include "opengl.h"
 #include "vmath.h"
 
+#include "profiler/zone.h"
+
+
 // === Global constants ===
+
+DECLARE_ZONE(global)
 
 /// Name strings for window types.
 const char * const WINTYPES[NUM_WINTYPES] = {
@@ -1520,6 +1525,8 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
   if (!region_real)
     region_real = region;
 
+  zone_enter(&ZONE_global);
+
 #ifdef DEBUG_REPAINT
   static struct timespec last_paint = { 0 };
 #endif
@@ -1707,6 +1714,12 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
         glXWaitX();
     }
   }
+
+  // Finish the profiling before the vsync, since we don't want that to drag out the time
+  struct ProgramZone* rootZone = zone_package(&ZONE_global);
+  struct timespec diff = { 0 };
+  timespec_subtract(&diff, &rootZone->endTime, &rootZone->startTime);
+  printf("Frametime: [ %5ld:%09ld ]\n", diff.tv_sec, diff.tv_nsec);
 
   // Wait for VBlank. We could do it aggressively (send the painting
   // request and XFlush() on VBlank) or conservatively (send the request

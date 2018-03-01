@@ -23,7 +23,8 @@ LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
 OBJS += vmath.o
-OBJS += assets.o shader.o face.o shaderinfo.o blur.o texture.o include.o renderutil.o textureeffects.o framebuffer.o
+OBJS += assets.o shader.o face.o shaderinfo.o blur.o texture.o include.o
+OBJS += renderutil.o textureeffects.o framebuffer.o zone.o
 
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
