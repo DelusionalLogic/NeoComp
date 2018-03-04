@@ -12,7 +12,9 @@
 #include <execinfo.h>
 #include "vmath.h"
 #include "texture.h"
+#include "framebuffer.h"
 #include "blur.h"
+#include "textureeffects.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "assets/face.h"
@@ -152,6 +154,7 @@ glx_init(session_t *ps, bool need_render) {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
         GLX_CONTEXT_MINOR_VERSION_ARB, 2,
         GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_DEBUG_BIT_ARB,
+        GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
         None
       };
       psglx->context = p_glXCreateContextAttribsARB(ps->dpy, fbconfig, NULL,
@@ -1074,45 +1077,69 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
   return true;
 }
 
-void glx_shadow_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z) {
-    struct Texture texture;
-    texture_init(&texture, GL_TEXTURE_2D, size);
-    glViewport(0, 0, ps->root_width, ps->root_height);
-    glEnable(GL_BLEND);
+void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* size, float z) {
+    Vector2 glRectPos = X11_rectpos_to_gl(ps, pos, size);
 
-    struct shader_program* global_program = assets_load("shadow.shader");
-    if(global_program->shader_type_info != &global_info) {
-        printf_errf("Shader was not a global shader");
-        // @INCOMPLETE: Make sure the config is correct
+    Vector2 border = {{32, 32}};
+
+    Vector2 overflowSize = border;
+    vec2_imul(&overflowSize, 2);
+    vec2_add(&overflowSize, size);
+
+    struct Texture texture;
+    if(texture_init(&texture, GL_TEXTURE_2D, &overflowSize) != 0) {
+        printf("Couldn't create texture for shadow\n");
         return;
     }
 
-    Vector2 glRectPos = X11_rectpos_to_gl(ps, pos, size);
+    struct Framebuffer framebuffer;
+    if(!framebuffer_init(&framebuffer)) {
+        printf("Couldn't create framebuffer for shadow\n");
+        texture_delete(&texture);
+        return;
+    }
 
-    Vector2 offset = {{-10, -10}};
-    vec2_add(&offset, &glRectPos);
-    Vector2 larger = {{20, 20}};
-    vec2_add(&larger, size);
+    framebuffer_targetTexture(&framebuffer, &texture);
+    framebuffer_bind(&framebuffer);
+
+    glEnable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+
+    glViewport(0, 0, texture.size.x, texture.size.y);
+
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // @CLEANUP: We have to do this since the window isn't using the new nice
+    // interface
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, w->paint.ptex->texture);
+
+    struct shader_program* global_program = assets_load("shadow.shader");
+    if(global_program->shader_type_info != &global_info) {
+        printf_errf("Shader was not a global shader\n");
+        // @INCOMPLETE: Make sure the config is correct
+        return;
+    }
 
     struct Global* global_type = global_program->shader_type;
     shader_use(global_program);
 
     shader_set_uniform_float(global_type->invert, false);
-    shader_set_uniform_float(global_type->flip, false);
+    shader_set_uniform_float(global_type->flip, true);
     shader_set_uniform_float(global_type->opacity, 1.0);
+    shader_set_uniform_sampler(global_type->tex_scr, 0);
 
-    // @CLEANUP: remove this
-    Vector2 root_size = {{ps->root_width, ps->root_height}};
     Vector2 pixeluv = {{1.0f, 1.0f}};
-    vec2_div(&pixeluv, &root_size);
+    vec2_div(&pixeluv, &texture.size);
 
     struct face* face = assets_load("window.face");
 
     Vector2 scale = pixeluv;
-    vec2_mul(&scale, &larger);
+    vec2_mul(&scale, size);
 
     Vector2 relpos = pixeluv;
-    vec2_mul(&relpos, &offset);
+    vec2_mul(&relpos, &border);
 
 #ifdef DEBUG_GLX
     printf_dbgf("SHADOW %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
@@ -1120,8 +1147,36 @@ void glx_shadow_dst(session_t *ps, const Vector2* pos, const Vector2* size, floa
 
     draw_rect(face, global_type->mvp, relpos, scale);
 
+    // Do the blur
+    if(!texture_blur(&texture, 0)) {
+        printf_errf("Failed blurring the background texture");
+        return;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
+    glDrawBuffers(1, DRAWBUFS);
+
+    // @CLEANUP: remove this
+    Vector2 root_size = {{ps->root_width, ps->root_height}};
+    glViewport(0, 0, ps->root_width, ps->root_height);
+
+    {
+        Vector2 rpos = {{ 10, 10 }};
+        Vector2 rsize = {{500, 500}};
+        draw_tex(ps, face, &texture, &root_size, &rpos, &rsize);
+    }
+
+    Vector2 rpos = {{ pos->x, pos->y }};
+    vec2_sub(&rpos, &border);
+    Vector2 rsize = overflowSize;
+    draw_tex(ps, face, &texture, &root_size, &rpos, &rsize);
+
+    glEnable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
+
 	texture_delete(&texture);
+	framebuffer_delete(&framebuffer);
 }
 
 /**

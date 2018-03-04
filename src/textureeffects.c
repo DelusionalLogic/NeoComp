@@ -32,9 +32,15 @@ bool texture_blur(struct Texture* texture, int stength) {
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
+	framebuffer_targetTexture(&framebuffer, otherPtr);
+	framebuffer_bind(&framebuffer);
+	//Clear the new texture to transparent
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
-        printf("shader was not a downsample shader");
+        printf("shader was not a downsample shader\n");
         texture_delete(otherPtr);
         return false;
     }
@@ -95,17 +101,11 @@ bool texture_blur(struct Texture* texture, int stength) {
             vec2_mul(&uv_max, &sourceSize);
             vec2_sub(&uv_max, &halfpixel);
 
-#ifdef DEBUG_GLX
-            glClearColor(1.0, 0.0, 1.0, 1.0);
+            glClearColor(0.0, 0.0, 0.0, 0.0);
             glClear(GL_COLOR_BUFFER_BIT);
-#endif
 
             shader_set_uniform_vec2(downscale_type->extent, &uv_max);
             shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
-
-#ifdef DEBUG_GLX
-            printf("(): r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
-#endif
 
             draw_rect(face, downscale_type->mvp, zero_vec, scale);
         }
@@ -177,17 +177,11 @@ bool texture_blur(struct Texture* texture, int stength) {
             vec2_mul(&uv_max, &sourceSize);
             vec2_sub(&uv_max, &halfpixel);
 
-#ifdef DEBUG_GLX
-            glClearColor(1.0, 0.0, 1.0, 1.0);
+            glClearColor(0.0, 0.0, 0.0, 0.0);
             glClear(GL_COLOR_BUFFER_BIT);
-#endif
 
             shader_set_uniform_vec2(upsample_type->extent, &uv_max);
             shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
-
-#ifdef DEBUG_GLX
-            printf("r %f, %f max %f, %f scale %f %f\n", uv_scale.u, uv_scale.v, uv_max.u, uv_max.v, scale.x, scale.y);
-#endif
 
             draw_rect(face, upsample_type->mvp, zero_vec, scale);
         }

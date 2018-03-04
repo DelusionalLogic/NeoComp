@@ -1309,6 +1309,37 @@ paint_preprocess(session_t *ps, win *list) {
 static inline void
 win_paint_shadow(session_t *ps, win *w,
     XserverRegion reg_paint, const reg_data_t *pcache_reg) {
+
+  // Fetch Pixmap
+  if (!w->paint.pixmap && ps->has_name_pixmap) {
+    set_ignore_next(ps);
+    w->paint.pixmap = XCompositeNameWindowPixmap(ps->dpy, w->id);
+    if (w->paint.pixmap)
+      free_fence(ps, &w->fence);
+  }
+
+  Drawable draw = w->paint.pixmap;
+  if (!draw)
+    draw = w->id;
+
+  if (IsViewable == w->a.map_state)
+    xr_sync(ps, draw, &w->fence);
+
+  // GLX: Build texture
+  // Let glx_bind_pixmap() determine pixmap size, because if the user
+  // is resizing windows, the width and height we get may not be up-to-date,
+  // causing the jittering issue M4he reported in #7.
+  if (!paint_bind_tex(ps, &w->paint, 0, 0, 0,
+        (!ps->o.glx_no_rebind_pixmap && w->pixmap_damaged))) {
+    printf_errf("(%#010lx): Failed to bind texture. Expect troubles.", w->id);
+  }
+  w->pixmap_damaged = false;
+
+  if (!paint_isvalid(ps, &w->paint)) {
+    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
+    return;
+  }
+
   // Bind shadow pixmap to GLX texture if needed
   paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false);
 
@@ -1316,17 +1347,17 @@ win_paint_shadow(session_t *ps, win *w,
     printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
     return;
   }
-  /* const Vector2 pos = {{ */
-  /*     w->a.x, w->a.y, */
-  /* }}; */
-  /* const Vector2 size = {{ */
-  /*     w->widthb, w->heightb, */
-  /* }}; */
-  /* glx_shadow_dst(ps, &pos, &size, ps->psglx->z); */
+  const Vector2 pos = {{
+      w->a.x, w->a.y,
+  }};
+  const Vector2 size = {{
+      w->widthb, w->heightb,
+  }};
+  glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
 
-  render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy,
-      w->shadow_width, w->shadow_height, w->shadow_opacity, true, false,
-      w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL);
+  /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
+  /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
+  /*     w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL); */
 }
 
 /*
