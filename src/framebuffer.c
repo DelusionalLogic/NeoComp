@@ -18,40 +18,69 @@ void framebuffer_resetTarget(struct Framebuffer* framebuffer) {
 
 void framebuffer_targetTexture(struct Framebuffer* framebuffer, struct Texture* texture) {
     if((framebuffer->target & FBT_TEXTURE) != 0) {
-        printf("Framebuffer is already targeting a texture");
+        printf("Framebuffer is already targeting a texture\n");
         return;
     }
     framebuffer->target |= FBT_TEXTURE;
     framebuffer->texture = texture;
 }
 
+void framebuffer_targetRenderBuffer(struct Framebuffer* framebuffer, struct RenderBuffer* buffer) {
+    if((framebuffer->target & FBT_RENDERBUFFER) != 0) {
+        printf("Framebuffer is already targeting a renderbuffer\n");
+        return;
+    }
+    framebuffer->target |= FBT_RENDERBUFFER;
+    framebuffer->buffer = buffer;
+}
+
+void framebuffer_targetRenderBuffer_stencil(struct Framebuffer* framebuffer, struct RenderBuffer* buffer) {
+    if((framebuffer->target & FBT_RENDERBUFFER_STENCIL) != 0) {
+        printf("Framebuffer is already targeting a renderbuffer stencil\n");
+        return;
+    }
+    framebuffer->target |= FBT_RENDERBUFFER_STENCIL;
+    framebuffer->buffer_stencil = buffer;
+}
+
 void framebuffer_targetBack(struct Framebuffer* framebuffer) {
     framebuffer->target |= FBT_BACKBUFFER;
 }
 
-bool framebuffer_bind(struct Framebuffer* framebuffer) {
+int framebuffer_bind(struct Framebuffer* framebuffer) {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer->gl_fbo);
 
+    GLenum DRAWBUFS[4] = {0};
+    size_t i = 0;
+
+    if((framebuffer->target & FBT_BACKBUFFER) != 0) {
+        DRAWBUFS[i++] = GL_BACK_LEFT;
+    }
     if((framebuffer->target & FBT_TEXTURE)) {
-        texture_bind_to_framebuffer_2(framebuffer->texture, GL_COLOR_ATTACHMENT0);
+        texture_bind_to_framebuffer_2(framebuffer->texture, GL_COLOR_ATTACHMENT1);
+        DRAWBUFS[i++] = GL_COLOR_ATTACHMENT1;
+    }
+    if((framebuffer->target & FBT_RENDERBUFFER)) {
+        renderbuffer_bind_to_framebuffer(framebuffer->buffer, GL_COLOR_ATTACHMENT0);
+        DRAWBUFS[i++] = GL_COLOR_ATTACHMENT0;
     }
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
-            GL_FRAMEBUFFER_COMPLETE) {
+    if((framebuffer->target & FBT_RENDERBUFFER_STENCIL)) {
+        renderbuffer_bind_to_framebuffer(framebuffer->buffer_stencil, GL_DEPTH_STENCIL_ATTACHMENT);
+    }
+
+    if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         printf("Framebuffer attachment failed\n");
         return 1;
     }
 
-    GLenum DRAWBUFS[3] = {0};
-    size_t i = 0;
-    if((framebuffer->target & FBT_BACKBUFFER) != 0) {
-        DRAWBUFS[i++] = GL_BACK_LEFT;
-    }
-    if((framebuffer->target & FBT_TEXTURE) != 0) {
-        DRAWBUFS[i++] = GL_COLOR_ATTACHMENT0;
-    }
     glDrawBuffers(1, DRAWBUFS);
 
+    return 0;
+}
+
+int framebuffer_bind_read(struct Framebuffer* framebuffer) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer->gl_fbo);
     return 0;
 }
 

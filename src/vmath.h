@@ -80,6 +80,9 @@ typedef union Vector2 {
     };
 } Vector2;
 
+static const Vector2 VEC2_ZERO = {{0, 0}};
+static const Vector2 VEC2_UNIT = {{1, 1}};
+
 DEFINE_VEC_OPS(2)
 DEFINE_VEC_CONST(4, 2)
 

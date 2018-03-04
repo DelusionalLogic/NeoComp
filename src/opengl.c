@@ -772,7 +772,7 @@ glx_release_pixmap(session_t *ps, glx_texture_t *ptex) {
  * Preprocess function before start painting.
  */
 void
-glx_paint_pre(session_t *ps, XserverRegion *preg) {
+glx_paint_pre(session_t *ps, XserverRegion *damaged) {
   ps->psglx->z = 0.0;
   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -781,13 +781,13 @@ glx_paint_pre(session_t *ps, XserverRegion *preg) {
 
   // Trace raw damage regions
   XserverRegion newdamage = None;
-  if (trace_damage && *preg)
-    newdamage = copy_region(ps, *preg);
+  if (trace_damage && *damaged)
+    newdamage = copy_region(ps, *damaged);
 
   // OpenGL doesn't support partial repaint without GLX_MESA_copy_sub_buffer,
   // we could redraw the whole screen or copy unmodified pixels from
   // front buffer with --glx-copy-from-front.
-  if (ps->o.glx_use_copysubbuffermesa || !*preg) {
+  if (ps->o.glx_use_copysubbuffermesa || !*damaged) {
   }
   else {
     int buffer_age = ps->o.glx_swap_method;
@@ -823,13 +823,13 @@ glx_paint_pre(session_t *ps, XserverRegion *preg) {
         // Determine copy area
         XserverRegion reg_copy = XFixesCreateRegion(ps->dpy, NULL, 0);
         if (!buffer_age) {
-          XFixesSubtractRegion(ps->dpy, reg_copy, ps->screen_reg, *preg);
+          XFixesSubtractRegion(ps->dpy, reg_copy, ps->screen_reg, *damaged);
         }
         else {
           for (int i = 0; i < buffer_age - 1; ++i)
             XFixesUnionRegion(ps->dpy, reg_copy, reg_copy,
                 ps->all_damage_last[i]);
-          XFixesSubtractRegion(ps->dpy, reg_copy, reg_copy, *preg);
+          XFixesSubtractRegion(ps->dpy, reg_copy, reg_copy, *damaged);
         }
 
         // Actually copy pixels
@@ -865,10 +865,10 @@ glx_paint_pre(session_t *ps, XserverRegion *preg) {
       if (ps->o.glx_copy_from_front) { }
       else if (buffer_age) {
         for (int i = 0; i < buffer_age - 1; ++i)
-          XFixesUnionRegion(ps->dpy, *preg, *preg, ps->all_damage_last[i]);
+          XFixesUnionRegion(ps->dpy, *damaged, *damaged, ps->all_damage_last[i]);
       }
       else {
-        free_region(ps, preg);
+        free_region(ps, damaged);
       }
     }
   }
@@ -880,10 +880,10 @@ glx_paint_pre(session_t *ps, XserverRegion *preg) {
     ps->all_damage_last[0] = newdamage;
   }
 
-  glx_set_clip(ps, *preg, NULL);
+  glx_set_clip(ps, *damaged, NULL);
 
 #ifdef DEBUG_GLX_PAINTREG
-  glx_render_color(ps, 0, 0, ps->root_width, ps->root_height, 0, *preg, NULL);
+  glx_render_color(ps, 0, 0, ps->root_width, ps->root_height, 0, *damaged, NULL);
 #endif
 
   glx_check_err(ps);
@@ -1078,9 +1078,7 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 }
 
 void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* size, float z) {
-    Vector2 glRectPos = X11_rectpos_to_gl(ps, pos, size);
-
-    Vector2 border = {{32, 32}};
+    Vector2 border = {{64, 64}};
 
     Vector2 overflowSize = border;
     vec2_imul(&overflowSize, 2);
@@ -1092,23 +1090,38 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
         return;
     }
 
-    struct Framebuffer framebuffer;
-    if(!framebuffer_init(&framebuffer)) {
-        printf("Couldn't create framebuffer for shadow\n");
+    struct RenderBuffer buffer;
+    if(renderbuffer_stencil_init(&buffer, &overflowSize) != 0) {
+        printf("Couldn't create renderbuffer stencil for shadow\n");
         texture_delete(&texture);
         return;
     }
 
-    framebuffer_targetTexture(&framebuffer, &texture);
-    framebuffer_bind(&framebuffer);
+    struct Framebuffer framebuffer;
+    if(!framebuffer_init(&framebuffer)) {
+        printf("Couldn't create framebuffer for shadow\n");
+        texture_delete(&texture);
+        renderbuffer_delete(&buffer);
+        return;
+    }
 
-    glEnable(GL_BLEND);
-    glDisable(GL_STENCIL_TEST);
+    framebuffer_targetTexture(&framebuffer, &texture);
+    framebuffer_targetRenderBuffer_stencil(&framebuffer, &buffer);
+    framebuffer_bind(&framebuffer);
 
     glViewport(0, 0, texture.size.x, texture.size.y);
 
+    glEnable(GL_BLEND);
+    glEnable(GL_STENCIL_TEST);
+
     glClearColor(0.0, 0.0, 0.0, 0.0);
-    glClear(GL_COLOR_BUFFER_BIT);
+
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+
+    glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
     // @CLEANUP: We have to do this since the window isn't using the new nice
     // interface
@@ -1118,7 +1131,9 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
     struct shader_program* global_program = assets_load("shadow.shader");
     if(global_program->shader_type_info != &global_info) {
         printf_errf("Shader was not a global shader\n");
-        // @INCOMPLETE: Make sure the config is correct
+        texture_delete(&texture);
+        renderbuffer_delete(&buffer);
+        framebuffer_delete(&framebuffer);
         return;
     }
 
@@ -1147,36 +1162,90 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
 
     draw_rect(face, global_type->mvp, relpos, scale);
 
+    glDisable(GL_STENCIL_TEST);
+
     // Do the blur
-    if(!texture_blur(&texture, 0)) {
+    if(!texture_blur(&texture, 4)) {
         printf_errf("Failed blurring the background texture");
+        texture_delete(&texture);
+        renderbuffer_delete(&buffer);
+        framebuffer_delete(&framebuffer);
         return;
     }
+
+    struct Texture clipBuffer;
+    if(texture_init(&clipBuffer, GL_TEXTURE_2D, &buffer.size) != 0) {
+        printf("Failed creating clipping renderbuffer\n");
+        texture_delete(&texture);
+        renderbuffer_delete(&buffer);
+        framebuffer_delete(&framebuffer);
+        return;
+    }
+
+    framebuffer_resetTarget(&framebuffer);
+    framebuffer_targetTexture(&framebuffer, &clipBuffer);
+    framebuffer_targetRenderBuffer_stencil(&framebuffer, &buffer);
+    if(framebuffer_bind(&framebuffer) != 0) {
+        printf("Failed binding framebuffer to clip shadow\n");
+
+        texture_delete(&texture);
+        renderbuffer_delete(&buffer);
+        texture_delete(&clipBuffer);
+        framebuffer_delete(&framebuffer);
+        return;
+    }
+    glViewport(0, 0, clipBuffer.size.x, clipBuffer.size.y);
+
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glEnable(GL_STENCIL_TEST);
+
+    glStencilMask(0xFF);
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+    draw_tex(ps, face, &texture, &VEC2_ZERO, &VEC2_UNIT);
+
+    glDisable(GL_STENCIL_TEST);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
     glDrawBuffers(1, DRAWBUFS);
 
-    // @CLEANUP: remove this
-    Vector2 root_size = {{ps->root_width, ps->root_height}};
     glViewport(0, 0, ps->root_width, ps->root_height);
 
+    /* { */
+    /*     Vector2 rpos = {{0, 0}}; */
+    /*     Vector2 rsize = {{.4, .6}}; */
+    /*     draw_tex(ps, face, &clipBuffer, &rpos, &rsize); */
+    /* } */
+
+    Vector2 root_size = {{ps->root_width, ps->root_height}};
     {
-        Vector2 rpos = {{ 10, 10 }};
-        Vector2 rsize = {{500, 500}};
-        draw_tex(ps, face, &texture, &root_size, &rpos, &rsize);
+        Vector2 rpos = X11_rectpos_to_gl(ps, pos, size);
+        vec2_sub(&rpos, &border);
+        Vector2 rsize = overflowSize;
+
+        Vector2 pixeluv = {{1.0f, 1.0f}};
+        vec2_div(&pixeluv, &root_size);
+
+        Vector2 scale = pixeluv;
+        vec2_mul(&scale, &rsize);
+
+        Vector2 relpos = pixeluv;
+        vec2_mul(&relpos, &rpos);
+
+        draw_tex(ps, face, &clipBuffer, &relpos, &scale);
     }
 
-    Vector2 rpos = {{ pos->x, pos->y }};
-    vec2_sub(&rpos, &border);
-    Vector2 rsize = overflowSize;
-    draw_tex(ps, face, &texture, &root_size, &rpos, &rsize);
-
-    glEnable(GL_STENCIL_TEST);
+    glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
 
-	texture_delete(&texture);
-	framebuffer_delete(&framebuffer);
+    texture_delete(&texture);
+    renderbuffer_delete(&buffer);
+    texture_delete(&clipBuffer);
+    framebuffer_delete(&framebuffer);
 }
 
 /**
@@ -1305,12 +1374,7 @@ glx_render_color(session_t *ps, int dx, int dy, int width, int height, int z,
   static int color = 0;
 
   color = color % (3 * 3 * 3 - 1) + 1;
-  glColor4f(1.0 / 3.0 * (color / (3 * 3)),
-      1.0 / 3.0 * (color % (3 * 3) / 3),
-      1.0 / 3.0 * (color % 3),
-      1.0f
-      );
-  z -= 0.2;
+  z += 0.2;
 
   {
     P_PAINTREG_START();
@@ -1320,14 +1384,17 @@ glx_render_color(session_t *ps, int dx, int dy, int width, int height, int z,
       GLint rdxe = rdx + crect.width;
       GLint rdye = rdy - crect.height;
 
-      glVertex3i(rdx, rdy, z);
-      glVertex3i(rdxe, rdy, z);
-      glVertex3i(rdxe, rdye, z);
-      glVertex3i(rdx, rdye, z);
+	  glViewport(rdx, rdye, rdxe, rdy);
+      glClearColor(1.0 / 3.0 * (color / (3 * 3)),
+              1.0 / 3.0 * (color % (3 * 3) / 3),
+              1.0 / 3.0 * (color % 3),
+              1.0f
+              );
+      glClear(GL_COLOR_BUFFER_BIT);
     }
     P_PAINTREG_END();
   }
-  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
+  glViewport(0, 0, ps->root_width, ps->root_height);
 
   glx_check_err(ps);
 }
