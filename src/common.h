@@ -2256,7 +2256,7 @@ free_glx_bc_resize(session_t *ps, glx_blur_cache_t *pbc) {
  */
 static inline void
 free_glx_bc(session_t *ps, glx_blur_cache_t *pbc) {
-  free_glx_fbo(ps, &pbc->fbo);
+  framebuffer_delete(&pbc->fbo);
   free_glx_bc_resize(ps, pbc);
 }
 
