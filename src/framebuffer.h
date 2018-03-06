@@ -28,6 +28,7 @@ struct Framebuffer {
 };
 
 bool framebuffer_init(struct Framebuffer* framebuffer);
+bool framebuffer_initialized(struct Framebuffer* framebuffer);
 
 void framebuffer_resetTarget(struct Framebuffer* framebuffer);
 void framebuffer_targetTexture(struct Framebuffer* framebuffer, struct Texture* texture);

@@ -111,17 +111,16 @@ glx_hasglxext(session_t *ps, const char *ext) {
  */
 static inline bool
 glx_hasglext(session_t *ps, const char *ext) {
-  const char *gl_exts = (const char *) glGetString(GL_EXTENSIONS);
-  if (!gl_exts) {
-    printf_errf("(): Failed get GL extension list.");
-    return false;
-  }
-
-  bool found = wd_is_in_str(gl_exts, ext);
-  if (!found)
+    GLint n;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &n);
+    for(int i = 0; i < n; i++) {
+        const char* extension = glGetStringi(GL_EXTENSIONS, i);
+        if(strcmp(ext, extension)) {
+            return true;
+        }
+    }
     printf_errf("(): Missing GL extension %s.", ext);
-
-  return found;
+    return false;
 }
 
 static inline XVisualInfo *

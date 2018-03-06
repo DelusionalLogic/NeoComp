@@ -1599,7 +1599,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
   glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-  break;
 #endif
 
   if (t && t->reg_ignore) {

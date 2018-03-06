@@ -186,6 +186,8 @@ glx_init(session_t *ps, bool need_render) {
 #endif
 
   }
+  char* version = glGetString(GL_VERSION);
+  printf("Opengl version %s\n", version);
 
   // Ensure we have a stencil buffer. X Fixes does not guarantee rectangles
   // in regions don't overlap, so we must use stencil buffer to make sure
@@ -264,7 +266,6 @@ glx_init(session_t *ps, bool need_render) {
 
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
     glDisable(GL_BLEND);
 
     if (!ps->o.glx_no_stencil) {
@@ -383,13 +384,6 @@ glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_width, ps->root_height);
 
   ps->psglx->view = orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
-
-  // Initialize matrix, copied from dcompmgr
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
 }
 
 /**
@@ -1165,7 +1159,7 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
     glDisable(GL_STENCIL_TEST);
 
     // Do the blur
-    if(!texture_blur(&texture, 4)) {
+    if(!texture_blur(&framebuffer, &texture, 4)) {
         printf_errf("Failed blurring the background texture");
         texture_delete(&texture);
         renderbuffer_delete(&buffer);

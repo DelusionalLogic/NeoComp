@@ -6,6 +6,7 @@
 #include "shaders/shaderinfo.h"
 #include "renderutil.h"
 #include "textureeffects.h"
+#include "framebuffer.h"
 
 #include <stdio.h>
 
@@ -63,10 +64,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         return false;
     }
 
-    const GLuint fbo = pbc->fbo;
-
     struct Texture* tex_scr = &pbc->texture[0];
-    struct Texture* tex_scr2 = &pbc->texture[1];
     // Read destination pixels into a texture
 
     Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
@@ -85,7 +83,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     int level = ps->o.blur_level;
 
     // Do the blur
-    if(!texture_blur(tex_scr, level)) {
+    if(!texture_blur(&pbc->fbo, tex_scr, level)) {
         printf_errf("Failed blurring the background texture");
 
         if (have_scissors)
@@ -248,12 +246,11 @@ int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
     }
 
     // Generate FBO if needed
-    if(cache->fbo == 0)
-        glGenFramebuffers(1, &cache->fbo);
-
-    if(cache->fbo == 0) {
-        printf("Failed allocating framebuffer for cache\n");
-        return 1;
+    if(!framebuffer_initialized(&cache->fbo)) {
+        if(!framebuffer_init(&cache->fbo)) {
+            printf("Failed allocating framebuffer for cache\n");
+            return 1;
+        }
     }
 
     // Set the size

@@ -26,10 +26,13 @@ OBJS += vmath.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o texture.o include.o
 OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer.o
 
+ifneq "$(GLX_CONTEXT_DEBUG)" ""
+    CFG += -DDEBUG_GLX_DEBUG_CONTEXT
+endif
+
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
   # CFG += -DDEBUG_GLX_PAINTREG
-  CFG += -DDEBUG_GLX_DEBUG_CONTEXT
   CFG += -DDEBUG_GLX_GLSL
 endif
 

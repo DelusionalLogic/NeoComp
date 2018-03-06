@@ -13,7 +13,7 @@
 #include <assert.h>
 
 // Blurs a texture into that same texture.
-bool texture_blur(struct Texture* texture, int stength) {
+bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int stength) {
     assert(texture_initialized(texture));
 
     struct Texture other;
@@ -23,8 +23,7 @@ bool texture_blur(struct Texture* texture, int stength) {
     }
     struct Texture* otherPtr = &other;
 
-    struct Framebuffer framebuffer;
-    framebuffer_init(&framebuffer);
+    framebuffer_resetTarget(framebuffer);
 
     assert(texture_initialized(otherPtr));
 
@@ -32,8 +31,8 @@ bool texture_blur(struct Texture* texture, int stength) {
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
-	framebuffer_targetTexture(&framebuffer, otherPtr);
-	framebuffer_bind(&framebuffer);
+	framebuffer_targetTexture(framebuffer, otherPtr);
+	framebuffer_bind(framebuffer);
 	//Clear the new texture to transparent
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -69,9 +68,9 @@ bool texture_blur(struct Texture* texture, int stength) {
         vec2_idiv(&targetSize, 2);
 
         // Set up to draw to the secondary texture
-        framebuffer_resetTarget(&framebuffer);
-        framebuffer_targetTexture(&framebuffer, otherPtr);
-        framebuffer_bind(&framebuffer);
+        framebuffer_resetTarget(framebuffer);
+        framebuffer_targetTexture(framebuffer, otherPtr);
+        framebuffer_bind(framebuffer);
 
         glViewport(0, 0, texture->size.x, texture->size.y);
 
@@ -145,9 +144,9 @@ bool texture_blur(struct Texture* texture, int stength) {
         vec2_imul(&targetSize, 2);
 
         // Set up to draw to the secondary texture
-        framebuffer_resetTarget(&framebuffer);
-        framebuffer_targetTexture(&framebuffer, otherPtr);
-        framebuffer_bind(&framebuffer);
+        framebuffer_resetTarget(framebuffer);
+        framebuffer_targetTexture(framebuffer, otherPtr);
+        framebuffer_bind(framebuffer);
 
         glViewport(0, 0, texture->size.x, texture->size.y);
 
@@ -194,7 +193,6 @@ bool texture_blur(struct Texture* texture, int stength) {
         }
     }
 
-	framebuffer_delete(&framebuffer);
     texture_delete(otherPtr);
     return true;
 }

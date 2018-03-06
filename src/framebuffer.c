@@ -11,6 +11,10 @@ bool framebuffer_init(struct Framebuffer* framebuffer) {
     return true;
 }
 
+bool framebuffer_initialized(struct Framebuffer* framebuffer) {
+    return framebuffer->gl_fbo != 0;
+}
+
 void framebuffer_resetTarget(struct Framebuffer* framebuffer) {
     framebuffer->target = 0;
     framebuffer->texture = NULL;

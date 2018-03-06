@@ -124,6 +124,7 @@
 
 #include "vmath.h"
 #include "texture.h"
+#include "framebuffer.h"
 
 // @CLEANUP @HACK We don't actually want this here, but because everything is in
 // here i do now.
@@ -138,7 +139,7 @@ struct blur {
 
 typedef struct {
   /// Framebuffer used for blurring.
-  GLuint fbo;
+  struct Framebuffer fbo;
   /// Textures used for blurring.
   GLuint textures[2];
   struct Texture texture[2];
