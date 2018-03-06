@@ -28,20 +28,21 @@ Matrix perspective(float fovy, float aspect_ratio, float near_plane, float far_p
 Matrix orthogonal(float left, float right, float bottom, float top, float near, float far);
 
 // Vector operations {{{
-#define DEFINE_VEC_OPS(n)                                                 \
-void vec##n##_add(Vector##n * r, const Vector##n * const a);              \
-void vec##n##_sub(Vector##n * r, const Vector##n * const a);              \
-void vec##n##_scale(Vector##n * const v, float const s);                  \
-float vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b); \
-void vec##n##_idiv(Vector##n * a, float x);                               \
-void vec##n##_div(Vector##n * const a, const Vector##n * const b);        \
-void vec##n##_imul(Vector##n * a, float x);                               \
-void vec##n##_mul(Vector##n * const a, const Vector##n * const b);        \
-float vec##n##_len(const Vector##n * const v);                            \
-void vec##n##_norm(Vector##n * const v);                                  \
-void vec##n##_min(Vector##n * a, const Vector##n * b);                    \
-void vec##n##_max(Vector##n * a, const Vector##n * b);                    \
-bool vec##n##_eq(const Vector##n * a, const Vector##n * b);               \
+#define DEFINE_VEC_OPS(n)                                                     \
+void vec##n##_add(Vector##n * r, const Vector##n * const a);                  \
+void vec##n##_sub(Vector##n * r, const Vector##n * const a);                  \
+void vec##n##_scale(Vector##n * const v, float const s);                      \
+float vec##n##_mul_inner(Vector##n * const a, const Vector##n * const b);     \
+void vec##n##_idiv(Vector##n * a, float x);                                   \
+void vec##n##_div(Vector##n * const a, const Vector##n * const b);            \
+void vec##n##_imul(Vector##n * a, float x);                                   \
+void vec##n##_mul(Vector##n * const a, const Vector##n * const b);            \
+float vec##n##_len(const Vector##n * const v);                                \
+void vec##n##_norm(Vector##n * const v);                                      \
+void vec##n##_min(Vector##n * a, const Vector##n * b);                        \
+void vec##n##_max(Vector##n * a, const Vector##n * b);                        \
+void vec##n##_clamp(Vector##n * a, const Vector##n * b, const Vector##n * c); \
+bool vec##n##_eq(const Vector##n * a, const Vector##n * b);                   \
 
 #define DEFINE_VEC_CONST(n, k) \
     Vector##n vec##n##_from_vec##k (const Vector##n * const v, ...);

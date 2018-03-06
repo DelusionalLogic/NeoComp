@@ -1107,6 +1107,8 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
 
     glEnable(GL_BLEND);
     glEnable(GL_STENCIL_TEST);
+	bool hadScissor = glIsEnabled(GL_SCISSOR_TEST);
+    glDisable(GL_SCISSOR_TEST);
 
     glClearColor(0.0, 0.0, 0.0, 0.0);
 
@@ -1164,6 +1166,8 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
         texture_delete(&texture);
         renderbuffer_delete(&buffer);
         framebuffer_delete(&framebuffer);
+        if(hadScissor)
+            glEnable(GL_SCISSOR_TEST);
         return;
     }
 
@@ -1173,6 +1177,8 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
         texture_delete(&texture);
         renderbuffer_delete(&buffer);
         framebuffer_delete(&framebuffer);
+        if(hadScissor)
+            glEnable(GL_SCISSOR_TEST);
         return;
     }
 
@@ -1186,6 +1192,8 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
         renderbuffer_delete(&buffer);
         texture_delete(&clipBuffer);
         framebuffer_delete(&framebuffer);
+        if(hadScissor)
+            glEnable(GL_SCISSOR_TEST);
         return;
     }
     glViewport(0, 0, clipBuffer.size.x, clipBuffer.size.y);
@@ -1202,6 +1210,8 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
     draw_tex(ps, face, &texture, &VEC2_ZERO, &VEC2_UNIT);
 
     glDisable(GL_STENCIL_TEST);
+    if(hadScissor)
+        glEnable(GL_SCISSOR_TEST);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };

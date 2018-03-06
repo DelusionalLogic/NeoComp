@@ -53,8 +53,8 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
 
     Vector2 pixeluv = {{1.0f, 1.0f}};
     vec2_div(&pixeluv, &texture->size);
-    Vector2 halfpixel = pixeluv;
-    vec2_idiv(&halfpixel, 2);
+    Vector2 halfpixel = {{1.0f, 1.0f}};
+    vec2_div(&halfpixel, &texture->size);
     Vector2 zero_vec = {{0.0, 0.0}};
 
     struct face* face = assets_load("window.face");
