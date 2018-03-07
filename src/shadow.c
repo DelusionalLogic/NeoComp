@@ -172,8 +172,6 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
     draw_tex(ps, face, &texture, &VEC2_ZERO, &VEC2_UNIT);
 
     glDisable(GL_STENCIL_TEST);
-    if(hadScissor)
-        glEnable(GL_SCISSOR_TEST);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
@@ -205,7 +203,11 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         draw_tex(ps, face, &clipBuffer, &relpos, &scale);
     }
 
-    glDisable(GL_STENCIL_TEST);
+    // @HACK: This should be done before we draw, but that breaks rendering of
+    // the shadow for some reason
+    if(hadScissor)
+        glEnable(GL_SCISSOR_TEST);
+
     glDisable(GL_BLEND);
 
     texture_delete(&texture);
