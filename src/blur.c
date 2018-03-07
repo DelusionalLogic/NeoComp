@@ -14,6 +14,14 @@ void blur_init(struct blur* blur) {
     glGenVertexArrays(1, &blur->array);
     glBindVertexArray(blur->array);
 
+    // Generate FBO if needed
+    if(!framebuffer_initialized(&blur->fbo)) {
+        if(!framebuffer_init(&blur->fbo)) {
+            printf("Failed allocating framebuffer for cache\n");
+            return;
+        }
+    }
+
     blur->face = assets_load("window.face");
     if(blur->face == NULL) {
         printf("Failed loading window drawing face\n");
@@ -52,7 +60,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     // Texture scaling factor
     Vector2 pixeluv = {{1.0f, 1.0f}};
-    vec2_div(&pixeluv, size);
+    vec2_div(&pixeluv, &tex_scr->size);
     Vector2 halfpixel = pixeluv;
     vec2_idiv(&halfpixel, 2);
 
@@ -62,8 +70,12 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     int level = ps->o.blur_level;
 
+    struct TextureBlurData blurData = {
+        .buffer = &blur->fbo,
+        .swap = &pbc->texture[1],
+    };
     // Do the blur
-    if(!texture_blur(&pbc->fbo, tex_scr, level)) {
+    if(!texture_blur(&blurData, tex_scr, level)) {
         printf_errf("Failed blurring the background texture");
 
         if (have_scissors)
@@ -202,33 +214,16 @@ int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
 
     // Generate textures if needed
     if(!texture_initialized(&cache->texture[0])) {
-        texture_init(&cache->texture[0], GL_TEXTURE_2D, size);
-        cache->textures[0] = cache->texture[0].gl_texture;
-    }
-    /* if(cache->textures[0] == 0) */
-    /*     cache->textures[0] = generate_texture(GL_TEXTURE_2D, size); */
-
-    if(cache->textures[0] == 0) {
-        printf("Failed allocating texture for cache\n");
-        return 1;
+        if(texture_init(&cache->texture[0], GL_TEXTURE_2D, size) != 0) {
+            printf("Failed allocating texture for cache\n");
+            return 1;
+        }
     }
 
     if(!texture_initialized(&cache->texture[1])) {
-        texture_init(&cache->texture[1], GL_TEXTURE_2D, size);
-        cache->textures[1] = cache->texture[1].gl_texture;
-    }
-    /* if(cache->textures[1] == 0) */
-    /*     cache->textures[1] = generate_texture(GL_TEXTURE_2D, size); */
-
-    if(cache->textures[1] == 0) {
-        printf("Failed allocating texture for cache\n");
-        return 1;
-    }
-
-    // Generate FBO if needed
-    if(!framebuffer_initialized(&cache->fbo)) {
-        if(!framebuffer_init(&cache->fbo)) {
-            printf("Failed allocating framebuffer for cache\n");
+        if(texture_init(&cache->texture[1], GL_TEXTURE_2D, size) != 0) {
+            printf("Failed allocating texture for cache\n");
+            texture_delete(&cache->texture[0]);
             return 1;
         }
     }
@@ -237,4 +232,9 @@ int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
     cache->size = *size;
 
     return 0;
+}
+
+void blur_cache_delete(glx_blur_cache_t* cache) {
+    texture_delete(&cache->texture[0]);
+    texture_delete(&cache->texture[1]);
 }

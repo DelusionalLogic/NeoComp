@@ -134,6 +134,7 @@
 // FUCK
 struct blur {
     struct face* face;
+    struct Framebuffer fbo;
     GLuint array;
 };
 
@@ -141,7 +142,6 @@ typedef struct {
   /// Framebuffer used for blurring.
   struct Framebuffer fbo;
   /// Textures used for blurring.
-  GLuint textures[2];
   struct Texture texture[2];
   Vector2 size;
   /// Width of the textures.
@@ -2241,26 +2241,6 @@ free_glx_fbo(session_t *ps, GLuint *pfbo) {
 }
 
 /**
- * Free data in glx_blur_cache_t on resize.
- */
-static inline void
-free_glx_bc_resize(session_t *ps, glx_blur_cache_t *pbc) {
-  free_texture_r(ps, &pbc->textures[0]);
-  free_texture_r(ps, &pbc->textures[1]);
-  pbc->width = 0;
-  pbc->height = 0;
-}
-
-/**
- * Free a glx_blur_cache_t
- */
-static inline void
-free_glx_bc(session_t *ps, glx_blur_cache_t *pbc) {
-  framebuffer_delete(&pbc->fbo);
-  free_glx_bc_resize(ps, pbc);
-}
-
-/**
  * Free a glx_texture_t.
  */
 static inline void
@@ -2296,7 +2276,6 @@ static inline void
 free_win_res_glx(session_t *ps, win *w) {
   free_paint_glx(ps, &w->paint);
   free_paint_glx(ps, &w->shadow_paint);
-  free_glx_bc(ps, &w->glx_blur_cache);
 }
 
 /**

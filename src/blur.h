@@ -35,3 +35,4 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         glx_blur_cache_t* pbc);
 
 int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size);
+void blur_cache_delete(glx_blur_cache_t* cache);

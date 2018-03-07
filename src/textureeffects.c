@@ -13,17 +13,12 @@
 #include <assert.h>
 
 // Blurs a texture into that same texture.
-bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int stength) {
+bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength) {
     assert(texture_initialized(texture));
 
-    struct Texture other;
-    if(texture_init(&other, GL_TEXTURE_2D, &texture->size)) {
-        printf("Failed allocating swap texture");
-        return false;
-    }
-    struct Texture* otherPtr = &other;
+    struct Texture* otherPtr = data->swap;
 
-    framebuffer_resetTarget(framebuffer);
+    framebuffer_resetTarget(data->buffer);
 
     assert(texture_initialized(otherPtr));
 
@@ -31,8 +26,8 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
-	framebuffer_targetTexture(framebuffer, otherPtr);
-	framebuffer_bind(framebuffer);
+	framebuffer_targetTexture(data->buffer, otherPtr);
+	framebuffer_bind(data->buffer);
 	//Clear the new texture to transparent
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -40,7 +35,6 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
         printf("shader was not a downsample shader\n");
-        texture_delete(otherPtr);
         return false;
     }
 
@@ -68,9 +62,9 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
         vec2_idiv(&targetSize, 2);
 
         // Set up to draw to the secondary texture
-        framebuffer_resetTarget(framebuffer);
-        framebuffer_targetTexture(framebuffer, otherPtr);
-        framebuffer_bind(framebuffer);
+        framebuffer_resetTarget(data->buffer);
+        framebuffer_targetTexture(data->buffer, otherPtr);
+        framebuffer_bind(data->buffer);
 
         glViewport(0, 0, texture->size.x, texture->size.y);
 
@@ -124,7 +118,6 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
         printf("Shader was not a upsample shader");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
-        texture_delete(otherPtr);
         return false;
     }
 
@@ -144,9 +137,9 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
         vec2_imul(&targetSize, 2);
 
         // Set up to draw to the secondary texture
-        framebuffer_resetTarget(framebuffer);
-        framebuffer_targetTexture(framebuffer, otherPtr);
-        framebuffer_bind(framebuffer);
+        framebuffer_resetTarget(data->buffer);
+        framebuffer_targetTexture(data->buffer, otherPtr);
+        framebuffer_bind(data->buffer);
 
         glViewport(0, 0, texture->size.x, texture->size.y);
 
@@ -193,6 +186,5 @@ bool texture_blur(struct Framebuffer* framebuffer, struct Texture* texture, int 
         }
     }
 
-    texture_delete(otherPtr);
     return true;
 }

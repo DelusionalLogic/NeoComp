@@ -3,4 +3,9 @@
 #include "texture.h"
 #include "framebuffer.h"
 
-bool texture_blur(struct Framebuffer* buffer, struct Texture* texture, int stength);
+struct TextureBlurData {
+    struct Framebuffer* buffer;
+    struct Texture* swap;
+};
+
+bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength);

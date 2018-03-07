@@ -283,10 +283,12 @@ free_wpaint(session_t *ps, win *w) {
 
 /**
  * Destroy all resources in a <code>struct _win</code>.
+ * Free w (struct _win)
  */
 static inline void
 free_win_res(session_t *ps, win *w) {
   free_win_res_glx(ps, w);
+  blur_cache_delete(&w->glx_blur_cache);
   free_region(ps, &w->extents);
   free_paint(ps, &w->paint);
   free_region(ps, &w->border_size);
