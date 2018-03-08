@@ -1,6 +1,7 @@
 #include "texture.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 static inline GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
   GLuint tex = 0;
@@ -31,6 +32,15 @@ int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
     texture->size = *size;
 
     return 0;
+}
+
+void texture_resize(struct Texture* texture, const Vector2* size) {
+    assert(texture_initialized(texture));
+
+    glBindTexture(texture->target, texture->gl_texture);
+    glTexImage2D(texture->target, 0, GL_RGBA, size->x, size->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindTexture(texture->target, 0);
+    texture->size = *size;
 }
 
 void texture_delete(struct Texture* texture) {

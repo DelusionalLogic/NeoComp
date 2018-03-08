@@ -72,7 +72,7 @@ bool vec##n##_eq(const Vector##n * a, const Vector##n * b)                   \
         if(a->m[i] != b->m[i])                                               \
             return false;                                                    \
     }                                                                        \
-    return false;                                                            \
+    return true;                                                             \
 }
 
 #define DEFINE_VEC_CONST(n, k)                                          \

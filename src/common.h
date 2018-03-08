@@ -149,6 +149,15 @@ typedef struct {
   /// Height of the textures.
   int height;
 } glx_blur_cache_t;
+
+struct glx_shadow_cache {
+    bool initialized;
+    struct Texture texture;
+    struct Texture effect;
+    struct RenderBuffer stencil;
+    Vector2 wSize;
+    Vector2 border;
+};
 // FUCK
 // FUCK
 // FUCK
@@ -1234,6 +1243,8 @@ typedef struct _win {
 
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;
+
+  struct glx_shadow_cache shadow_cache;
 } win;
 
 /// Temporary structure used for communication between

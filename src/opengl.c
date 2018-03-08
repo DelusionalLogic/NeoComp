@@ -333,6 +333,7 @@ glx_destroy(session_t *ps) {
   for (win *w = ps->list; w; w = w->next) {
     free_win_res_glx(ps, w);
     blur_cache_delete(&w->glx_blur_cache);
+    shadow_cache_delete(&w->shadow_cache);
   }
 
   blur_destroy(&ps->psglx->blur);
