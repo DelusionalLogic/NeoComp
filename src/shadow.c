@@ -17,7 +17,7 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
 }
 
 int shadow_cache_init(struct glx_shadow_cache* cache, const Vector2* size) {
-    Vector2 border = {{64, 64}};
+    Vector2 border = {{32, 32}};
     cache->border = border;
     cache->wSize = *size;
 
@@ -48,7 +48,7 @@ int shadow_cache_init(struct glx_shadow_cache* cache, const Vector2* size) {
 
 int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size) {
     assert(cache->initialized == true);
-    Vector2 border = {{64, 64}};
+    Vector2 border = {{32, 32}};
     cache->wSize = *size;
 
     Vector2 overflowSize = border;
@@ -159,7 +159,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
             .buffer = &framebuffer,
             .swap = &cache->effect,
         };
-        if(!texture_blur(&blurData, &cache->texture, 4)) {
+        if(!texture_blur(&blurData, &cache->texture, 3, true)) {
             printf_errf("Failed blurring the background texture");
             framebuffer_delete(&framebuffer);
             if(hadScissor)

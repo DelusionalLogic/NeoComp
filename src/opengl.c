@@ -896,16 +896,21 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
 void
 glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
   // Quit if we aren't using stencils
-  if (ps->o.glx_no_stencil)
+  if (ps->o.glx_no_stencil) {
     return;
+  }
+
+  glx_mark(ps, 0xDEADBEEF, true);
 
   static XRectangle rect_blank = { .x = 0, .y = 0, .width = 0, .height = 0 };
 
   glDisable(GL_STENCIL_TEST);
   glDisable(GL_SCISSOR_TEST);
 
-  if (!reg)
+  if (!reg) {
+    glx_mark(ps, 0xDEADBEEF, false);
     return;
+  }
 
   int nrects = 0;
   XRectangle *rects_free = NULL;
@@ -975,7 +980,7 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
       draw_rect(face, passthough_type->mvp, relpos, scale);
     }
 
-    glUseProgram(0);
+    /* glUseProgram(0); */
 
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -985,6 +990,7 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
   cxfree(rects_free);
 
   glx_check_err(ps);
+  glx_mark(ps, 0xDEADBEEF, false);
 }
 
 #define P_PAINTREG_START() \
@@ -1176,7 +1182,7 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
     free_region(ps, &reg_new);
   }
 
-  glUseProgram(0);
+  /* glUseProgram(0); */
 
   // Cleanup
   glBindTexture(GL_TEXTURE_2D, 0);

@@ -8,4 +8,4 @@ struct TextureBlurData {
     struct Texture* swap;
 };
 
-bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength);
+bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength, bool transparent);

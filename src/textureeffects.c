@@ -13,7 +13,7 @@
 #include <assert.h>
 
 // Blurs a texture into that same texture.
-bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength) {
+bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int stength, bool transparent) {
     assert(texture_initialized(texture));
 
     struct Texture* otherPtr = data->swap;
@@ -94,8 +94,10 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
             vec2_mul(&uv_max, &sourceSize);
             vec2_sub(&uv_max, &halfpixel);
 
-            glClearColor(0.0, 0.0, 0.0, 0.0);
-            glClear(GL_COLOR_BUFFER_BIT);
+            if(transparent) {
+                glClearColor(0.0, 0.0, 0.0, 0.0);
+                glClear(GL_COLOR_BUFFER_BIT);
+            }
 
             shader_set_uniform_vec2(downscale_type->extent, &uv_max);
             shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);

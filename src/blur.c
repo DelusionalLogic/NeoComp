@@ -76,7 +76,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         .swap = &pbc->texture[1],
     };
     // Do the blur
-    if(!texture_blur(&blurData, tex_scr, level)) {
+    if(!texture_blur(&blurData, tex_scr, level, false)) {
         printf_errf("Failed blurring the background texture");
 
         if (have_scissors)
