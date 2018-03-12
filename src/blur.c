@@ -38,7 +38,8 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
 bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
         XserverRegion reg_tgt, const reg_data_t *pcache_reg,
-        glx_blur_cache_t* pbc){
+        glx_blur_cache_t* pbc) {
+    glx_mark(ps, 0xDEADBEEF, true);
 #ifdef DEBUG_GLX
     printf_dbgf("(): %f, %f, %f, %f\n", pos->x, pos->y, size->x, size->y);
 #endif

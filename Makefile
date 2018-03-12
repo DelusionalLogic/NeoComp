@@ -28,6 +28,7 @@ OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer
 
 ifneq "$(GLX_CONTEXT_DEBUG)" ""
     CFG += -DDEBUG_GLX_DEBUG_CONTEXT
+    CFG += -DDEBUG_GLX_MARK
 endif
 
 ifneq "$(GLX_DEBUG)" ""

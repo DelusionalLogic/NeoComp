@@ -75,6 +75,7 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
 }
 
 void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size) {
+    glx_mark(ps, w->id, true);
     struct glx_shadow_cache* cache = &w->shadow_cache;
 
     struct face* face = assets_load("window.face");
