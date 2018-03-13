@@ -2175,7 +2175,7 @@ void
 glx_release_pixmap(session_t *ps, glx_texture_t *ptex);
 
 void
-glx_paint_pre(session_t *ps, XserverRegion *preg);
+glx_paint_pre(session_t *ps);
 
 /**
  * Check if a texture is binded, or is binded to the given pixmap.

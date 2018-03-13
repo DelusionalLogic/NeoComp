@@ -729,7 +729,7 @@ normalize_conv_kern(int wid, int hei, XFixed *kern) {
 }
 
 static void
-paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t);
+paint_all(session_t *ps, win *t);
 
 static void
 add_damage(session_t *ps, XserverRegion damage);

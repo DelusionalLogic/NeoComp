@@ -1526,22 +1526,10 @@ rebuild_shadow_exclude_reg(session_t *ps) {
 }
 
 static void
-paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t) {
-  if (!region_real)
-    region_real = region;
-
+paint_all(session_t *ps, win *t) {
   zone_enter(&ZONE_global);
 
-#ifdef DEBUG_REPAINT
-  static struct timespec last_paint = { 0 };
-#endif
-  XserverRegion reg_paint = None, reg_tmp = None, reg_tmp2 = None;
-
-  glx_paint_pre(ps, &region);
-
-  if (!region) {
-    region_real = region = get_screen_region(ps);
-  }
+  glx_paint_pre(ps);
 
 #ifdef MONITOR_REPAINT
   // Note: MONITOR_REPAINT cannot work with DBE right now.
@@ -1599,7 +1587,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
     // effect
     XSync(ps->dpy, False);
     if (glx_has_context(ps)) {
-        glFinish();
         glXWaitX();
     }
   }
@@ -1614,29 +1601,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
 
   if (ps->o.vsync_aggressive)
     vsync_wait(ps);
-
-  XFlush(ps->dpy);
-
-  if (glx_has_context(ps)) {
-      glFlush();
-      glXWaitX();
-  }
-
-  XFixesDestroyRegion(ps->dpy, region);
-
-#ifdef DEBUG_REPAINT
-  print_timestamp(ps);
-  struct timespec now = get_time_timespec();
-  struct timespec diff = { 0 };
-  timespec_subtract(&diff, &now, &last_paint);
-  printf("[ %5ld:%09ld ] ", diff.tv_sec, diff.tv_nsec);
-  last_paint = now;
-  printf("paint:");
-  for (win *w = t; w; w = w->prev_trans)
-    printf(" %#010lx", w->id);
-  putchar('\n');
-  fflush(stdout);
-#endif
 
   // Check if fading is finished on all painted windows
   {
@@ -6961,7 +6925,7 @@ session_run(session_t *ps) {
   t = paint_preprocess(ps, ps->list);
 
   if (ps->redirected)
-    paint_all(ps, None, None, t);
+    paint_all(ps, t);
 
   // Initialize idling
   ps->idling = false;
@@ -7004,7 +6968,7 @@ session_run(session_t *ps) {
     resize_region(ps, ps->all_damage, ps->o.resize_damage);
     if (ps->all_damage && !is_region_empty(ps, ps->all_damage, NULL)) {
       static int paint = 0;
-      paint_all(ps, ps->all_damage, all_damage_orig, t);
+      paint_all(ps, t);
       ps->reg_ignore_expire = false;
       paint++;
       if (ps->o.benchmark && paint >= ps->o.benchmark)

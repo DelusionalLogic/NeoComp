@@ -1,5 +1,7 @@
 #include "face.h"
 
+#include <string.h>
+
 struct face* face_load_file(const char* path) {
     FILE* file = fopen(path, "r");
     if(file == NULL) {
@@ -33,8 +35,8 @@ struct face* face_load_file(const char* path) {
         line[strcspn(line, "\r\n")] = '\0';
 
         char type[64];
-        size_t length;
-        int matches = sscanf(line, "%63s %ld", type, &length);
+        size_t count;
+        int matches = sscanf(line, "%63s %ld", type, &count);
 
         // An EOF from matching means either an error or empty line. We will
         // just swallow those.
@@ -47,7 +49,8 @@ struct face* face_load_file(const char* path) {
         }
 
         if(strcmp(type, "vc") == 0) {
-            face->vertex_buffer_data = malloc(sizeof(float) * length * 3);
+            face->vertex_buffer_size = count;
+            face->vertex_buffer_data = malloc(sizeof(float) * count * 3);
             float* cursor = face->vertex_buffer_data;
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
@@ -59,7 +62,7 @@ struct face* face_load_file(const char* path) {
 
                 // Remove the trailing newlines
                 line[strcspn(line, "\r\n")] = '\0';
-                int matches = sscanf(line, "v %f %f %f", &x, &y, &z);
+                matches = sscanf(line, "v %f %f %f", &x, &y, &z);
 
                 // An EOF from matching means either an error or empty line. We will
                 // just stop on those.
@@ -78,7 +81,8 @@ struct face* face_load_file(const char* path) {
                 cursor += 3;
             }
         } else if(strcmp(type, "vtc") == 0) {
-            face->uv_buffer_data = malloc(sizeof(float) * length * 2);
+            face->uv_buffer_size = count;
+            face->uv_buffer_data = malloc(sizeof(float) * count * 2);
             float* cursor = face->uv_buffer_data;
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
@@ -118,17 +122,17 @@ struct face* face_load_file(const char* path) {
     glGenBuffers(1, &face->uv);
 
     glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * length * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->vertex_buffer_size * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, face->uv);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * length * 2, face->uv_buffer_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->uv_buffer_size * 2, face->uv_buffer_data, GL_STATIC_DRAW);
 
     return face;
 }
 
 void face_unload_file(struct face* asset) {
-    glDeleteBuffers(1, asset->vertex);
-    glDeleteBuffers(1, asset->uv);
+    glDeleteBuffers(1, &asset->vertex);
+    glDeleteBuffers(1, &asset->uv);
 
     free(asset->vertex_buffer_data);
     free(asset->uv_buffer_data);

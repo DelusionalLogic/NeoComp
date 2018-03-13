@@ -31,7 +31,7 @@
 #define EVAL2(name) TO_STR(name)
 #define EVAL() EVAL2(SHADER_NAME)
 
-extern struct shader_type_info SHADER_INFO_NAME = {
+struct shader_type_info SHADER_INFO_NAME = {
     .name = EVAL(),
     .size = sizeof(struct SHADER_STRUCT_NAME),
     .member_count = UNIFORMS_COUNT,

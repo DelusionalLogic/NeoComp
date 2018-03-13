@@ -9,7 +9,9 @@
 
 struct face {
     float* vertex_buffer_data;
+    size_t vertex_buffer_size;
     float* uv_buffer_data;
+    size_t uv_buffer_size;
 
     GLuint vertex;
     GLuint uv;

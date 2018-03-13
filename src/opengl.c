@@ -770,7 +770,7 @@ glx_release_pixmap(session_t *ps, glx_texture_t *ptex) {
  * Preprocess function before start painting.
  */
 void
-glx_paint_pre(session_t *ps, XserverRegion *damaged) {
+glx_paint_pre(session_t *ps) {
   ps->psglx->z = 0.0;
   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glx_check_err(ps);
