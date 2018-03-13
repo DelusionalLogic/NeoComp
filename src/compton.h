@@ -663,8 +663,7 @@ recheck_focus(session_t *ps);
 static bool
 get_root_tile(session_t *ps);
 
-static void
-paint_root(session_t *ps, XserverRegion reg_paint);
+static void paint_root(session_t *ps);
 
 static XserverRegion
 win_get_region(session_t *ps, win *w, bool use_offset);
@@ -691,18 +690,16 @@ static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
     double opacity, bool argb, bool neg,
     Picture pict, glx_texture_t *ptex,
-    XserverRegion reg_paint, const reg_data_t *pcache_reg
-    , const glx_prog_main_t *pprogram
+    const glx_prog_main_t *pprogram
     );
 
 #define \
-   render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, reg_paint, pcache_reg, pprogram) \
-  render_(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, reg_paint, pcache_reg, pprogram)
+   render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, pprogram) \
+  render_(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, pprogram)
 
 static inline void
 win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
-    double opacity, XserverRegion reg_paint, const reg_data_t *pcache_reg,
-    Picture pict) {
+    double opacity, Picture pict) {
   const int dx = (w ? w->a.x: 0) + x;
   const int dy = (w ? w->a.y: 0) + y;
   const bool argb = (w && (WMODE_ARGB == w->mode || ps->o.force_win_blend));
@@ -710,7 +707,7 @@ win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
 
   render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg,
       pict, (w ? w->paint.ptex: ps->root_tile_paint.ptex),
-      reg_paint, pcache_reg, (w ? &ps->o.glx_prog_win: NULL));
+      (w ? &ps->o.glx_prog_win: NULL));
 }
 
 static inline void

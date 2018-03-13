@@ -873,13 +873,11 @@ get_root_tile(session_t *ps) {
 /**
  * Paint root window content.
  */
-static void
-paint_root(session_t *ps, XserverRegion reg_paint) {
+static void paint_root(session_t *ps) {
   if (!ps->root_tile_paint.pixmap)
     get_root_tile(ps);
 
-  win_render(ps, NULL, 0, 0, ps->root_width, ps->root_height, 1.0, reg_paint,
-      NULL, ps->root_tile_paint.pict);
+  win_render(ps, NULL, 0, 0, ps->root_width, ps->root_height, 1.0, ps->root_tile_paint.pict);
 }
 
 /**
@@ -1307,8 +1305,7 @@ paint_preprocess(session_t *ps, win *list) {
  * Paint the shadow of a window.
  */
 static inline void
-win_paint_shadow(session_t *ps, win *w,
-    XserverRegion reg_paint, const reg_data_t *pcache_reg) {
+win_paint_shadow(session_t *ps, win *w) {
 
   // Fetch Pixmap
   if (!w->paint.pixmap && ps->has_name_pixmap) {
@@ -1343,10 +1340,6 @@ win_paint_shadow(session_t *ps, win *w,
   // Bind shadow pixmap to GLX texture if needed
   paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false);
 
-  if (!paint_isvalid(ps, &w->shadow_paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
   const Vector2 pos = {{
       w->a.x, w->a.y,
   }};
@@ -1360,26 +1353,10 @@ win_paint_shadow(session_t *ps, win *w,
   /*     w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL); */
 }
 
-/*
- * WORK-IN-PROGRESS!
-static void
-xr_take_screenshot(session_t *ps) {
-  XImage *img = XGetImage(ps->dpy, get_tgt_window(ps), 0, 0,
-      ps->root_width, ps->root_height, AllPlanes, XYPixmap);
-  if (!img) {
-    printf_errf("(): Failed to get XImage.");
-    return NULL;
-  }
-  assert(0 == img->xoffset);
-}
-*/
-
 /**
  * Blur the background of a window.
  */
-static inline void
-win_blur_background(session_t *ps, win *w, Picture tgt_buffer,
-    XserverRegion reg_paint, const reg_data_t *pcache_reg) {
+static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
   const Vector2 pos = {{
       w->a.x, w->a.y,
   }};
@@ -1397,27 +1374,24 @@ win_blur_background(session_t *ps, win *w, Picture tgt_buffer,
 
   // TODO: Handle frame opacity
   glx_blur_dst(ps, &pos, &size, ps->psglx->z - 0.5, factor_center,
-          reg_paint, pcache_reg, &w->glx_blur_cache);
+          &w->glx_blur_cache);
 }
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
     double opacity, bool argb, bool neg,
     Picture pict, glx_texture_t *ptex,
-    XserverRegion reg_paint, const reg_data_t *pcache_reg,
     const glx_prog_main_t *pprogram
     ) {
     glx_render(ps, ptex, x, y, dx, dy, wid, hei,
-            ps->psglx->z, opacity, argb, neg, reg_paint, pcache_reg, pprogram);
+            ps->psglx->z, opacity, argb, neg, pprogram);
     ps->psglx->z += 1;
 }
 
 /**
  * Paint a window itself and dim it if asked.
  */
-static inline void
-win_paint_win(session_t *ps, win *w, XserverRegion reg_paint,
-    const reg_data_t *pcache_reg) {
+static void win_paint_win(session_t *ps, win *w) {
   glx_mark(ps, w->id, true);
 
   // Fetch Pixmap
@@ -1460,7 +1434,7 @@ win_paint_win(session_t *ps, win *w, XserverRegion reg_paint,
   const double dopacity = get_opacity_percent(w);
 
   if (!w->frame_opacity) {
-    win_render(ps, w, 0, 0, wid, hei, dopacity, reg_paint, pcache_reg, pict);
+    win_render(ps, w, 0, 0, wid, hei, dopacity, pict);
   }
   else {
     // Painting parameters
@@ -1472,7 +1446,7 @@ win_paint_win(session_t *ps, win *w, XserverRegion reg_paint,
 
 #define COMP_BDR(cx, cy, cwid, chei) \
     win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity, \
-        reg_paint, pcache_reg, pict)
+        pict)
 
     // The following complicated logic is required because some broken
     // window managers (I'm talking about you, Openbox!) that makes
@@ -1507,7 +1481,7 @@ win_paint_win(session_t *ps, win *w, XserverRegion reg_paint,
           pwid = wid - l - pwid;
           if (pwid > 0) {
             // body
-            win_render(ps, w, l, t, pwid, phei, dopacity, reg_paint, pcache_reg, pict);
+            win_render(ps, w, l, t, pwid, phei, dopacity, pict);
           }
         }
       }
@@ -1525,8 +1499,7 @@ win_paint_win(session_t *ps, win *w, XserverRegion reg_paint,
     if (!ps->o.inactive_dim_fixed)
       dim_opacity *= get_opacity_percent(w);
 
-    glx_dim_dst(ps, x, y, wid, hei, ps->psglx->z - 0.7, dim_opacity,
-            reg_paint, pcache_reg);
+    glx_dim_dst(ps, x, y, wid, hei, ps->psglx->z - 0.7, dim_opacity);
   }
 
   glx_mark(ps, w->id, false);
@@ -1569,10 +1542,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
   if (!region) {
     region_real = region = get_screen_region(ps);
   }
-  else {
-    // Remove the damaged area out of screen
-    XFixesIntersectRegion(ps->dpy, region, region, ps->screen_reg);
-  }
 
 #ifdef MONITOR_REPAINT
   // Note: MONITOR_REPAINT cannot work with DBE right now.
@@ -1588,10 +1557,6 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
         ps->root_width, ps->root_height, ps->depth);
   }
 
-  if (BKEND_GLX != ps->o.backend)
-    ps->tgt_buffer.pict = XRenderCreatePicture(ps->dpy,
-        ps->tgt_buffer.pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
-        0, 0);
   }
 #endif
 
@@ -1601,137 +1566,26 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 #endif
 
-  if (t && t->reg_ignore) {
-    // Calculate the region upon which the root window is to be painted
-    // based on the ignore region of the lowest window, if available
-    reg_paint = reg_tmp = XFixesCreateRegion(ps->dpy, NULL, 0);
-    XFixesSubtractRegion(ps->dpy, reg_paint, region, t->reg_ignore);
-  }
-  else {
-    reg_paint = region;
-  }
-
-  set_tgt_clip(ps, reg_paint, NULL);
-  paint_root(ps, reg_paint);
-
-  // Create temporary regions for use during painting
-  if (!reg_tmp)
-    reg_tmp = XFixesCreateRegion(ps->dpy, NULL, 0);
-  reg_tmp2 = XFixesCreateRegion(ps->dpy, NULL, 0);
+  /* set_tgt_clip(ps, reg_paint, NULL); */
+  paint_root(ps);
 
   for (win *w = t; w; w = w->prev_trans) {
     // Painting shadow
     if (w->shadow) {
-      // Lazy shadow building
-      if (!w->shadow_paint.pixmap)
-        win_build_shadow(ps, w, 1);
-
-      // Shadow is to be painted based on the ignore region of current
-      // window
-      if (w->reg_ignore) {
-        if (w == t) {
-          // If it's the first cycle and reg_tmp2 is not ready, calculate
-          // the paint region here
-          reg_paint = reg_tmp;
-          XFixesSubtractRegion(ps->dpy, reg_paint, region, w->reg_ignore);
-        }
-        else {
-          // Otherwise, used the cached region during last cycle
-          reg_paint = reg_tmp2;
-        }
-        XFixesIntersectRegion(ps->dpy, reg_paint, reg_paint, w->extents);
-      }
-      else {
-        reg_paint = reg_tmp;
-        XFixesIntersectRegion(ps->dpy, reg_paint, region, w->extents);
-      }
-
-      if (ps->shadow_exclude_reg)
-        XFixesSubtractRegion(ps->dpy, reg_paint, reg_paint,
-            ps->shadow_exclude_reg);
-
-      // Might be worthwhile to crop the region to shadow border
-      {
-        XRectangle rec_shadow_border = {
-          .x = w->a.x + w->shadow_dx,
-          .y = w->a.y + w->shadow_dy,
-          .width = w->shadow_width,
-          .height = w->shadow_height
-        };
-        XserverRegion reg_shadow = XFixesCreateRegion(ps->dpy,
-            &rec_shadow_border, 1);
-        XFixesIntersectRegion(ps->dpy, reg_paint, reg_paint, reg_shadow);
-        free_region(ps, &reg_shadow);
-      }
-
-      // Clear the shadow here instead of in make_shadow() for saving GPU
-      // power and handling shaped windows
-      if (ps->o.clear_shadow && w->border_size)
-        XFixesSubtractRegion(ps->dpy, reg_paint, reg_paint, w->border_size);
-
-#ifdef CONFIG_XINERAMA
-      if (ps->o.xinerama_shadow_crop && w->xinerama_scr >= 0)
-        XFixesIntersectRegion(ps->dpy, reg_paint, reg_paint,
-            ps->xinerama_scr_regs[w->xinerama_scr]);
-#endif
-
-      // Detect if the region is empty before painting
-      {
-        reg_data_t cache_reg = REG_DATA_INIT;
-        if (region == reg_paint
-            || !is_region_empty(ps, reg_paint, &cache_reg)) {
-          set_tgt_clip(ps, reg_paint, &cache_reg);
-
-          win_paint_shadow(ps, w, reg_paint, &cache_reg);
-        }
-        free_reg_data(&cache_reg);
-      }
+      win_paint_shadow(ps, w);
     }
 
-    // Calculate the region based on the reg_ignore of the next (higher)
-    // window and the bounding region
-    reg_paint = reg_tmp;
-    if (w->prev_trans && w->prev_trans->reg_ignore) {
-      XFixesSubtractRegion(ps->dpy, reg_paint, region,
-          w->prev_trans->reg_ignore);
-      // Copy the subtracted region to be used for shadow painting in next
-      // cycle
-      XFixesCopyRegion(ps->dpy, reg_tmp2, reg_paint);
-
-      if (w->border_size)
-        XFixesIntersectRegion(ps->dpy, reg_paint, reg_paint, w->border_size);
+    // Blur the backbuffer behind the window to make transparent areas blurred.
+    // @PERFORMANCE: We are also blurring things that are opaque
+    if (w->blur_background && (!win_is_solid(ps, w) || (ps->o.blur_background_frame && w->frame_opacity))) {
+        win_blur_background(ps, w, ps->tgt_buffer.pict);
     }
-    else {
-      if (w->border_size)
-        XFixesIntersectRegion(ps->dpy, reg_paint, region, w->border_size);
-      else
-        reg_paint = region;
-    }
-
-    {
-      reg_data_t cache_reg = REG_DATA_INIT;
-      if (!is_region_empty(ps, reg_paint, &cache_reg)) {
-        set_tgt_clip(ps, reg_paint, &cache_reg);
-        // Blur window background
-        if (w->blur_background && (!win_is_solid(ps, w)
-              || (ps->o.blur_background_frame && w->frame_opacity))) {
-          win_blur_background(ps, w, ps->tgt_buffer.pict, reg_paint, &cache_reg);
-        }
 
         // Painting the window
-        win_paint_win(ps, w, reg_paint, &cache_reg);
-      }
-      free_reg_data(&cache_reg);
-    }
+
+    // Paint the window contents
+    win_paint_win(ps, w);
   }
-
-  // Free up all temporary regions
-  XFixesDestroyRegion(ps->dpy, reg_tmp);
-  XFixesDestroyRegion(ps->dpy, reg_tmp2);
-
-  // Do this as early as possible
-  if (!ps->o.dbe)
-    set_tgt_clip(ps, None, NULL);
 
   // Finish the profiling before the vsync, since we don't want that to drag out the time
   struct ProgramZone* rootZone = zone_package(&ZONE_global);
@@ -1745,26 +1599,18 @@ paint_all(session_t *ps, XserverRegion region, XserverRegion region_real, win *t
     // effect
     XSync(ps->dpy, False);
     if (glx_has_context(ps)) {
-        if (ps->o.vsync_use_glfinish)
-            glFinish();
-        else
-            glFlush();
+        glFinish();
         glXWaitX();
     }
   }
 
-  // Wait for VBlank. We could do it aggressively (send the painting
-  // request and XFlush() on VBlank) or conservatively (send the request
-  // only on VBlank).
-  if (!ps->o.vsync_aggressive)
-    vsync_wait(ps);
+  /* // Wait for VBlank. We could do it aggressively (send the painting */
+  /* // request and XFlush() on VBlank) or conservatively (send the request */
+  /* // only on VBlank). */
+  /* if (!ps->o.vsync_aggressive) */
+  /*   vsync_wait(ps); */
 
-  if (ps->o.glx_use_copysubbuffermesa)
-      glx_swap_copysubbuffermesa(ps, region_real);
-  else
-      glXSwapBuffers(ps->dpy, get_tgt_window(ps));
-
-  glx_mark_frame(ps);
+  glXSwapBuffers(ps->dpy, get_tgt_window(ps));
 
   if (ps->o.vsync_aggressive)
     vsync_wait(ps);

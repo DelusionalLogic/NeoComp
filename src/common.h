@@ -2191,25 +2191,22 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg);
 
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
-    GLfloat factor_center,
-    XserverRegion reg_tgt, const reg_data_t *pcache_reg,
-    glx_blur_cache_t *pbc);
+    GLfloat factor_center, glx_blur_cache_t *pbc);
 
 bool
 glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
-    GLfloat factor, XserverRegion reg_tgt, const reg_data_t *pcache_reg);
+    GLfloat factor);
 
 bool
 glx_render_(session_t *ps, const glx_texture_t *ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
     double opacity, bool argb, bool neg,
-    XserverRegion reg_tgt, const reg_data_t *pcache_reg
-    , const glx_prog_main_t *pprogram
+    const glx_prog_main_t *pprogram
     );
 
 #define \
-   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, reg_tgt, pcache_reg, pprogram) \
-  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, reg_tgt, pcache_reg, pprogram)
+   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram) \
+  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram)
 
 void
 glx_swap_copysubbuffermesa(session_t *ps, XserverRegion reg);

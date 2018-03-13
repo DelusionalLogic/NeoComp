@@ -773,113 +773,6 @@ void
 glx_paint_pre(session_t *ps, XserverRegion *damaged) {
   ps->psglx->z = 0.0;
   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  // Get buffer age
-  bool trace_damage = (ps->o.glx_swap_method < 0 || ps->o.glx_swap_method > 1);
-
-  // Trace raw damage regions
-  XserverRegion newdamage = None;
-  if (trace_damage && *damaged)
-    newdamage = copy_region(ps, *damaged);
-
-  // OpenGL doesn't support partial repaint without GLX_MESA_copy_sub_buffer,
-  // we could redraw the whole screen or copy unmodified pixels from
-  // front buffer with --glx-copy-from-front.
-  if (ps->o.glx_use_copysubbuffermesa || !*damaged) {
-  }
-  else {
-    int buffer_age = ps->o.glx_swap_method;
-
-    // Getting buffer age
-    {
-      // Query GLX_EXT_buffer_age for buffer age
-      if (SWAPM_BUFFER_AGE == buffer_age) {
-        unsigned val = 0;
-        glXQueryDrawable(ps->dpy, get_tgt_window(ps),
-            GLX_BACK_BUFFER_AGE_EXT, &val);
-        buffer_age = val;
-      }
-
-      // Buffer age too high
-      if (buffer_age > CGLX_MAX_BUFFER_AGE + 1)
-        buffer_age = 0;
-
-      // Make sure buffer age >= 0
-      buffer_age = max_i(buffer_age, 0);
-
-      // Check if we have we have empty regions
-      if (buffer_age > 1) {
-        for (int i = 0; i < buffer_age - 1; ++i)
-          if (!ps->all_damage_last[i]) { buffer_age = 0; break; }
-      }
-    }
-
-    // Do nothing for buffer_age 1 (copy)
-    if (1 != buffer_age) {
-      // Copy pixels
-      if (ps->o.glx_copy_from_front) {
-        // Determine copy area
-        XserverRegion reg_copy = XFixesCreateRegion(ps->dpy, NULL, 0);
-        if (!buffer_age) {
-          XFixesSubtractRegion(ps->dpy, reg_copy, ps->screen_reg, *damaged);
-        }
-        else {
-          for (int i = 0; i < buffer_age - 1; ++i)
-            XFixesUnionRegion(ps->dpy, reg_copy, reg_copy,
-                ps->all_damage_last[i]);
-          XFixesSubtractRegion(ps->dpy, reg_copy, reg_copy, *damaged);
-        }
-
-        // Actually copy pixels
-        {
-          GLfloat raster_pos[4];
-          GLfloat curx = 0.0f, cury = 0.0f;
-          glGetFloatv(GL_CURRENT_RASTER_POSITION, raster_pos);
-          glReadBuffer(GL_FRONT);
-          glRasterPos2f(0.0, 0.0);
-          {
-            int nrects = 0;
-            XRectangle *rects = XFixesFetchRegion(ps->dpy, reg_copy, &nrects);
-            for (int i = 0; i < nrects; ++i) {
-              const int x = rects[i].x;
-              const int y = ps->root_height - rects[i].y - rects[i].height;
-              // Kwin patch says glRasterPos2f() causes artifacts on bottom
-              // screen edge with some drivers
-              glBitmap(0, 0, 0, 0, x - curx, y - cury, NULL);
-              curx = x;
-              cury = y;
-              glCopyPixels(x, y, rects[i].width, rects[i].height, GL_COLOR);
-            }
-            cxfree(rects);
-          }
-          glReadBuffer(GL_BACK);
-          glRasterPos4fv(raster_pos);
-        }
-
-        free_region(ps, &reg_copy);
-      }
-
-      // Determine paint area
-      if (ps->o.glx_copy_from_front) { }
-      else if (buffer_age) {
-        for (int i = 0; i < buffer_age - 1; ++i)
-          XFixesUnionRegion(ps->dpy, *damaged, *damaged, ps->all_damage_last[i]);
-      }
-      else {
-        free_region(ps, damaged);
-      }
-    }
-  }
-
-  if (trace_damage) {
-    free_region(ps, &ps->all_damage_last[CGLX_MAX_BUFFER_AGE - 1]);
-    memmove(ps->all_damage_last + 1, ps->all_damage_last,
-        (CGLX_MAX_BUFFER_AGE - 1) * sizeof(XserverRegion));
-    ps->all_damage_last[0] = newdamage;
-  }
-
-  glx_set_clip(ps, *damaged, NULL);
-
   glx_check_err(ps);
 }
 
@@ -1035,44 +928,46 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
-    XserverRegion reg_tgt, const reg_data_t *pcache_reg,
     glx_blur_cache_t *pbc) {
-    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, reg_tgt, pcache_reg, pbc);
+    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, pbc);
     glx_check_err(ps);
     return ret;
 }
 
 bool
 glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
-    GLfloat factor, XserverRegion reg_tgt, const reg_data_t *pcache_reg) {
+    GLfloat factor) {
   // It's possible to dim in glx_render(), but it would be over-complicated
   // considering all those mess in color negation and modulation
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-  glColor4f(0.0f, 0.0f, 0.0f, factor);
 
-  {
-    P_PAINTREG_START();
-    {
-      GLint rdx = crect.x;
-      GLint rdy = ps->root_height - crect.y;
-      GLint rdxe = rdx + crect.width;
-      GLint rdye = rdy - crect.height;
+  // @INCOMPLETE: Stop for now
 
-      glVertex3i(rdx, rdy, z);
-      glVertex3i(rdxe, rdy, z);
-      glVertex3i(rdxe, rdye, z);
-      glVertex3i(rdx, rdye, z);
-    }
-    P_PAINTREG_END();
-  }
+  /* glEnable(GL_BLEND); */
+  /* glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); */
+  /* glColor4f(0.0f, 0.0f, 0.0f, factor); */
 
-  glEnd();
+  /* { */
+  /*   P_PAINTREG_START(); */
+  /*   { */
+  /*     GLint rdx = crect.x; */
+  /*     GLint rdy = ps->root_height - crect.y; */
+  /*     GLint rdxe = rdx + crect.width; */
+  /*     GLint rdye = rdy - crect.height; */
 
-  glColor4f(0.0f, 0.0f, 0.0f, 0.0f);
-  glDisable(GL_BLEND);
+  /*     glVertex3i(rdx, rdy, z); */
+  /*     glVertex3i(rdxe, rdy, z); */
+  /*     glVertex3i(rdxe, rdye, z); */
+  /*     glVertex3i(rdx, rdye, z); */
+  /*   } */
+  /*   P_PAINTREG_END(); */
+  /* } */
 
-  glx_check_err(ps);
+  /* glEnd(); */
+
+  /* glColor4f(0.0f, 0.0f, 0.0f, 0.0f); */
+  /* glDisable(GL_BLEND); */
+
+  /* glx_check_err(ps); */
 
   return true;
 }
@@ -1088,8 +983,7 @@ bool
 glx_render_(session_t *ps, const glx_texture_t *ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
     double opacity, bool argb, bool neg,
-    XserverRegion reg_tgt, const reg_data_t *pcache_reg
-    , const glx_prog_main_t *pprogram
+    const glx_prog_main_t *pprogram
     ) {
   if (!ptex || !ptex->texture) {
     printf_errf("(): Missing texture.");
@@ -1137,31 +1031,8 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
 
   // Painting
   {
-    XserverRegion reg_new = None;
-    XRectangle rec_all = { .x = dx, .y = dy, .width = width, .height = height };
-    XRectangle *rects = &rec_all;
-    int nrects = 1;
-
-    if (ps->o.glx_no_stencil && reg_tgt) {
-        if (pcache_reg) {
-            rects = pcache_reg->rects;
-            nrects = pcache_reg->nrects;
-        }
-        else {
-            reg_new = XFixesCreateRegion(ps->dpy, &rec_all, 1);
-            XFixesIntersectRegion(ps->dpy, reg_new, reg_new, reg_tgt);
-
-            nrects = 0;
-            rects = XFixesFetchRegion(ps->dpy, reg_new, &nrects);
-        }
-    }
-
-    for (int ri = 0; ri < nrects; ++ri) {
-      XRectangle crect;
-      rect_crop(&crect, &rects[ri], &rec_all);
-
-      Vector2 rectPos = {{crect.x, crect.y}};
-      Vector2 rectSize = {{crect.width, crect.height}};
+      Vector2 rectPos = {{dx, dy}};
+      Vector2 rectSize = {{width, height}};
       Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
       Vector2 scale = pixeluv;
@@ -1175,11 +1046,6 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
 #endif
 
       draw_rect(face, global_type->mvp, relpos, scale);
-    }
-
-    if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects))
-        cxfree(rects);
-    free_region(ps, &reg_new);
   }
 
   /* glUseProgram(0); */

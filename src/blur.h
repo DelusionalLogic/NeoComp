@@ -31,7 +31,6 @@ void blur_destroy(struct blur* blur);
 
 bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
-        XserverRegion reg_tgt, const reg_data_t *pcache_reg,
         glx_blur_cache_t* pbc);
 
 int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size);

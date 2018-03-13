@@ -37,7 +37,6 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
 
 bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
-        XserverRegion reg_tgt, const reg_data_t *pcache_reg,
         glx_blur_cache_t* pbc) {
     glx_mark(ps, 0xDEADBEEF, true);
 #ifdef DEBUG_GLX
@@ -136,54 +135,23 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         Vector2 pixeluv = {{1.0f, 1.0f}};
         vec2_div(&pixeluv, &root_size);
 
-        XserverRegion reg_new = None;
-        XRectangle rec_all = { .x = pos->x, .y = pos->y, .width = size->x, .height = size->y };
-        XRectangle *rects = &rec_all;
-        int nrects = 1;
+        Vector2 rectPos = *pos;
+        Vector2 rectSize = *size;
+        Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
-        if (ps->o.glx_no_stencil && reg_tgt) {
-            if (pcache_reg) {
-                rects = pcache_reg->rects;
-                nrects = pcache_reg->nrects;
-            }
-            else {
-                reg_new = XFixesCreateRegion(ps->dpy, &rec_all, 1);
-                XFixesIntersectRegion(ps->dpy, reg_new, reg_new, reg_tgt);
+        Vector2 scale = pixeluv;
+        vec2_mul(&scale, &rectSize);
 
-                nrects = 0;
-                rects = XFixesFetchRegion(ps->dpy, reg_new, &nrects);
-            }
-        }
-
-        for (int ri = 0; ri < nrects; ++ri) {
-            XRectangle crect;
-            rect_crop(&crect, &rects[ri], &rec_all);
-
-            Vector2 rectPos = {{crect.x, crect.y}};
-            Vector2 rectSize = {{crect.width, crect.height}};
-            Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
-
-            if (!crect.width || !crect.height)
-                continue;
-
-            Vector2 scale = pixeluv;
-            vec2_mul(&scale, &rectSize);
-
-            Vector2 relpos = pixeluv;
-            vec2_mul(&relpos, &glRectPos);
+        Vector2 relpos = pixeluv;
+        vec2_mul(&relpos, &glRectPos);
 
 #ifdef DEBUG_GLX
-            printf_dbgf("glpos: %f %f, relpos %f %f scale %f %f\n",
-                    glRectPos.x, glRectPos.y, relpos.x, relpos.y, scale.x,
-                    scale.y);
+        printf_dbgf("glpos: %f %f, relpos %f %f scale %f %f\n",
+                glRectPos.x, glRectPos.y, relpos.x, relpos.y, scale.x,
+                scale.y);
 #endif
 
-            draw_rect(ps->psglx->blur.face, passthough_type->mvp, relpos, scale);
-        }
-
-        if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects))
-            cxfree(rects);
-        free_region(ps, &reg_new);
+        draw_rect(ps->psglx->blur.face, passthough_type->mvp, relpos, scale);
     }
 
     // Restore the default rendering context
