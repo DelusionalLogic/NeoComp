@@ -1557,8 +1557,6 @@ paint_all(session_t *ps, win *t) {
   /* set_tgt_clip(ps, reg_paint, NULL); */
   paint_root(ps);
 
-  //@HACK
-  bool damaged = false;
   for (win *w = t; w; w = w->prev_trans) {
     // Painting shadow
     if (w->shadow) {
@@ -1568,14 +1566,6 @@ paint_all(session_t *ps, win *t) {
     // Blur the backbuffer behind the window to make transparent areas blurred.
     // @PERFORMANCE: We are also blurring things that are opaque
     if (w->blur_background && (!win_is_solid(ps, w) || (ps->o.blur_background_frame && w->frame_opacity))) {
-        // @HACK: For now let's just assume that all windows on top of a damaged
-        // window overlaps, and redraw them all
-        if(damaged) {
-            w->glx_blur_cache.damaged = true;
-        } else {
-            damaged = w->glx_blur_cache.damaged;
-        }
-
         win_blur_background(ps, w, ps->tgt_buffer.pict);
     }
 
@@ -1622,6 +1612,30 @@ paint_all(session_t *ps, win *t) {
   }
 }
 
+static bool win_overlap(win* w1, win* w2) {
+    const Vector2 w1lpos = {{
+        w1->a.x, w1->a.y,
+    }};
+    const Vector2 w1rpos = {{
+        w1->a.x + w1->widthb, w1->a.y + w1->heightb,
+    }};
+    const Vector2 w2lpos = {{
+        w2->a.x, w2->a.y,
+    }};
+    const Vector2 w2rpos = {{
+        w2->a.x + w2->widthb, w2->a.y + w2->heightb,
+    }};
+    // If one rectangle is on left side of other
+    if (w1lpos.x > w2rpos.x || w2lpos.x > w1rpos.x)
+        return false;
+
+    // If one rectangle is above other
+    if (w1lpos.y > w2rpos.y || w2lpos.y > w1rpos.y)
+        return false;
+
+    return true;
+}
+
 static void
 add_damage(session_t *ps, XserverRegion damage) {
   // Ignore damage when screen isn't redirected
@@ -1660,10 +1674,14 @@ repair_win(session_t *ps, win *w) {
   w->damaged = true;
   w->pixmap_damaged = true;
 
-  // @CLEANUP: Ideally we should just recalculate the blur right now. We need
-  // to render the windows behind this though, and that takes time. For now we
-  // just do it indirectly
-  w->glx_blur_cache.damaged = true;
+  // Damage all the bg blurs of the windows on top of this one
+  for (win *t = w; t; t = t->prev_trans) {
+      // @CLEANUP: Ideally we should just recalculate the blur right now. We need
+      // to render the windows behind this though, and that takes time. For now we
+      // just do it indirectly
+      if(win_overlap(w, t))
+              t->glx_blur_cache.damaged = true;
+  }
 
   // Why care about damage when screen is unredirected?
   // We will force full-screen repaint on redirection.
