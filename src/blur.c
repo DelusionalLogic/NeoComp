@@ -53,36 +53,39 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     }
 
     struct Texture* tex_scr = &pbc->texture[0];
-    // Read destination pixels into a texture
+    if(pbc->damaged) {
+        // Read destination pixels into a texture
 
-    Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
-    texture_read_from(tex_scr, 0, GL_BACK, &glpos, size);
+        Vector2 glpos = X11_rectpos_to_gl(ps, pos, size);
+        texture_read_from(tex_scr, 0, GL_BACK, &glpos, size);
 
-    // Texture scaling factor
-    Vector2 pixeluv = {{1.0f, 1.0f}};
-    vec2_div(&pixeluv, &tex_scr->size);
-    Vector2 halfpixel = pixeluv;
-    vec2_idiv(&halfpixel, 2);
+        // Texture scaling factor
+        Vector2 pixeluv = {{1.0f, 1.0f}};
+        vec2_div(&pixeluv, &tex_scr->size);
+        Vector2 halfpixel = pixeluv;
+        vec2_idiv(&halfpixel, 2);
 
-    // Disable the options. We will restore later
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
+        // Disable the options. We will restore later
+        glDisable(GL_STENCIL_TEST);
+        glDisable(GL_SCISSOR_TEST);
 
-    int level = ps->o.blur_level;
+        int level = ps->o.blur_level;
 
-    struct TextureBlurData blurData = {
-        .buffer = &blur->fbo,
-        .swap = &pbc->texture[1],
-    };
-    // Do the blur
-    if(!texture_blur(&blurData, tex_scr, level, false)) {
-        printf_errf("Failed blurring the background texture");
+        struct TextureBlurData blurData = {
+            .buffer = &blur->fbo,
+            .swap = &pbc->texture[1],
+        };
+        // Do the blur
+        if(!texture_blur(&blurData, tex_scr, level, false)) {
+            printf_errf("Failed blurring the background texture");
 
-        if (have_scissors)
-            glEnable(GL_SCISSOR_TEST);
-        if (have_stencil)
-            glEnable(GL_STENCIL_TEST);
-        return false;
+            if (have_scissors)
+                glEnable(GL_SCISSOR_TEST);
+            if (have_stencil)
+                glEnable(GL_STENCIL_TEST);
+            return false;
+        }
+        pbc->damaged = false;
     }
 
     glViewport(0, 0, ps->root_width, ps->root_height);

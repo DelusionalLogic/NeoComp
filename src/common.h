@@ -148,6 +148,9 @@ typedef struct {
   int width;
   /// Height of the textures.
   int height;
+
+  /// Has the blur been damaged
+  bool damaged;
 } glx_blur_cache_t;
 
 struct glx_shadow_cache {

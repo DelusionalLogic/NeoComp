@@ -15,7 +15,6 @@ void main() {
     }
 
     gl_FragColor = texcol;
-    gl_FragColor.rgb = vec3(.3);
-    gl_FragColor.a = 1;
-
+    gl_FragColor.rgb = vec3(.0);
+    gl_FragColor.a = .5;
 }

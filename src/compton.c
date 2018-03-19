@@ -1650,6 +1650,11 @@ repair_win(session_t *ps, win *w) {
   w->damaged = true;
   w->pixmap_damaged = true;
 
+  // @CLEANUP: Ideally we should just recalculate the blur right now. We need
+  // to render the windows behind this though, and that takes time. For now we
+  // just do it indirectly
+  w->glx_blur_cache.damaged = true;
+
   // Why care about damage when screen is unredirected?
   // We will force full-screen repaint on redirection.
   if (!ps->redirected) {
