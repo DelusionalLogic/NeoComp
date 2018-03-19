@@ -1557,6 +1557,8 @@ paint_all(session_t *ps, win *t) {
   /* set_tgt_clip(ps, reg_paint, NULL); */
   paint_root(ps);
 
+  //@HACK
+  bool damaged = false;
   for (win *w = t; w; w = w->prev_trans) {
     // Painting shadow
     if (w->shadow) {
@@ -1566,10 +1568,18 @@ paint_all(session_t *ps, win *t) {
     // Blur the backbuffer behind the window to make transparent areas blurred.
     // @PERFORMANCE: We are also blurring things that are opaque
     if (w->blur_background && (!win_is_solid(ps, w) || (ps->o.blur_background_frame && w->frame_opacity))) {
+        // @HACK: For now let's just assume that all windows on top of a damaged
+        // window overlaps, and redraw them all
+        if(damaged) {
+            w->glx_blur_cache.damaged = true;
+        } else {
+            damaged = w->glx_blur_cache.damaged;
+        }
+
         win_blur_background(ps, w, ps->tgt_buffer.pict);
     }
 
-        // Painting the window
+    // Painting the window
 
     // Paint the window contents
     win_paint_win(ps, w);
@@ -2822,6 +2832,7 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
     root_damaged();
     return;
   } */
+
 
   win *w = find_win(ps, de->drawable);
 
