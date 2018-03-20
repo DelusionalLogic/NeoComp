@@ -1054,6 +1054,8 @@ typedef struct _session_t {
   Atom atom_ewmh_active_win;
   /// Atom of property <code>_COMPTON_SHADOW</code>.
   Atom atom_compton_shadow;
+  /// Atom of property <come>_NET_BYPASS_COMPOSITOR</code>.
+  Atom atom_bypass;
   /// Atom of property <code>_NET_WM_WINDOW_TYPE</code>.
   Atom atom_win_type;
   /// Array of atoms of all possible window types.
@@ -1134,6 +1136,12 @@ typedef struct _win {
   bool unredir_if_possible_excluded;
   /// Whether this window is in open/close state.
   bool in_openclose;
+  /// Is fullscreen
+  bool fullscreen;
+  /// Is solid;
+  bool solid;
+  /// Has frame
+  bool has_frame;
 
   // Client window related members
   /// ID of the top-level client window of the window.
@@ -2045,14 +2053,6 @@ static inline bool
 win_is_fullscreen(session_t *ps, const win *w) {
   return rect_is_fullscreen(ps, w->a.x, w->a.y, w->widthb, w->heightb)
       && (!w->bounding_shaped || w->rounded_corners);
-}
-
-/**
- * Check if a window will be painted solid.
- */
-static inline bool
-win_is_solid(session_t *ps, const win *w) {
-  return WMODE_SOLID == w->mode && !ps->o.force_win_blend;
 }
 
 /**

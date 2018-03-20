@@ -13,6 +13,7 @@
 
 #include "opengl.h"
 #include "vmath.h"
+#include "window.h"
 
 #include "profiler/zone.h"
 #include "profiler/render.h"
@@ -1044,6 +1045,8 @@ get_frame_extents(session_t *ps, win *w, Window client) {
     w->frame_extents.right = extents[1];
     w->frame_extents.top = extents[2];
     w->frame_extents.bottom = extents[3];
+    
+    w->has_frame = win_has_frame(w);
 
     if (ps->o.frame_opacity)
       update_reg_ignore_expire(ps, w);
@@ -1105,6 +1108,9 @@ paint_preprocess(session_t *ps, win *list) {
     // In case calling the fade callback function destroys this window
     next = w->next;
     opacity_t opacity_old = w->opacity;
+
+    // @CLEANUP: This should probably be somewhere else
+    w->fullscreen = win_is_fullscreen(ps, w);
 
     // Data expiration
     {
@@ -1204,7 +1210,7 @@ paint_preprocess(session_t *ps, win *list) {
 
         // If the window is solid, we add the window region to the
         // ignored region
-        if (win_is_solid(ps, w)) {
+        if (w->solid) {
           if (!w->frame_opacity) {
             if (w->border_size)
               w->reg_ignore = copy_region(ps, w->border_size);
@@ -1238,11 +1244,25 @@ paint_preprocess(session_t *ps, win *list) {
       // is not correctly set.
       if (ps->o.unredir_if_possible && is_highest && to_paint) {
         is_highest = false;
-        if (win_is_solid(ps, w)
-            && (!w->frame_opacity || !win_has_frame(w))
-            && win_is_fullscreen(ps, w)
-            && !w->unredir_if_possible_excluded)
+        if(win_covers(w))
           unredir_possible = true;
+      }
+
+      // If the window doesn't want to be redirected, then who are we to argue
+      {
+          winprop_t prop = wid_get_prop(ps, w->id, ps->atom_bypass, 1L, XA_CARDINAL, 32);
+          // A value of 1 means that the window has taken special care to ask
+          // us not to do compositing.It would be great if we could just
+          // unredirect this specific window, or if we could just run
+          // a fastpath to pump out frames as fast as possible. I don't know if
+          // we can unredirect the specific window, and doing a fastpath will
+          // require some more refactoring.
+          // For now we just assume the developer really means it and
+          // unredirect the entire screen. -Delusional 20/03-2018
+          if(prop.nitems && *prop.data.p32 == 1) {
+              unredir_possible = true;
+          }
+          free_winprop(&prop);
       }
 
       // Reset flags
@@ -1565,7 +1585,7 @@ paint_all(session_t *ps, win *t) {
 
     // Blur the backbuffer behind the window to make transparent areas blurred.
     // @PERFORMANCE: We are also blurring things that are opaque
-    if (w->blur_background && (!win_is_solid(ps, w) || (ps->o.blur_background_frame && w->frame_opacity))) {
+    if (w->blur_background && (!w->solid || (ps->o.blur_background_frame && w->frame_opacity))) {
         win_blur_background(ps, w, ps->tgt_buffer.pict);
     }
 
@@ -1610,30 +1630,6 @@ paint_all(session_t *ps, win *t) {
       check_fade_fin(ps, w);
     }
   }
-}
-
-static bool win_overlap(win* w1, win* w2) {
-    const Vector2 w1lpos = {{
-        w1->a.x, w1->a.y,
-    }};
-    const Vector2 w1rpos = {{
-        w1->a.x + w1->widthb, w1->a.y + w1->heightb,
-    }};
-    const Vector2 w2lpos = {{
-        w2->a.x, w2->a.y,
-    }};
-    const Vector2 w2rpos = {{
-        w2->a.x + w2->widthb, w2->a.y + w2->heightb,
-    }};
-    // If one rectangle is on left side of other
-    if (w1lpos.x > w2rpos.x || w2lpos.x > w1rpos.x)
-        return false;
-
-    // If one rectangle is above other
-    if (w1lpos.y > w2rpos.y || w2lpos.y > w1rpos.y)
-        return false;
-
-    return true;
 }
 
 static void
@@ -1920,6 +1916,10 @@ win_determine_mode(session_t *ps, win *w) {
     mode = WMODE_SOLID;
   }
 
+  if(mode == WMODE_SOLID) {
+      w->solid = true;
+  }
+
   w->mode = mode;
 }
 
@@ -2158,8 +2158,7 @@ win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
 
   // Only consider window damaged if it's previously painted with background
   // blurred
-  if (!win_is_solid(ps, w)
-        || (ps->o.blur_background_frame && w->frame_opacity))
+  if (!w->solid || (ps->o.blur_background_frame && w->frame_opacity))
     add_damage_win(ps, w);
 }
 
@@ -2715,6 +2714,10 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       w->a.width = ce->width;
       w->a.height = ce->height;
       w->a.border_width = ce->border_width;
+
+      if(w->a.border_width == 0)
+          w->has_frame = win_has_frame(w);
+
       calc_win_size(ps, w);
 
       // Rounded corner detection is affected by window size
@@ -5494,6 +5497,7 @@ init_atoms(session_t *ps) {
   ps->atom_client_leader = get_atom(ps, "WM_CLIENT_LEADER");
   ps->atom_ewmh_active_win = get_atom(ps, "_NET_ACTIVE_WINDOW");
   ps->atom_compton_shadow = get_atom(ps, "_COMPTON_SHADOW");
+  ps->atom_bypass = get_atom(ps, "_NET_WM_BYPASS_COMPOSITOR");
 
   ps->atom_win_type = get_atom(ps, "_NET_WM_WINDOW_TYPE");
   ps->atoms_wintypes[WINTYPE_UNKNOWN] = 0;

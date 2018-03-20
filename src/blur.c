@@ -202,6 +202,7 @@ int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
 
     // Set the size
     cache->size = *size;
+    cache->damaged = true;
 
     return 0;
 }
