@@ -609,8 +609,6 @@ typedef struct _options_t {
   bool force_win_blend;
   /// Blur Level
   int blur_level;
-  /// Resize damage for a specific number of pixels.
-  int resize_damage;
   /// Whether to unredirect all windows if a full-screen opaque window
   /// is detected.
   bool unredir_if_possible;
@@ -891,10 +889,6 @@ typedef struct _session_t {
   bool idling;
   /// Program start time.
   struct timeval time_start;
-  /// The region needs to painted on next paint.
-  XserverRegion all_damage;
-  /// The region damaged on the last paint.
-  XserverRegion all_damage_last[CGLX_MAX_BUFFER_AGE];
   /// Whether all windows are currently redirected.
   bool redirected;
   /// Pre-generated alpha pictures.
@@ -1996,15 +1990,6 @@ free_region(session_t *ps, XserverRegion *p) {
     XFixesDestroyRegion(ps->dpy, *p);
     *p = None;
   }
-}
-
-/**
- * Free all regions in ps->all_damage_last .
- */
-static inline void
-free_all_damage_last(session_t *ps) {
-  for (int i = 0; i < CGLX_MAX_BUFFER_AGE; ++i)
-    free_region(ps, &ps->all_damage_last[i]);
 }
 
 #ifdef CONFIG_XSYNC

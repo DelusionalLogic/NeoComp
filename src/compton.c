@@ -1634,17 +1634,9 @@ paint_all(session_t *ps, win *t) {
 
 static void
 add_damage(session_t *ps, XserverRegion damage) {
-  // Ignore damage when screen isn't redirected
-  if (!ps->redirected)
     free_region(ps, &damage);
 
-  if (!damage) return;
-  if (ps->all_damage) {
-    XFixesUnionRegion(ps->dpy, ps->all_damage, ps->all_damage, damage);
-    XFixesDestroyRegion(ps->dpy, damage);
-  } else {
-    ps->all_damage = damage;
-  }
+    if (!damage) return;
 }
 
 static void
@@ -2638,7 +2630,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     rebuild_screen_reg(ps);
     rebuild_shadow_exclude_reg(ps);
-    free_all_damage_last(ps);
 
     // Re-redirect screen if required
     if (ps->o.reredir_on_root_change && ps->redirected) {
@@ -2965,7 +2956,6 @@ xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
 
 static void
 expose_root(session_t *ps, XRectangle *rects, int nrects) {
-  free_all_damage_last(ps);
   XserverRegion region = XFixesCreateRegion(ps->dpy, rects, nrects);
   add_damage(ps, region);
 }
@@ -4266,12 +4256,6 @@ usage(int ret) {
     "--blur-background-exclude condition\n"
     "  Exclude conditions for background blur.\n"
     "\n"
-    "--resize-damage integer\n"
-    "  Resize damaged region by a specific number of pixels. A positive\n"
-    "  value enlarges it while a negative one shrinks it. Useful for\n"
-    "  fixing the line corruption issues of blur. May or may not\n"
-    "  work with --glx-no-stencil. Shrinking doesn't function correctly.\n"
-    "\n"
     "--invert-color-include condition\n"
     "  Specify a list of conditions of windows that should be painted with\n"
     "  inverted color. Resource-hogging, and is not well tested.\n"
@@ -4988,8 +4972,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
       &ps->o.blur_background_fixed);
   // --blur-level
   lcfg_lookup_int(&cfg, "blur-level", &ps->o.blur_level);
-  // --resize-damage
-  lcfg_lookup_int(&cfg, "resize-damage", &ps->o.resize_damage);
   // --glx-no-stencil
   lcfg_lookup_bool(&cfg, "glx-no-stencil", &ps->o.glx_no_stencil);
   // --glx-copy-from-front
@@ -5103,7 +5085,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "glx-swap-method", required_argument, NULL, 299 },
     { "fade-exclude", required_argument, NULL, 300 },
     { "blur-level", required_argument, NULL, 301 },
-    { "resize-damage", required_argument, NULL, 302 },
     { "glx-use-gpushader4", no_argument, NULL, 303 },
     { "opacity-rule", required_argument, NULL, 304 },
     { "shadow-exclude-reg", required_argument, NULL, 305 },
@@ -5354,7 +5335,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.fade_blacklist, optarg);
         break;
       P_CASELONG(301, blur_level);
-      P_CASELONG(302, resize_damage);
       P_CASEBOOL(303, glx_use_gpushader4);
       case 304:
         // --opacity-rule
@@ -5476,9 +5456,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   }
 
   rebuild_shadow_exclude_reg(ps);
-
-  if (ps->o.resize_damage < 0)
-    printf_errf("(): Negative --resize-damage does not work correctly.");
 }
 
 /**
@@ -6292,7 +6269,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .detect_rounded_corners = false,
       .paint_on_overlay = false,
       .blur_level = 0,
-      .resize_damage = 0,
       .unredir_if_possible = false,
       .unredir_if_possible_blacklist = NULL,
       .unredir_if_possible_delay = 0,
@@ -6366,8 +6342,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .nfds_max = 0,
     .tmout_lst = NULL,
 
-    .all_damage = None,
-    .all_damage_last = { None },
     .time_start = { 0, 0 },
     .redirected = false,
     .alpha_picts = NULL,
@@ -6869,9 +6843,6 @@ session_destroy(session_t *ps) {
   // Free other X resources
   free_root_tile(ps);
   free_region(ps, &ps->screen_reg);
-  free_region(ps, &ps->all_damage);
-  for (int i = 0; i < CGLX_MAX_BUFFER_AGE; ++i)
-    free_region(ps, &ps->all_damage_last[i]);
   free(ps->expose_rects);
   free(ps->shadow_corner);
   free(ps->shadow_top);
@@ -6996,25 +6967,13 @@ session_run(session_t *ps) {
     t = paint_preprocess(ps, ps->list);
     ps->tmout_unredir_hit = false;
 
-    // If the screen is unredirected, free all_damage to stop painting
-    if (!ps->redirected || ON == ps->o.stoppaint_force)
-      free_region(ps, &ps->all_damage);
-
-    XserverRegion all_damage_orig = None;
-    if (ps->o.resize_damage > 0)
-      all_damage_orig = copy_region(ps, ps->all_damage);
-    resize_region(ps, ps->all_damage, ps->o.resize_damage);
-    if (ps->all_damage && !is_region_empty(ps, ps->all_damage, NULL)) {
-      static int paint = 0;
-      paint_all(ps, t);
-      ps->reg_ignore_expire = false;
-      paint++;
-      if (ps->o.benchmark && paint >= ps->o.benchmark)
+    static int paint = 0;
+    paint_all(ps, t);
+    ps->reg_ignore_expire = false;
+    paint++;
+    if (ps->o.benchmark && paint >= ps->o.benchmark)
         exit(0);
-      XSync(ps->dpy, False);
-      ps->all_damage = None;
-    }
-    free_region(ps, &all_damage_orig);
+    XSync(ps->dpy, False);
 
     if (ps->idling)
       ps->fade_time = 0L;
