@@ -1100,8 +1100,6 @@ typedef struct _win {
   paint_t paint;
   /// Bounding shape of the window.
   XserverRegion border_size;
-  /// Region of the whole window, shadow region included.
-  XserverRegion extents;
   /// Window flags. Definitions above.
   int_fast16_t flags;
   /// Whether there's a pending <code>ConfigureNotify</code> happening

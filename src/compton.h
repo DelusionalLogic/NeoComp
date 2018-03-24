@@ -290,7 +290,6 @@ free_win_res(session_t *ps, win *w) {
   free_win_res_glx(ps, w);
   blur_cache_delete(&w->glx_blur_cache);
   shadow_cache_delete(&w->shadow_cache);
-  free_region(ps, &w->extents);
   free_paint(ps, &w->paint);
   free_region(ps, &w->border_size);
   free_damage(ps, &w->damage);
@@ -1121,9 +1120,7 @@ is_region_empty(const session_t *ps, XserverRegion region,
  */
 static inline void
 add_damage_win(session_t *ps, win *w) {
-  if (w->extents) {
-    add_damage(ps, copy_region(ps, w->extents));
-  }
+	add_damage(ps, None);
 }
 
 #if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)

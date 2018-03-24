@@ -1333,8 +1333,12 @@ repair_win(session_t *ps, win *w) {
   if (IsViewable != w->a.map_state)
     return;
 
+  //Reset the XDamage region, so we continue to recieve new damage
+  XDamageSubtract(ps->dpy, w->damage, None, None);
+
   w->damaged = true;
   w->pixmap_damaged = true;
+
 
   // Damage all the bg blurs of the windows on top of this one
   for (win *t = w; t; t = t->prev_trans) {
@@ -3466,7 +3470,6 @@ ev_handle(session_t *ps, XEvent *ev) {
   if ((ev->type & 0x7f) != KeymapNotify) {
     discard_ignore(ps, ev->xany.serial);
   }
-
 #ifdef DEBUG_EVENTS
   if (!isdamagenotify(ps, ev)) {
     Window wid = ev_window(ps, ev);

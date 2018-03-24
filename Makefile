@@ -41,6 +41,10 @@ ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX_GLSL
 endif
 
+ifneq "$(EVENTS_DEBUG)" ""
+  CFG += -DDEBUG_EVENTS
+endif
+
 ifneq "$(PROFILE)" ""
     CFG += -DDEBUG_PROFILE
 endif
