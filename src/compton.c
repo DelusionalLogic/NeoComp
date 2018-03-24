@@ -2888,7 +2888,7 @@ force_repaint(session_t *ps) {
   assert(ps->screen_reg);
   XserverRegion reg = None;
   if (ps->screen_reg && (reg = copy_region(ps, ps->screen_reg))) {
-    ps->ev_received = true;
+    ps->skip_poll = true;
     add_damage(ps, reg);
   }
 }
@@ -2906,7 +2906,7 @@ win_set_fade_force(session_t *ps, win *w, switch_t val) {
   if (val != w->fade_force) {
     w->fade_force = val;
     win_determine_fade(ps, w);
-    ps->ev_received = true;
+    ps->skip_poll = true;
   }
 }
 
@@ -2918,7 +2918,7 @@ win_set_focused_force(session_t *ps, win *w, switch_t val) {
   if (val != w->focused_force) {
     w->focused_force = val;
     win_update_focused(ps, w);
-    ps->ev_received = true;
+    ps->skip_poll = true;
   }
 }
 
@@ -2930,7 +2930,7 @@ win_set_invert_color_force(session_t *ps, win *w, switch_t val) {
   if (val != w->invert_color_force) {
     w->invert_color_force = val;
     win_determine_invert_color(ps, w);
-    ps->ev_received = true;
+    ps->skip_poll = true;
   }
 }
 
@@ -2966,7 +2966,7 @@ opts_set_no_fading_openclose(session_t *ps, bool newval) {
     ps->o.no_fading_openclose = newval;
     for (win *w = ps->list; w; w = w->next)
       win_determine_fade(ps, w);
-    ps->ev_received = true;
+    ps->skip_poll = true;
   }
 }
 
@@ -3385,6 +3385,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 inline static void
 ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
   damage_win(ps, ev);
+  ps->skip_poll = true;
 }
 
 inline static void
@@ -5620,12 +5621,11 @@ mainloop(session_t *ps) {
   // Sometimes poll() returns 1 but no events are actually read,
   // causing XNextEvent() to block, I have no idea what's wrong, so we
   // check for the number of events here.
-  if (XEventsQueued(ps->dpy, QueuedAfterReading)) {
+  while(XEventsQueued(ps->dpy, QueuedAfterReading)) {
     XEvent ev = { };
 
     XNextEvent(ps->dpy, &ev);
     ev_handle(ps, &ev);
-    ps->ev_received = true;
 
     return true;
   }
@@ -5642,8 +5642,8 @@ mainloop(session_t *ps) {
   // Calculate timeout
   struct timeval *ptv = NULL;
   {
-    // Consider ev_received firstly
-    if (ps->ev_received || ps->o.benchmark) {
+    // Consider skip_poll firstly
+    if (ps->skip_poll || ps->o.benchmark) {
       ptv = malloc(sizeof(struct timeval));
       ptv->tv_sec = 0L;
       ptv->tv_usec = 0L;
@@ -6404,7 +6404,7 @@ session_run(session_t *ps) {
 
   // Main loop
   while (!ps->reset) {
-    ps->ev_received = false;
+    ps->skip_poll = false;
 
     while (mainloop(ps))
       continue;

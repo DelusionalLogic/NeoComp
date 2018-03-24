@@ -1036,7 +1036,7 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
       return false;
     if (ps->o.unredir_if_possible != val) {
       ps->o.unredir_if_possible = val;
-      ps->ev_received = true;
+      ps->skip_poll = true;
     }
     goto cdbus_process_opts_set_success;
   }

@@ -883,7 +883,7 @@ typedef struct _session_t {
   /// Whether we have hit unredirection timeout.
   bool tmout_unredir_hit;
   /// Whether we have received an event in this cycle.
-  bool ev_received;
+  bool skip_poll;
   /// Whether the program is idling. I.e. no fading, no potential window
   /// changes.
   bool idling;
