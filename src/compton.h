@@ -293,7 +293,6 @@ free_win_res(session_t *ps, win *w) {
   free_region(ps, &w->extents);
   free_paint(ps, &w->paint);
   free_region(ps, &w->border_size);
-  free_paint(ps, &w->shadow_paint);
   free_damage(ps, &w->damage);
   free_region(ps, &w->reg_ignore);
   free(w->name);

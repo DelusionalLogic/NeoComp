@@ -708,7 +708,6 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
     return true;
   }
   cdbus_m_win_get_do(fade_force, cdbus_reply_enum);
-  cdbus_m_win_get_do(shadow_force, cdbus_reply_enum);
   cdbus_m_win_get_do(focused_force, cdbus_reply_enum);
   cdbus_m_win_get_do(invert_color_force, cdbus_reply_enum);
   cdbus_m_win_get_do(name, cdbus_reply_string);
@@ -786,14 +785,6 @@ cdbus_process_win_set(session_t *ps, DBusMessage *msg) {
       return false; \
     w->tgt = val; \
     goto cdbus_process_win_set_success; \
-  }
-
-  if (!strcmp("shadow_force", target)) {
-    cdbus_enum_t val = UNSET;
-    if (!cdbus_msg_get_arg(msg, 2, CDBUS_TYPE_ENUM, &val))
-      return false;
-    win_set_shadow_force(ps, w, val);
-    goto cdbus_process_win_set_success;
   }
 
   if (!strcmp("fade_force", target)) {

@@ -273,255 +273,6 @@ sum_gaussian(conv *map, double opacity,
   return ((unsigned char) (v * opacity * 255.0));
 }
 
-/* precompute shadow corners and sides
-   to save time for large windows */
-
-static void
-presum_gaussian(session_t *ps, conv *map) {
-  int center = map->size / 2;
-  int opacity, x, y;
-
-  ps->cgsize = map->size;
-
-  if (ps->shadow_corner)
-    free(ps->shadow_corner);
-  if (ps->shadow_top)
-    free(ps->shadow_top);
-
-  ps->shadow_corner = malloc((ps->cgsize + 1) * (ps->cgsize + 1) * 26);
-  ps->shadow_top = malloc((ps->cgsize + 1) * 26);
-
-  for (x = 0; x <= ps->cgsize; x++) {
-    ps->shadow_top[25 * (ps->cgsize + 1) + x] =
-      sum_gaussian(map, 1, x - center, center, ps->cgsize * 2, ps->cgsize * 2);
-
-    for (opacity = 0; opacity < 25; opacity++) {
-      ps->shadow_top[opacity * (ps->cgsize + 1) + x] =
-        ps->shadow_top[25 * (ps->cgsize + 1) + x] * opacity / 25;
-    }
-
-    for (y = 0; y <= x; y++) {
-      ps->shadow_corner[25 * (ps->cgsize + 1) * (ps->cgsize + 1) + y * (ps->cgsize + 1) + x]
-        = sum_gaussian(map, 1, x - center, y - center, ps->cgsize * 2, ps->cgsize * 2);
-      ps->shadow_corner[25 * (ps->cgsize + 1) * (ps->cgsize + 1) + x * (ps->cgsize + 1) + y]
-        = ps->shadow_corner[25 * (ps->cgsize + 1) * (ps->cgsize + 1) + y * (ps->cgsize + 1) + x];
-
-      for (opacity = 0; opacity < 25; opacity++) {
-        ps->shadow_corner[opacity * (ps->cgsize + 1) * (ps->cgsize + 1)
-                      + y * (ps->cgsize + 1) + x]
-          = ps->shadow_corner[opacity * (ps->cgsize + 1) * (ps->cgsize + 1)
-                          + x * (ps->cgsize + 1) + y]
-          = ps->shadow_corner[25 * (ps->cgsize + 1) * (ps->cgsize + 1)
-                          + y * (ps->cgsize + 1) + x] * opacity / 25;
-      }
-    }
-  }
-}
-
-static XImage *
-make_shadow(session_t *ps, double opacity,
-            int width, int height) {
-  XImage *ximage;
-  unsigned char *data;
-  int ylimit, xlimit;
-  int swidth = width + ps->cgsize;
-  int sheight = height + ps->cgsize;
-  int center = ps->cgsize / 2;
-  int x, y;
-  unsigned char d;
-  int x_diff;
-  int opacity_int = (int)(opacity * 25);
-
-  data = malloc(swidth * sheight * sizeof(unsigned char));
-  if (!data) return 0;
-
-  ximage = XCreateImage(ps->dpy, ps->vis, 8,
-    ZPixmap, 0, (char *) data, swidth, sheight, 8, swidth * sizeof(char));
-
-  if (!ximage) {
-    free(data);
-    return 0;
-  }
-
-  /*
-   * Build the gaussian in sections
-   */
-
-  /*
-   * center (fill the complete data array)
-   */
-
-  // If clear_shadow is enabled and the border & corner shadow (which
-  // later will be filled) could entirely cover the area of the shadow
-  // that will be displayed, do not bother filling other pixels. If it
-  // can't, we must fill the other pixels here.
-  /* if (!(clear_shadow && ps->o.shadow_offset_x <= 0 && ps->o.shadow_offset_x >= -ps->cgsize
-        && ps->o.shadow_offset_y <= 0 && ps->o.shadow_offset_y >= -ps->cgsize)) { */
-    if (ps->cgsize > 0) {
-      d = ps->shadow_top[opacity_int * (ps->cgsize + 1) + ps->cgsize];
-    } else {
-      d = sum_gaussian(ps->gaussian_map,
-        opacity, center, center, width, height);
-    }
-    memset(data, d, sheight * swidth);
-  // }
-
-  /*
-   * corners
-   */
-
-  ylimit = ps->cgsize;
-  if (ylimit > sheight / 2) ylimit = (sheight + 1) / 2;
-
-  xlimit = ps->cgsize;
-  if (xlimit > swidth / 2) xlimit = (swidth + 1) / 2;
-
-  for (y = 0; y < ylimit; y++) {
-    for (x = 0; x < xlimit; x++) {
-      if (xlimit == ps->cgsize && ylimit == ps->cgsize) {
-        d = ps->shadow_corner[opacity_int * (ps->cgsize + 1) * (ps->cgsize + 1)
-                          + y * (ps->cgsize + 1) + x];
-      } else {
-        d = sum_gaussian(ps->gaussian_map,
-          opacity, x - center, y - center, width, height);
-      }
-      data[y * swidth + x] = d;
-      data[(sheight - y - 1) * swidth + x] = d;
-      data[(sheight - y - 1) * swidth + (swidth - x - 1)] = d;
-      data[y * swidth + (swidth - x - 1)] = d;
-    }
-  }
-
-  /*
-   * top/bottom
-   */
-
-  x_diff = swidth - (ps->cgsize * 2);
-  if (x_diff > 0 && ylimit > 0) {
-    for (y = 0; y < ylimit; y++) {
-      if (ylimit == ps->cgsize) {
-        d = ps->shadow_top[opacity_int * (ps->cgsize + 1) + y];
-      } else {
-        d = sum_gaussian(ps->gaussian_map,
-          opacity, center, y - center, width, height);
-      }
-      memset(&data[y * swidth + ps->cgsize], d, x_diff);
-      memset(&data[(sheight - y - 1) * swidth + ps->cgsize], d, x_diff);
-    }
-  }
-
-  /*
-   * sides
-   */
-
-  for (x = 0; x < xlimit; x++) {
-    if (xlimit == ps->cgsize) {
-      d = ps->shadow_top[opacity_int * (ps->cgsize + 1) + x];
-    } else {
-      d = sum_gaussian(ps->gaussian_map,
-        opacity, x - center, center, width, height);
-    }
-    for (y = ps->cgsize; y < sheight - ps->cgsize; y++) {
-      data[y * swidth + x] = d;
-      data[y * swidth + (swidth - x - 1)] = d;
-    }
-  }
-
-  /*
-  if (clear_shadow) {
-    // Clear the region in the shadow that the window would cover based
-    // on shadow_offset_{x,y} user provides
-    int xstart = normalize_i_range(- (int) ps->o.shadow_offset_x, 0, swidth);
-    int xrange = normalize_i_range(width - (int) ps->o.shadow_offset_x,
-        0, swidth) - xstart;
-    int ystart = normalize_i_range(- (int) ps->o.shadow_offset_y, 0, sheight);
-    int yend = normalize_i_range(height - (int) ps->o.shadow_offset_y,
-        0, sheight);
-    int y;
-
-    for (y = ystart; y < yend; y++) {
-      memset(&data[y * swidth + xstart], 0, xrange);
-    }
-  }
-  */
-
-  return ximage;
-}
-
-/**
- * Generate shadow <code>Picture</code> for a window.
- */
-static bool
-win_build_shadow(session_t *ps, win *w, double opacity) {
-  const int width = w->widthb;
-  const int height = w->heightb;
-
-  XImage *shadow_image = NULL;
-  Pixmap shadow_pixmap = None, shadow_pixmap_argb = None;
-  Picture shadow_picture = None, shadow_picture_argb = None;
-  GC gc = None;
-
-  shadow_image = make_shadow(ps, opacity, width, height);
-  if (!shadow_image)
-    return None;
-
-  shadow_pixmap = XCreatePixmap(ps->dpy, ps->root,
-    shadow_image->width, shadow_image->height, 8);
-  shadow_pixmap_argb = XCreatePixmap(ps->dpy, ps->root,
-    shadow_image->width, shadow_image->height, 32);
-
-  if (!shadow_pixmap || !shadow_pixmap_argb)
-    goto shadow_picture_err;
-
-  shadow_picture = XRenderCreatePicture(ps->dpy, shadow_pixmap,
-    XRenderFindStandardFormat(ps->dpy, PictStandardA8), 0, 0);
-  shadow_picture_argb = XRenderCreatePicture(ps->dpy, shadow_pixmap_argb,
-    XRenderFindStandardFormat(ps->dpy, PictStandardARGB32), 0, 0);
-  if (!shadow_picture || !shadow_picture_argb)
-    goto shadow_picture_err;
-
-  gc = XCreateGC(ps->dpy, shadow_pixmap, 0, 0);
-  if (!gc)
-    goto shadow_picture_err;
-
-  XPutImage(ps->dpy, shadow_pixmap, gc, shadow_image, 0, 0, 0, 0,
-    shadow_image->width, shadow_image->height);
-  XRenderComposite(ps->dpy, PictOpSrc, ps->cshadow_picture, shadow_picture,
-      shadow_picture_argb, 0, 0, 0, 0, 0, 0,
-      shadow_image->width, shadow_image->height);
-
-  assert(!w->shadow_paint.pixmap);
-  w->shadow_paint.pixmap = shadow_pixmap_argb;
-  assert(!w->shadow_paint.pict);
-  w->shadow_paint.pict = shadow_picture_argb;
-
-  // Sync it once and only once
-  xr_sync(ps, w->shadow_paint.pixmap, NULL);
-
-  XFreeGC(ps->dpy, gc);
-  XDestroyImage(shadow_image);
-  XFreePixmap(ps->dpy, shadow_pixmap);
-  XRenderFreePicture(ps->dpy, shadow_picture);
-
-  return true;
-
-shadow_picture_err:
-  if (shadow_image)
-    XDestroyImage(shadow_image);
-  if (shadow_pixmap)
-    XFreePixmap(ps->dpy, shadow_pixmap);
-  if (shadow_pixmap_argb)
-    XFreePixmap(ps->dpy, shadow_pixmap_argb);
-  if (shadow_picture)
-    XRenderFreePicture(ps->dpy, shadow_picture);
-  if (shadow_picture_argb)
-    XRenderFreePicture(ps->dpy, shadow_picture_argb);
-  if (gc)
-    XFreeGC(ps->dpy, gc);
-
-  return false;
-}
-
 /**
  * Generate a 1x1 <code>Picture</code> of a particular color.
  */
@@ -916,51 +667,6 @@ win_get_region_noframe(session_t *ps, win *w, bool use_offset) {
 }
 
 /**
- * Get a rectangular region a window (and possibly its shadow) occupies.
- *
- * Note w->shadow and shadow geometry must be correct before calling this
- * function.
- */
-static XserverRegion
-win_extents(session_t *ps, win *w) {
-  XRectangle r;
-
-  r.x = w->a.x;
-  r.y = w->a.y;
-  r.width = w->widthb;
-  r.height = w->heightb;
-
-  if (w->shadow) {
-    XRectangle sr;
-
-    sr.x = w->a.x + w->shadow_dx;
-    sr.y = w->a.y + w->shadow_dy;
-    sr.width = w->shadow_width;
-    sr.height = w->shadow_height;
-
-    if (sr.x < r.x) {
-      r.width = (r.x + r.width) - sr.x;
-      r.x = sr.x;
-    }
-
-    if (sr.y < r.y) {
-      r.height = (r.y + r.height) - sr.y;
-      r.y = sr.y;
-    }
-
-    if (sr.x + sr.width > r.x + r.width) {
-      r.width = sr.x + sr.width - r.x;
-    }
-
-    if (sr.y + sr.height > r.y + r.height) {
-      r.height = sr.y + sr.height - r.y;
-    }
-  }
-
-  return XFixesCreateRegion(ps->dpy, &r, 1);
-}
-
-/**
  * Retrieve the bounding shape of a window.
  */
 static XserverRegion
@@ -1114,10 +820,6 @@ paint_preprocess(session_t *ps, win *list) {
 
     // Data expiration
     {
-      // Remove built shadow if needed
-      if (w->flags & WFLAG_SIZE_CHANGE)
-        free_paint(ps, &w->shadow_paint);
-
       // Destroy reg_ignore on all windows if they should expire
       if (ps->reg_ignore_expire)
         free_region(ps, &w->reg_ignore);
@@ -1125,7 +827,6 @@ paint_preprocess(session_t *ps, win *list) {
 
     // Restore flags from last paint if the window is being faded out
     if (IsUnmapped == w->a.map_state) {
-      win_set_shadow(ps, w, w->shadow_last);
       w->fade = w->fade_last;
       win_set_invert_color(ps, w, w->invert_color_last);
       win_set_blur_background(ps, w, w->blur_background_last);
@@ -1164,10 +865,6 @@ paint_preprocess(session_t *ps, win *list) {
       if (!w->border_size)
         w->border_size = border_size(ps, w, true);
 
-      // Fetch window extents
-      if (!w->extents)
-        w->extents = win_extents(ps, w);
-
       // Calculate frame_opacity
       {
         double frame_opacity_old = w->frame_opacity;
@@ -1186,11 +883,7 @@ paint_preprocess(session_t *ps, win *list) {
           ps->reg_ignore_expire = true;
       }
 
-      // Calculate shadow opacity
-      if (w->frame_opacity)
-        w->shadow_opacity = ps->o.shadow_opacity * w->frame_opacity;
-      else
-        w->shadow_opacity = ps->o.shadow_opacity * get_opacity_percent(w);
+	  // @INCOMPLETE: Vary the shadow opacity
     }
 
     // Add window to damaged area if its painting status changes
@@ -1286,7 +979,6 @@ paint_preprocess(session_t *ps, win *list) {
 
       if (w->to_paint) {
         // Save flags
-        w->shadow_last = w->shadow;
         w->fade_last = w->fade;
         w->invert_color_last = w->invert_color;
         w->blur_background_last = w->blur_background;
@@ -1356,9 +1048,6 @@ win_paint_shadow(session_t *ps, win *w) {
     printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
     return;
   }
-
-  // Bind shadow pixmap to GLX texture if needed
-  paint_bind_tex(ps, &w->shadow_paint, 0, 0, 32, false);
 
   const Vector2 pos = {{
       w->a.x, w->a.y,
@@ -1644,21 +1333,6 @@ repair_win(session_t *ps, win *w) {
   if (IsViewable != w->a.map_state)
     return;
 
-  XserverRegion parts;
-
-  if (!w->damaged) {
-    parts = win_extents(ps, w);
-    set_ignore_next(ps);
-    XDamageSubtract(ps->dpy, w->damage, None, None);
-  } else {
-    parts = XFixesCreateRegion(ps->dpy, 0, 0);
-    set_ignore_next(ps);
-    XDamageSubtract(ps->dpy, w->damage, None, parts);
-    XFixesTranslateRegion(ps->dpy, parts,
-      w->a.x + w->a.border_width,
-      w->a.y + w->a.border_width);
-  }
-
   w->damaged = true;
   w->pixmap_damaged = true;
 
@@ -1670,19 +1344,6 @@ repair_win(session_t *ps, win *w) {
       if(win_overlap(w, t))
               t->glx_blur_cache.damaged = true;
   }
-
-  // Why care about damage when screen is unredirected?
-  // We will force full-screen repaint on redirection.
-  if (!ps->redirected) {
-    free_region(ps, &parts);
-    return;
-  }
-
-  // Remove the part in the damage area that could be ignored
-  if (!ps->reg_ignore_expire && w->prev_trans && w->prev_trans->reg_ignore)
-    XFixesSubtractRegion(ps->dpy, parts, parts, w->prev_trans->reg_ignore);
-
-  add_damage(ps, parts);
 }
 
 static wintype_t
@@ -1777,10 +1438,6 @@ map_win(session_t *ps, Window id) {
   win_update_opacity_prop(ps, w);
   w->flags |= WFLAG_OPCT_CHANGE;
 
-  // Check for _COMPTON_SHADOW
-  if (ps->o.respect_prop_shadow)
-    win_update_prop_shadow_raw(ps, w);
-
   // Many things above could affect shadow
   win_determine_shadow(ps, w);
 
@@ -1824,15 +1481,8 @@ finish_unmap_win(session_t *ps, win *w) {
 
   update_reg_ignore_expire(ps, w);
 
-  if (w->extents != None) {
-    /* destroys region */
-    add_damage(ps, w->extents);
-    w->extents = None;
-  }
-
   free_wpaint(ps, w);
   free_region(ps, &w->border_size);
-  free_paint(ps, &w->shadow_paint);
 }
 
 static void
@@ -2042,62 +1692,6 @@ win_update_shape(session_t *ps, win *w) {
 }
 
 /**
- * Reread _COMPTON_SHADOW property from a window.
- *
- * The property must be set on the outermost window, usually the WM frame.
- */
-static void
-win_update_prop_shadow_raw(session_t *ps, win *w) {
-  winprop_t prop = wid_get_prop(ps, w->id, ps->atom_compton_shadow, 1,
-      XA_CARDINAL, 32);
-
-  if (!prop.nitems) {
-    w->prop_shadow = -1;
-  }
-  else {
-    w->prop_shadow = *prop.data.p32;
-  }
-
-  free_winprop(&prop);
-}
-
-/**
- * Reread _COMPTON_SHADOW property from a window and update related
- * things.
- */
-static void
-win_update_prop_shadow(session_t *ps, win *w) {
-  long attr_shadow_old = w->prop_shadow;
-
-  win_update_prop_shadow_raw(ps, w);
-
-  if (w->prop_shadow != attr_shadow_old)
-    win_determine_shadow(ps, w);
-}
-
-static void
-win_set_shadow(session_t *ps, win *w, bool shadow_new) {
-  if (w->shadow == shadow_new) return;
-
-  w->shadow = shadow_new;
-
-  // Window extents need update on shadow state change
-  // Shadow geometry currently doesn't change on shadow state change
-  // calc_shadow_geometry(ps, w);
-  if (w->extents) {
-    // Mark the old extents as damaged if the shadow is removed
-    if (!w->shadow)
-      add_damage(ps, w->extents);
-    else
-      free_region(ps, &w->extents);
-    w->extents = win_extents(ps, w);
-    // Mark the new extents as damaged if the shadow is added
-    if (w->shadow)
-      add_damage_win(ps, w);
-  }
-}
-
-/**
  * Determine if a window should have shadow, and update things depending
  * on shadow state.
  */
@@ -2105,16 +1699,14 @@ static void
 win_determine_shadow(session_t *ps, win *w) {
   bool shadow_new = w->shadow;
 
-  if (UNSET != w->shadow_force)
-    shadow_new = w->shadow_force;
-  else if (IsViewable == w->a.map_state)
+  if (IsViewable == w->a.map_state)
     shadow_new = (ps->o.wintype_shadow[w->window_type]
         && !win_match(ps, w, ps->o.shadow_blacklist, &w->cache_sblst)
         && !(ps->o.shadow_ignore_shaped && w->bounding_shaped
           && !w->rounded_corners)
-        && !(ps->o.respect_prop_shadow && 0 == w->prop_shadow));
+        && !(ps->o.respect_prop_shadow));
 
-  win_set_shadow(ps, w, shadow_new);
+  w->shadow = shadow_new;
 }
 
 static void
@@ -2241,19 +1833,7 @@ static void
 calc_win_size(session_t *ps, win *w) {
   w->widthb = w->a.width + w->a.border_width * 2;
   w->heightb = w->a.height + w->a.border_width * 2;
-  calc_shadow_geometry(ps, w);
   w->flags |= WFLAG_SIZE_CHANGE;
-}
-
-/**
- * Calculate and update geometry of the shadow of a window.
- */
-static void
-calc_shadow_geometry(session_t *ps, win *w) {
-  w->shadow_dx = ps->o.shadow_offset_x;
-  w->shadow_dy = ps->o.shadow_offset_y;
-  w->shadow_width = w->widthb + ps->gaussian_map->size;
-  w->shadow_height = w->heightb + ps->gaussian_map->size;
 }
 
 /**
@@ -2401,7 +1981,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .pixmap_damaged = false,
     .paint = PAINT_INIT,
     .border_size = None,
-    .extents = None,
     .flags = 0,
     .need_configure = false,
     .queue_configure = { },
@@ -2448,14 +2027,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .frame_extents = MARGIN_INIT,
 
     .shadow = false,
-    .shadow_force = UNSET,
-    .shadow_opacity = 0.0,
-    .shadow_dx = 0,
-    .shadow_dy = 0,
-    .shadow_width = 0,
-    .shadow_height = 0,
-    .shadow_paint = PAINT_INIT,
-    .prop_shadow = -1,
 
     .dim = false,
 
@@ -2629,7 +2200,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     ps->root_height = ce->height;
 
     rebuild_screen_reg(ps);
-    rebuild_shadow_exclude_reg(ps);
 
     // Re-redirect screen if required
     if (ps->o.reredir_on_root_change && ps->redirected) {
@@ -2656,7 +2226,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
   // Other window changes
   win *w = find_win(ps, ce->window);
-  XserverRegion damage = None;
 
   if (!w)
     return;
@@ -2679,17 +2248,11 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     w->need_configure = false;
 
-    damage = XFixesCreateRegion(ps->dpy, 0, 0);
-    if (w->extents != None) {
-      XFixesCopyRegion(ps->dpy, damage, w->extents);
-    }
-
     // If window geometry did not change, don't free extents here
     if (w->a.x != ce->x || w->a.y != ce->y
         || w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
       factor_change = true;
-      free_region(ps, &w->extents);
       free_region(ps, &w->border_size);
     }
 
@@ -2715,13 +2278,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       if (ps->shape_exists && ps->o.shadow_ignore_shaped
           && ps->o.detect_rounded_corners && w->bounding_shaped)
         win_update_shape(ps, w);
-    }
-
-    if (damage) {
-      XserverRegion extents = win_extents(ps, w);
-      XFixesUnionRegion(ps->dpy, damage, damage, extents);
-      XFixesDestroyRegion(ps->dpy, extents);
-      add_damage(ps, damage);
     }
 
     if (factor_change) {
@@ -3339,18 +2895,6 @@ force_repaint(session_t *ps) {
 ///@{
 
 /**
- * Set w->shadow_force of a window.
- */
-void
-win_set_shadow_force(session_t *ps, win *w, switch_t val) {
-  if (val != w->shadow_force) {
-    w->shadow_force = val;
-    win_determine_shadow(ps, w);
-    ps->ev_received = true;
-  }
-}
-
-/**
  * Set w->fade_force of a window.
  */
 void
@@ -3810,13 +3354,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     if (w && 1 == win_get_role(ps, w)) {
       win_on_factor_change(ps, w);
     }
-  }
-
-  // If _COMPTON_SHADOW changes
-  if (ps->o.respect_prop_shadow && ps->atom_compton_shadow == ev->atom) {
-    win *w = find_win(ps, ev->window);
-    if (w)
-      win_update_prop_shadow(ps, w);
   }
 
   // If a leader property changes
@@ -4851,12 +4388,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     ps->o.fade_out_step = normalize_d(dval) * OPAQUE;
   // -r (shadow_radius)
   lcfg_lookup_int(&cfg, "shadow-radius", &ps->o.shadow_radius);
-  // -o (shadow_opacity)
-  config_lookup_float(&cfg, "shadow-opacity", &ps->o.shadow_opacity);
-  // -l (shadow_offset_x)
-  lcfg_lookup_int(&cfg, "shadow-offset-x", &ps->o.shadow_offset_x);
-  // -t (shadow_offset_y)
-  lcfg_lookup_int(&cfg, "shadow-offset-y", &ps->o.shadow_offset_y);
   // -i (inactive_opacity)
   if (config_lookup_float(&cfg, "inactive-opacity", &dval))
     ps->o.inactive_opacity = normalize_d(dval) * OPAQUE;
@@ -4884,16 +4415,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --no-fading-destroyed-argb
   lcfg_lookup_bool(&cfg, "no-fading-destroyed-argb",
       &ps->o.no_fading_destroyed_argb);
-  // --shadow-red
-  config_lookup_float(&cfg, "shadow-red", &ps->o.shadow_red);
-  // --shadow-green
-  config_lookup_float(&cfg, "shadow-green", &ps->o.shadow_green);
-  // --shadow-blue
-  config_lookup_float(&cfg, "shadow-blue", &ps->o.shadow_blue);
-  // --shadow-exclude-reg
-  if (config_lookup_string(&cfg, "shadow-exclude-reg", &sval)
-      && !parse_geometry(ps, sval, &ps->o.shadow_exclude_reg_geom))
-    exit(1);
   // --inactive-opacity-override
   lcfg_lookup_bool(&cfg, "inactive-opacity-override",
       &ps->o.inactive_opacity_override);
@@ -4904,9 +4425,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --mark-ovredir-focused
   lcfg_lookup_bool(&cfg, "mark-ovredir-focused",
       &ps->o.mark_ovredir_focused);
-  // --shadow-ignore-shaped
-  lcfg_lookup_bool(&cfg, "shadow-ignore-shaped",
-      &ps->o.shadow_ignore_shaped);
   // --detect-rounded-corners
   lcfg_lookup_bool(&cfg, "detect-rounded-corners",
       &ps->o.detect_rounded_corners);
@@ -5214,11 +4732,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         fading_enable = true;
         break;
       P_CASELONG('r', shadow_radius);
-      case 'o':
-        ps->o.shadow_opacity = atof(optarg);
-        break;
-      P_CASELONG('l', shadow_offset_x);
-      P_CASELONG('t', shadow_offset_y);
       case 'i':
         ps->o.inactive_opacity = (normalize_d(atof(optarg)) * OPAQUE);
         break;
@@ -5235,18 +4748,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       // Long options
       case 256:
         // --config
-        break;
-      case 257:
-        // --shadow-red
-        ps->o.shadow_red = atof(optarg);
-        break;
-      case 258:
-        // --shadow-green
-        ps->o.shadow_green = atof(optarg);
-        break;
-      case 259:
-        // --shadow-blue
-        ps->o.shadow_blue = atof(optarg);
         break;
       P_CASEBOOL(260, inactive_opacity_override);
       case 261:
@@ -5341,11 +4842,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         if (!parse_rule_opacity(ps, optarg))
           exit(1);
         break;
-      case 305:
-        // --shadow-exclude-reg
-        if (!parse_geometry(ps, optarg, &ps->o.shadow_exclude_reg_geom))
-          exit(1);
-        break;
       case 306:
         // --paint-exclude
         condlst_add(ps, &ps->o.paint_blacklist, optarg);
@@ -5385,12 +4881,8 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   // Range checking and option assignments
   ps->o.fade_delta = max_i(ps->o.fade_delta, 1);
   ps->o.shadow_radius = max_i(ps->o.shadow_radius, 1);
-  ps->o.shadow_red = normalize_d(ps->o.shadow_red);
-  ps->o.shadow_green = normalize_d(ps->o.shadow_green);
-  ps->o.shadow_blue = normalize_d(ps->o.shadow_blue);
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
   ps->o.frame_opacity = normalize_d(ps->o.frame_opacity);
-  ps->o.shadow_opacity = normalize_d(ps->o.shadow_opacity);
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
   ps->o.refresh_rate = normalize_i_range(ps->o.refresh_rate, 0, 300);
   ps->o.alpha_step = normalize_d_range(ps->o.alpha_step, 0.01, 1.0);
@@ -5454,8 +4946,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     }
     memcpy(ps->o.blur_kerns[0], &convolution_blur, sizeof(convolution_blur));
   }
-
-  rebuild_shadow_exclude_reg(ps);
 }
 
 /**
@@ -6286,16 +5776,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .vsync_aggressive = false,
 
       .wintype_shadow = { false },
-      .shadow_red = 0.0,
-      .shadow_green = 0.0,
-      .shadow_blue = 0.0,
       .shadow_radius = 12,
-      .shadow_offset_x = -15,
-      .shadow_offset_y = -15,
-      .shadow_opacity = .75,
       .clear_shadow = false,
       .shadow_blacklist = NULL,
-      .shadow_ignore_shaped = false,
       .respect_prop_shadow = false,
       .xinerama_shadow_crop = false,
 
@@ -6361,12 +5844,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .active_leader = None,
 
     .black_picture = None,
-    .cshadow_picture = None,
     .white_picture = None,
     .gaussian_map = NULL,
     .cgsize = 0,
-    .shadow_corner = NULL,
-    .shadow_top = NULL,
 
     .refresh_rate = 0,
     .refresh_intv = 0UL,
@@ -6632,9 +6112,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   init_atoms(ps);
   init_alpha_picts(ps);
 
-  ps->gaussian_map = make_gaussian_map(ps->o.shadow_radius);
-  presum_gaussian(ps, ps->gaussian_map);
-
   {
     XRenderPictureAttributes pa;
     pa.subwindow_mode = IncludeInferiors;
@@ -6658,15 +6135,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   ps->black_picture = solid_picture(ps, true, 1, 0, 0, 0);
   ps->white_picture = solid_picture(ps, true, 1, 1, 1, 1);
-
-  // Generates another Picture for shadows if the color is modified by
-  // user
-  if (!ps->o.shadow_red && !ps->o.shadow_green && !ps->o.shadow_blue) {
-    ps->cshadow_picture = ps->black_picture;
-  } else {
-    ps->cshadow_picture = solid_picture(ps, true, 1,
-        ps->o.shadow_red, ps->o.shadow_green, ps->o.shadow_blue);
-  }
 
   fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
   ps->tmout_unredir = timeout_insert(ps, ps->o.unredir_if_possible_delay,
@@ -6818,12 +6286,6 @@ session_destroy(session_t *ps) {
     ps->ignore_tail = &ps->ignore_head;
   }
 
-  // Free cshadow_picture and black_picture
-  if (ps->cshadow_picture == ps->black_picture)
-    ps->cshadow_picture = None;
-  else
-    free_picture(ps, &ps->cshadow_picture);
-
   free_picture(ps, &ps->black_picture);
   free_picture(ps, &ps->white_picture);
 
@@ -6844,8 +6306,6 @@ session_destroy(session_t *ps) {
   free_root_tile(ps);
   free_region(ps, &ps->screen_reg);
   free(ps->expose_rects);
-  free(ps->shadow_corner);
-  free(ps->shadow_top);
   free(ps->gaussian_map);
 
   free(ps->o.config_file);

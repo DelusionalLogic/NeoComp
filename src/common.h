@@ -1209,25 +1209,6 @@ typedef struct _win {
   // Shadow-related members
   /// Whether a window has shadow. Calculated.
   bool shadow;
-  /// Shadow state on last paint.
-  bool shadow_last;
-  /// Override value of window shadow state. Set by D-Bus method calls.
-  switch_t shadow_force;
-  /// Opacity of the shadow. Affected by window opacity and frame opacity.
-  double shadow_opacity;
-  /// X offset of shadow. Affected by commandline argument.
-  int shadow_dx;
-  /// Y offset of shadow. Affected by commandline argument.
-  int shadow_dy;
-  /// Width of shadow. Affected by window size and commandline argument.
-  int shadow_width;
-  /// Height of shadow. Affected by window size and commandline argument.
-  int shadow_height;
-  /// Picture to render shadow. Affected by window size.
-  paint_t shadow_paint;
-  /// The value of _COMPTON_SHADOW attribute of the window. Below 0 for
-  /// none.
-  long prop_shadow;
 
   // Dim-related members
   /// Whether the window is to be dimmed.
@@ -2271,7 +2252,6 @@ free_paint_glx(session_t *ps, paint_t *ppaint) {
 static inline void
 free_win_res_glx(session_t *ps, win *w) {
   free_paint_glx(ps, &w->paint);
-  free_paint_glx(ps, &w->shadow_paint);
 }
 
 /**
