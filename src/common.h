@@ -1072,6 +1072,8 @@ typedef struct _win {
   struct _win *next;
   /// Pointer to the next higher window to paint.
   struct _win *prev_trans;
+  /// Pointer to the next lower window to paint.
+  struct _win *next_trans;
 
   // Core members
   /// ID of the top-level frame window.
@@ -2158,7 +2160,7 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg);
 
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
-    GLfloat factor_center, glx_blur_cache_t *pbc);
+    GLfloat factor_center, glx_blur_cache_t *pbc, win* w);
 
 bool
 glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,

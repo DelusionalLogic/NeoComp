@@ -967,6 +967,8 @@ paint_preprocess(session_t *ps, win *list) {
 
     if (to_paint) {
       w->prev_trans = t;
+      if(t != NULL)
+          t->next_trans = w;
       t = w;
     }
     else {
@@ -997,8 +999,9 @@ paint_preprocess(session_t *ps, win *list) {
     unredir_possible = true;
   if (unredir_possible) {
     if (ps->redirected) {
-      if (!ps->o.unredir_if_possible_delay || ps->tmout_unredir_hit)
+      if (!ps->o.unredir_if_possible_delay || ps->tmout_unredir_hit) {
         redir_stop(ps);
+      }
       else if (!ps->tmout_unredir->enabled) {
         timeout_reset(ps, ps->tmout_unredir);
         ps->tmout_unredir->enabled = true;
@@ -1083,7 +1086,7 @@ static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
 
   // TODO: Handle frame opacity
   glx_blur_dst(ps, &pos, &size, ps->psglx->z - 0.5, factor_center,
-          &w->glx_blur_cache);
+          &w->glx_blur_cache, w);
 }
 
 static void
@@ -1972,6 +1975,7 @@ add_win(session_t *ps, Window id, Window prev) {
   const static win win_def = {
     .next = NULL,
     .prev_trans = NULL,
+    .next_trans = NULL,
 
     .id = None,
     .a = { },
@@ -2336,9 +2340,12 @@ finish_destroy_win(session_t *ps, Window id) {
 
       // Drop w from all prev_trans to avoid accessing freed memory in
       // repair_win()
-      for (win *w2 = ps->list; w2; w2 = w2->next)
+      for (win *w2 = ps->list; w2; w2 = w2->next) {
         if (w == w2->prev_trans)
           w2->prev_trans = NULL;
+        if (w == w2->next_trans)
+          w2->next_trans = NULL;
+      }
 
       free(w);
       break;
@@ -6431,12 +6438,14 @@ session_run(session_t *ps) {
     ps->tmout_unredir_hit = false;
 
     static int paint = 0;
-    paint_all(ps, t);
-    ps->reg_ignore_expire = false;
-    paint++;
-    if (ps->o.benchmark && paint >= ps->o.benchmark)
-        exit(0);
-    XSync(ps->dpy, False);
+    if (ps->redirected || ps->o.stoppaint_force == OFF) {
+        paint_all(ps, t);
+        ps->reg_ignore_expire = false;
+        paint++;
+        if (ps->o.benchmark && paint >= ps->o.benchmark)
+            exit(0);
+        XSync(ps->dpy, False);
+    }
 
     if (ps->idling)
       ps->fade_time = 0L;

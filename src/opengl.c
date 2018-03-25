@@ -928,8 +928,8 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
-    glx_blur_cache_t *pbc) {
-    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, pbc);
+    glx_blur_cache_t *pbc, win* w) {
+    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, pbc, w);
     glx_check_err(ps);
     return ret;
 }

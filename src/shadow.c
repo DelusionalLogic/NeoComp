@@ -201,6 +201,12 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
 
     glViewport(0, 0, ps->root_width, ps->root_height);
 
+    struct shader_program* global_program = assets_load("passthough.shader");
+    if(global_program->shader_type_info != &passthough_info) {
+        printf_errf("Shader was not a passthough shader\n");
+        return;
+    }
+
     /* { */
     /*     Vector2 rpos = {{0, 0}}; */
     /*     Vector2 rsize = {{.4, .6}}; */

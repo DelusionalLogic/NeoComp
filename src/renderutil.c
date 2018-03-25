@@ -63,11 +63,5 @@ void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
 
         draw_rect(face, passthough_type->mvp, *pos, *size);
     }
-
-    // Restore the default rendering context
-    glUseProgram(0);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
