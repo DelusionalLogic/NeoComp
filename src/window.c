@@ -137,3 +137,15 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
     }
     return true;
 }
+
+bool wd_bind(struct WindowDrawable* drawable, Display* display, Window wid) {
+    drawable->wid = wid;
+    drawable->pixmap = XCompositeNameWindowPixmap(display, wid);
+    if(drawable->pixmap == 0) {
+        printf_errf("Failed getting window pixmap");
+        return false;
+    }
+    return true;
+}
+void wd_delete(struct WindowDrawable* drawable) {
+}

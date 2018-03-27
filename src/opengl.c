@@ -130,6 +130,18 @@ glx_init(session_t *ps, bool need_render) {
 
   glx_session_t *psglx = ps->psglx;
 
+  if(!xorgContext_init(&psglx->xcontext, ps->dpy, ps->scr)) {
+      printf_errf("Failed initializing the xorg context");
+      goto glx_init_end;
+  }
+
+  int visId = XVisualIDFromVisual(ps->vis);
+  if(!xorgContext_selectConfig(&psglx->xcontext, visId)) {
+      printf_errf("Failed selecting a an fbconfig");
+      goto glx_init_end;
+  }
+  
+
   if (!psglx->context) {
     // Get GLX context
 #ifndef DEBUG_GLX_DEBUG_CONTEXT

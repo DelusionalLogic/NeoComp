@@ -125,6 +125,7 @@
 #include "vmath.h"
 #include "texture.h"
 #include "framebuffer.h"
+#include "xorg.h"
 
 // @CLEANUP @HACK We don't actually want this here, but because everything is in
 // here i do now.
@@ -816,7 +817,10 @@ typedef struct {
   Matrix view;
   /// FBConfig-s for GLX pixmap of different depths.
   glx_fbconfig_t *fbconfigs[OPENGL_MAX_DEPTH + 1];
+
   glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
+
+  struct X11Context xcontext;
 } glx_session_t;
 
 #define CGLX_SESSION_INIT { .context = NULL }
