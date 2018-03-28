@@ -1470,6 +1470,11 @@ map_win(session_t *ps, Window id) {
     cdbus_ev_win_mapped(ps, w);
   }
 #endif
+
+  if(!wd_bind(&w->drawable)) {
+      printf_errf("Failed binding window drawable");
+      return;
+  }
 }
 
 static void
@@ -2093,16 +2098,21 @@ add_win(session_t *ps, Window id, Window prev) {
   new->a.map_state = IsUnmapped;
 
   if (InputOutput == new->a.class) {
-       // Get window picture format
-    new->pictfmt = XRenderFindVisualFormat(ps->dpy, new->a.visual);
+      // Get window picture format
+      new->pictfmt = XRenderFindVisualFormat(ps->dpy, new->a.visual);
 
-       // Create Damage for window
-       set_ignore_next(ps);
-       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
+      // Create Damage for window
+      set_ignore_next(ps);
+      new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
   }
 
   calc_win_size(ps, new);
 
+  if(!wd_init(&new->drawable, &ps->psglx->xcontext, new->id)) {
+      printf_errf("Failed initializing window drawable");
+      free(new);
+      return false;
+  }
   new->next = *p;
   *p = new;
 
@@ -2114,7 +2124,7 @@ add_win(session_t *ps, Window id, Window prev) {
 #endif
 
   if (IsViewable == map_state) {
-    map_win(ps, id);
+      map_win(ps, id);
   }
 
   return true;

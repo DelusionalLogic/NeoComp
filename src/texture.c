@@ -15,14 +15,26 @@ static inline GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
   glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage2D(tex_tgt, 0, GL_RGBA, size->x, size->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
-  glBindTexture(tex_tgt, 0);
 
   return tex;
 }
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
+    texture->gl_texture = generate_texture(target, size);
+    if(texture->gl_texture == 0) {
+        return 1;
+    }
+
+    texture->target = target;
+    texture->size = *size;
+
+    glTexImage2D(texture->target, 0, GL_RGBA, size->x, size->y, 0, GL_RGBA,
+            GL_UNSIGNED_BYTE, NULL);
+
+    return 0;
+}
+
+int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* size) {
     texture->gl_texture = generate_texture(target, size);
     if(texture->gl_texture == 0) {
         return 1;

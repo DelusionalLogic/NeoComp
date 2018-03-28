@@ -144,9 +144,6 @@ glx_init(session_t *ps, bool need_render) {
 
   if (!psglx->context) {
     // Get GLX context
-#ifndef DEBUG_GLX_DEBUG_CONTEXT
-    psglx->context = glXCreateContext(ps->dpy, pvis, None, GL_TRUE);
-#else
     {
       GLXFBConfig fbconfig = get_fbconfig_from_visualinfo(ps, pvis);
       if (!fbconfig) {
@@ -173,7 +170,6 @@ glx_init(session_t *ps, bool need_render) {
       psglx->context = p_glXCreateContextAttribsARB(ps->dpy, fbconfig, NULL,
           GL_TRUE, attrib_list);
     }
-#endif
     if (!psglx->context) {
       printf_errf("(): Failed to get GLX context.");
       goto glx_init_end;
@@ -359,6 +355,8 @@ glx_destroy(session_t *ps) {
     free(ps->psglx->fbconfigs[i]);
     ps->psglx->fbconfigs[i] = NULL;
   }
+
+  xorgContext_delete(&ps->psglx->xcontext);
 
   // Destroy GLX context
   if (ps->psglx->context) {

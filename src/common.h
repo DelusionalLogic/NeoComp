@@ -139,6 +139,16 @@ struct blur {
     GLuint array;
 };
 
+struct WindowDrawable {
+    struct X11Context* context;
+    Window wid;
+
+    bool bound;
+    Pixmap pixmap;
+    GLXDrawable glxPixmap;
+    struct Texture texture;
+};
+
 typedef struct {
   /// Framebuffer used for blurring.
   struct Framebuffer fbo;
@@ -1235,6 +1245,8 @@ typedef struct _win {
   glx_blur_cache_t glx_blur_cache;
 
   struct glx_shadow_cache shadow_cache;
+
+  struct WindowDrawable drawable;
 } win;
 
 /// Temporary structure used for communication between
