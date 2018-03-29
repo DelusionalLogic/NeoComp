@@ -2318,7 +2318,6 @@ finish_destroy_win(session_t *ps, Window id) {
       printf_dbgf("(%#010lx \"%s\"): %p\n", id, w->name, w);
 #endif
 
-      finish_unmap_win(ps, w);
       *prev = w->next;
 
       // Clear active_win if it's pointing to the destroyed window
@@ -2356,8 +2355,6 @@ destroy_win(session_t *ps, Window id) {
 #endif
 
   if (w) {
-    unmap_win(ps, w);
-
     w->destroyed = true;
 
     if (ps->o.no_fading_destroyed_argb)
