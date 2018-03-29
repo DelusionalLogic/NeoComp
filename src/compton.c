@@ -2361,6 +2361,8 @@ destroy_win(session_t *ps, Window id) {
       win_determine_fade(ps, w);
 
     // Set fading callback
+    // @LEAK @PERFORMANCE: We override the unmap callback here, and never call
+    // it.
     set_fade_callback(ps, w, destroy_callback, false);
 
 #ifdef CONFIG_DBUS
