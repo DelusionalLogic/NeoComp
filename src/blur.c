@@ -54,7 +54,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     }
 
     struct Texture* tex_scr = &pbc->texture[0];
-	win_calculate_blur(blur, ps, w);
+    win_calculate_blur(blur, ps, w);
 
     glViewport(0, 0, ps->root_width, ps->root_height);
 

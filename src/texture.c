@@ -41,7 +41,8 @@ int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* 
     }
 
     texture->target = target;
-    texture->size = *size;
+    if(size != NULL)
+        texture->size = *size;
 
     return 0;
 }

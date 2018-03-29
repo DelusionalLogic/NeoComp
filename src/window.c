@@ -83,31 +83,32 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
         struct face* face = assets_load("window.face");
 
+        texture_read_from(tex, 0, GL_BACK, &glpos, &size);
+
         Vector2 root_size = size;
         Vector2 pixeluv = {{1.0f, 1.0f}};
         vec2_div(&pixeluv, &tex->size);
 
-        for(win* t = w->next_trans; t != NULL; t = t->next_trans) {
-            Vector2 tpos = {{t->a.x, t->a.y}};
-            Vector2 tsize = {{t->widthb, t->heightb}};
-            Vector2 tglpos = X11_rectpos_to_gl(ps, &tpos, &tsize);
-            vec2_sub(&tglpos, &glpos);
+        /* for(win* t = w->next_trans; t != NULL; t = t->next_trans) { */
+        /*     Vector2 tpos = {{t->a.x, t->a.y}}; */
+        /*     Vector2 tsize = {{t->widthb, t->heightb}}; */
+        /*     Vector2 tglpos = X11_rectpos_to_gl(ps, &tpos, &tsize); */
+        /*     vec2_sub(&tglpos, &glpos); */
 
-            Vector2 scale = pixeluv;
-            vec2_mul(&scale, &tsize);
+        /*     Vector2 scale = pixeluv; */
+        /*     vec2_mul(&scale, &tsize); */
 
-            Vector2 relpos = pixeluv;
-            vec2_mul(&relpos, &tglpos);
-            printf("SHADOW_DRAW %f %f x %f %f\n", relpos.x, relpos.y, scale.x, scale.y);
+        /*     Vector2 relpos = pixeluv; */
+        /*     vec2_mul(&relpos, &tglpos); */
 
-            draw_tex(ps, face, &t->glx_blur_cache.texture[0], &relpos, &scale);
-            struct Texture ttt = {
-                .target = GL_TEXTURE_2D,
-                .gl_texture = t->paint.ptex->texture,
-                /* .gl_texture = ps->root_tile_paint.ptex->texture, */
-            };
-            draw_tex(ps, face, &ttt, &relpos, &scale);
-        }
+        /*     /1* draw_tex(ps, face, &t->glx_blur_cache.texture[0], &relpos, &scale); *1/ */
+        /*     struct Texture ttt = { */
+        /*         .target = GL_TEXTURE_2D, */
+        /*         /1* .gl_texture = t->paint.ptex->texture, *1/ */
+        /*         .gl_texture = ps->root_tile_paint.ptex->texture, */
+        /*     }; */
+        /*     draw_tex(ps, face, &ttt, &relpos, &scale); */
+        /* } */
 
         // Texture scaling factor
         Vector2 halfpixel = pixeluv;
@@ -144,6 +145,9 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
 
     drawable->context = context;
     drawable->wid = wid;
+    drawable->pixmap = 0;
+
+    texture_init_nospace(&drawable->texture, GL_TEXTURE_2D, NULL);
     return true;
 }
 
@@ -157,17 +161,6 @@ bool wd_bind(struct WindowDrawable* drawable) {
         return false;
     }
 
-    const int attrib[] = {
-        GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-        GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
-        None,
-    };
-    drawable->glxPixmap = glXCreatePixmap(
-            drawable->context->display,
-            drawable->context->selected_config,
-            drawable->pixmap,
-            attrib
-            );
     Window root;
     int rx,  ry;
     uint32_t width, height;
@@ -179,9 +172,22 @@ bool wd_bind(struct WindowDrawable* drawable) {
         // @INCOMPLETE: free
         return false;
     }
+
     Vector2 size = {{width, height}};
 
-    texture_init_nospace(&drawable->texture, GL_TEXTURE_2D, &size);
+    const int attrib[] = {
+        GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
+        GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
+        None,
+    };
+    drawable->glxPixmap = glXCreatePixmap(
+            drawable->context->display,
+            drawable->context->selected_config,
+            drawable->pixmap,
+            attrib
+            );
+
+    drawable->texture.size = size;
 
     glXBindTexImageEXT(drawable->context->display, drawable->glxPixmap,
             GLX_FRONT_LEFT_EXT, NULL);
@@ -197,7 +203,9 @@ bool wd_unbind(struct WindowDrawable* drawable) {
     glXReleaseTexImageEXT(drawable->context->display, drawable->pixmap,
             GLX_FRONT_LEFT_EXT);
     glXDestroyPixmap(drawable->context->display, drawable->pixmap);
-    texture_delete(&drawable->texture);
+    drawable->pixmap = 0;
+
+    drawable->bound = false;
     return true;
 }
 
@@ -206,4 +214,5 @@ void wd_delete(struct WindowDrawable* drawable) {
     if(drawable->bound) {
         wd_unbind(drawable);
     }
+    texture_delete(&drawable->texture);
 }

@@ -1007,8 +1007,7 @@ paint_preprocess(session_t *ps, win *list) {
         ps->tmout_unredir->enabled = true;
       }
     }
-  }
-  else {
+  } else if(!ps->redirected) {
     ps->tmout_unredir->enabled = false;
     redir_start(ps);
   }
@@ -1021,44 +1020,14 @@ paint_preprocess(session_t *ps, win *list) {
  */
 static inline void
 win_paint_shadow(session_t *ps, win *w) {
-
-  // Fetch Pixmap
-  if (!w->paint.pixmap && ps->has_name_pixmap) {
-    set_ignore_next(ps);
-    w->paint.pixmap = XCompositeNameWindowPixmap(ps->dpy, w->id);
-    if (w->paint.pixmap)
-      free_fence(ps, &w->fence);
-  }
-
-  Drawable draw = w->paint.pixmap;
-  if (!draw)
-    draw = w->id;
-
-  if (IsViewable == w->a.map_state)
-    xr_sync(ps, draw, &w->fence);
-
-  // GLX: Build texture
-  // Let glx_bind_pixmap() determine pixmap size, because if the user
-  // is resizing windows, the width and height we get may not be up-to-date,
-  // causing the jittering issue M4he reported in #7.
-  if (!paint_bind_tex(ps, &w->paint, 0, 0, 0,
-        (!ps->o.glx_no_rebind_pixmap && w->pixmap_damaged))) {
-    printf_errf("(%#010lx): Failed to bind texture. Expect troubles.", w->id);
-  }
-  w->pixmap_damaged = false;
-
-  if (!paint_isvalid(ps, &w->paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
-
   const Vector2 pos = {{
       w->a.x, w->a.y,
   }};
   const Vector2 size = {{
       w->widthb, w->heightb,
   }};
-  glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
+  if(w->a.map_state == IsViewable)
+      glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
 
   /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
   /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
@@ -1261,9 +1230,9 @@ paint_all(session_t *ps, win *t) {
 #endif
 
 #ifdef MONITOR_REPAINT
-  glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+  glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 #endif
 
   /* set_tgt_clip(ps, reg_paint, NULL); */
@@ -1471,8 +1440,15 @@ map_win(session_t *ps, Window id) {
   }
 #endif
 
+  XWindowAttributes aa;
+  XGetWindowAttributes(ps->dpy, w->id, &aa);
+  assert(w->a.map_state == IsViewable);
+  assert(aa.map_state != IsUnmapped);
+  assert(aa.map_state == IsViewable);
+  assert(aa.class == InputOutput);
+  XCompositeNameWindowPixmap(ps->dpy, w->id);
   if(!wd_bind(&w->drawable)) {
-      printf_errf("Failed binding window drawable");
+      printf_errf("Failed binding window drawable %s", w->name);
       return;
   }
 }
@@ -1495,6 +1471,7 @@ finish_unmap_win(session_t *ps, win *w) {
 
   free_wpaint(ps, w);
   free_region(ps, &w->border_size);
+  wd_unbind(&w->drawable);
 }
 
 static void
@@ -1572,6 +1549,8 @@ win_determine_mode(session_t *ps, win *w) {
 
   if(mode == WMODE_SOLID) {
       w->solid = true;
+  } else {
+      w->solid = false;
   }
 
   w->mode = mode;
@@ -6162,6 +6141,8 @@ session_init(session_t *ps_old, int argc, char **argv) {
   ps->tmout_unredir->enabled = false;
 
   XGrabServer(ps->dpy);
+
+  redir_start(ps);
 
   {
     Window root_return, parent_return;

@@ -286,7 +286,7 @@ glx_init(session_t *ps, bool need_render) {
     }
 
     // Clear screen
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }

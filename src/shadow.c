@@ -83,7 +83,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
 
     glEnable(GL_BLEND);
 
-    if(!vec2_eq(size, &cache->wSize)) {
+    if(!vec2_eq(size, &cache->wSize) || true) {
         // @BUG: If the size is 0 we will never initialize.
         if(!cache->initialized) {
             shadow_cache_init(cache, size);
@@ -117,8 +117,10 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
 
         // @CLEANUP: We have to do this since the window isn't using the new nice
         // interface
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, w->paint.ptex->texture);
+        /* glActiveTexture(GL_TEXTURE0); */
+        /* glBindTexture(GL_TEXTURE_2D, w->paint.ptex->texture); */
+        assert(w->drawable.bound);
+        texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
         struct shader_program* global_program = assets_load("shadow.shader");
         if(global_program->shader_type_info != &global_info) {
