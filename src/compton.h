@@ -301,19 +301,6 @@ free_win_res(session_t *ps, win *w) {
 }
 
 /**
- * Free root tile related things.
- */
-static inline void
-free_root_tile(session_t *ps) {
-  free_picture(ps, &ps->root_tile_paint.pict);
-  free_texture(ps, &ps->root_tile_paint.ptex);
-  if (ps->root_tile_fill)
-    free_pixmap(ps, &ps->root_tile_paint.pixmap);
-  ps->root_tile_paint.pixmap = None;
-  ps->root_tile_fill = false;
-}
-
-/**
  * Get current system clock in milliseconds.
  */
 static inline time_ms_t
@@ -686,25 +673,24 @@ paint_preprocess(session_t *ps, win *list);
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool argb, bool neg,
-    Picture pict, glx_texture_t *ptex,
+    double opacity, bool neg,
+    Picture pict, struct Texture* ptex,
     const glx_prog_main_t *pprogram
     );
 
 #define \
-   render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, pprogram) \
-  render_(ps, x, y, dx, dy, wid, hei, opacity, argb, neg, pict, ptex, pprogram)
+   render(ps, x, y, dx, dy, wid, hei, opacity, neg, pict, ptex, pprogram) \
+  render_(ps, x, y, dx, dy, wid, hei, opacity, neg, pict, ptex, pprogram)
 
 static inline void
 win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
     double opacity, Picture pict) {
   const int dx = (w ? w->a.x: 0) + x;
   const int dy = (w ? w->a.y: 0) + y;
-  const bool argb = (w && (WMODE_ARGB == w->mode || ps->o.force_win_blend));
   const bool neg = (w && w->invert_color);
 
-  render(ps, x, y, dx, dy, wid, hei, opacity, argb, neg,
-      pict, (w ? w->paint.ptex: ps->root_tile_paint.ptex),
+  render(ps, x, y, dx, dy, wid, hei, opacity, neg,
+      pict, (w ? &w->drawable.texture: &ps->root_texture.texture),
       (w ? &ps->o.glx_prog_win: NULL));
 }
 

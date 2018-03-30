@@ -50,7 +50,7 @@ void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
     struct Passthough* passthough_type = passthough_program->shader_type;
     shader_use(passthough_program);
 
-    shader_set_uniform_bool(passthough_type->flip, false);
+    shader_set_uniform_bool(passthough_type->flip, texture->flipped);
 
     texture_bind(texture, GL_TEXTURE0);
 

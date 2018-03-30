@@ -8,7 +8,10 @@
 struct Texture {
     GLuint gl_texture;
     GLenum target;
+
     Vector2 size;
+
+    bool flipped;
 };
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size);

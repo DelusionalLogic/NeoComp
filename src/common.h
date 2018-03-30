@@ -139,14 +139,27 @@ struct blur {
     GLuint array;
 };
 
-struct WindowDrawable {
+struct XTexture {
     struct X11Context* context;
-    Window wid;
 
     bool bound;
     Pixmap pixmap;
     GLXDrawable glxPixmap;
     struct Texture texture;
+};
+
+struct WindowDrawable {
+    Window wid;
+
+    // This is a bit of magic. In C11 we can have anonymous struct members, but
+    // they have to be untagged. We'd prefer to be able to use a tagged one,
+    // luckily the "ms-extensions" allow us to do just that. The union here
+    // just means that we can also access the struct explicitly. Let me just
+    // give an early "I'm sorry".
+    union {
+        struct XTexture xtexture;
+        struct XTexture;
+    };
 };
 
 typedef struct {
@@ -856,10 +869,10 @@ typedef struct _session_t {
   // Damage root_damage;
   /// X Composite overlay window. Used if <code>--paint-on-overlay</code>.
   Window overlay;
-  /// Whether the root tile is filled by compton.
-  bool root_tile_fill;
-  /// Picture of the root window background.
-  paint_t root_tile_paint;
+
+  /// The root tile, but better
+  struct XTexture root_texture;
+
   /// A region of the size of the screen.
   XserverRegion screen_reg;
   /// Picture of root window. Destination of painting in no-DBE painting
@@ -2183,15 +2196,15 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     GLfloat factor);
 
 bool
-glx_render_(session_t *ps, const glx_texture_t *ptex,
+glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool argb, bool neg,
+    double opacity, bool neg,
     const glx_prog_main_t *pprogram
     );
 
 #define \
-   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram) \
-  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram)
+   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram) \
+  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram)
 
 void
 glx_swap_copysubbuffermesa(session_t *ps, XserverRegion reg);

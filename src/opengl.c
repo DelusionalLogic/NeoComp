@@ -990,18 +990,13 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
  * @brief Render a region with texture data.
  */
 bool
-glx_render_(session_t *ps, const glx_texture_t *ptex,
+glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool argb, bool neg,
+    double opacity, bool neg,
     const glx_prog_main_t *pprogram
     ) {
-  if (!ptex || !ptex->texture) {
-    printf_errf("(): Missing texture.");
-    return false;
-  }
+    assert(ptex != NULL);
 
-  argb = argb || (GLX_TEXTURE_FORMAT_RGBA_EXT ==
-      ps->psglx->fbconfigs[ptex->depth]->texture_fmt);
   glEnable(GL_BLEND);
 
   // This is all weird, but X Render is using premultiplied ARGB format, and
@@ -1020,11 +1015,10 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
   shader_use(global_program);
 
   // Bind texture
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, ptex->texture);
+  texture_bind(ptex, GL_TEXTURE0);
 
   shader_set_uniform_float(global_type->invert, neg);
-  shader_set_uniform_float(global_type->flip, ptex->y_inverted);
+  shader_set_uniform_float(global_type->flip, ptex->flipped);
   shader_set_uniform_float(global_type->opacity, opacity);
   shader_set_uniform_sampler(global_type->tex_scr, 0);
 

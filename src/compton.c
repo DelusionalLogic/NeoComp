@@ -14,6 +14,10 @@
 #include "opengl.h"
 #include "vmath.h"
 #include "window.h"
+#include "xtexture.h"
+
+#include "assets/assets.h"
+#include "renderutil.h"
 
 #include "profiler/zone.h"
 #include "profiler/render.h"
@@ -560,76 +564,71 @@ recheck_focus(session_t *ps) {
 
 static bool
 get_root_tile(session_t *ps) {
-  /*
-  if (ps->o.paint_on_overlay) {
-    return ps->root_picture;
-  } */
+    Pixmap pixmap = None;
 
-  assert(!ps->root_tile_paint.pixmap);
-  ps->root_tile_fill = false;
-
-  bool fill = false;
-  Pixmap pixmap = None;
-
-  // Get the values of background attributes
-  for (int p = 0; background_props_str[p]; p++) {
-    winprop_t prop = wid_get_prop(ps, ps->root,
-        get_atom(ps, background_props_str[p]),
-        1L, XA_PIXMAP, 32);
-    if (prop.nitems) {
-      pixmap = *prop.data.p32;
-      fill = false;
-      free_winprop(&prop);
-      break;
+    // Get the values of background attributes
+    for (int p = 0; background_props_str[p]; p++) {
+        winprop_t prop = wid_get_prop(ps, ps->root,
+                get_atom(ps, background_props_str[p]),
+                1L, XA_PIXMAP, 32);
+        if (prop.nitems) {
+            pixmap = *prop.data.p32;
+            free_winprop(&prop);
+            break;
+        }
+        free_winprop(&prop);
     }
-    free_winprop(&prop);
-  }
 
-  // Make sure the pixmap we got is valid
-  if (pixmap && !validate_pixmap(ps, pixmap))
-    pixmap = None;
+    // Make sure the pixmap we got is valid
+    if (pixmap && !validate_pixmap(ps, pixmap))
+        pixmap = None;
 
-  // Create a pixmap if there isn't any
-  if (!pixmap) {
-    pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
-    fill = true;
-  }
+    // Create a pixmap if there isn't any
+    if (!pixmap) {
+        pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
 
-  // Create Picture
-  {
-    XRenderPictureAttributes pa = {
-      .repeat = True,
-    };
-    ps->root_tile_paint.pict = XRenderCreatePicture(
-        ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
-        CPRepeat, &pa);
-  }
+        //Fill pixmap with default color
+        Picture root_picture;
+        XRenderPictureAttributes pa = {
+            .repeat = True,
+        };
+        root_picture = XRenderCreatePicture(
+                ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
+                CPRepeat, &pa);
+        XRenderColor  c;
 
-  // Fill pixmap if needed
-  if (fill) {
-    XRenderColor  c;
+        c.red = c.green = c.blue = 0x8080;
+        c.alpha = 0xffff;
+        XRenderFillRectangle(ps->dpy, PictOpSrc, root_picture, &c, 0, 0, 1, 1);
+        XRenderFreePicture(ps->dpy, root_picture);
+    }
 
-    c.red = c.green = c.blue = 0x8080;
-    c.alpha = 0xffff;
-    XRenderFillRectangle(ps->dpy, PictOpSrc, ps->root_tile_paint.pict, &c, 0, 0, 1, 1);
-  }
 
-  ps->root_tile_fill = fill;
-  ps->root_tile_paint.pixmap = pixmap;
-  if (BKEND_GLX == ps->o.backend)
-    return glx_bind_pixmap(ps, &ps->root_tile_paint.ptex, ps->root_tile_paint.pixmap, 0, 0, 0);
+    if(!xtexture_bind(&ps->root_texture, pixmap)) {
+        printf_errf("Failed binding the root texture to gl");
+        return false;
+    }
 
-  return true;
+    return true;
 }
 
 /**
  * Paint root window content.
  */
 static void paint_root(session_t *ps) {
-  if (!ps->root_tile_paint.pixmap)
-    get_root_tile(ps);
+    // @CLEANUP: This doesn't belong here, but rather when we get notified of
+    // a new root texture
+    if (!ps->root_texture.bound)
+        get_root_tile(ps);
 
-  win_render(ps, NULL, 0, 0, ps->root_width, ps->root_height, 1.0, ps->root_tile_paint.pict);
+    assert(ps->root_texture.bound);
+    glClearColor(0.0, 0.0, 1.0, 1.0);
+    /* glClear(GL_COLOR_BUFFER_BIT); */
+
+    glViewport(0, 0, ps->root_width, ps->root_height);
+
+    struct face* face = assets_load("window.face");
+    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &VEC2_UNIT);
 }
 
 /**
@@ -1060,12 +1059,12 @@ static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool argb, bool neg,
-    Picture pict, glx_texture_t *ptex,
+    double opacity, bool neg,
+    Picture pict, struct Texture* ptex,
     const glx_prog_main_t *pprogram
     ) {
     glx_render(ps, ptex, x, y, dx, dy, wid, hei,
-            ps->psglx->z, opacity, argb, neg, pprogram);
+            ps->psglx->z, opacity, neg, pprogram);
     ps->psglx->z += 1;
 }
 
@@ -2376,16 +2375,8 @@ destroy_win(session_t *ps, Window id) {
 
 static inline void
 root_damaged(session_t *ps) {
-  if (ps->root_tile_paint.pixmap) {
-    XClearArea(ps->dpy, ps->root, 0, 0, 0, 0, true);
-    // if (ps->root_picture != ps->root_tile) {
-      free_root_tile(ps);
-    /* }
-    if (root_damage) {
-      XserverRegion parts = XFixesCreateRegion(ps->dpy, 0, 0);
-      XDamageSubtract(ps->dpy, root_damage, None, parts);
-      add_damage(ps, parts);
-    } */
+  if (ps->root_texture.bound) {
+    xtexture_unbind(&ps->root_texture);
   }
 
   // Mark screen damaged
@@ -5736,8 +5727,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .root_width = 0,
     // .root_damage = None,
     .overlay = None,
-    .root_tile_fill = false,
-    .root_tile_paint = PAINT_INIT,
     .screen_reg = None,
     .tgt_picture = None,
     .tgt_buffer = PAINT_INIT,
@@ -6141,6 +6130,8 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   XGrabServer(ps->dpy);
 
+  xtexture_init(&ps->root_texture, &ps->psglx->xcontext);
+
   redir_start(ps);
 
   {
@@ -6303,10 +6294,11 @@ session_destroy(session_t *ps) {
   free_paint(ps, &ps->tgt_buffer);
 
   // Free other X resources
-  free_root_tile(ps);
   free_region(ps, &ps->screen_reg);
   free(ps->expose_rects);
   free(ps->gaussian_map);
+
+  xtexture_delete(&ps->root_texture);
 
   free(ps->o.config_file);
   free(ps->o.write_pid_path);

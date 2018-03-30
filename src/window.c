@@ -5,6 +5,7 @@
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "shaders/shaderinfo.h"
+#include "xtexture.h"
 #include "textureeffects.h"
 
 bool win_overlap(win* w1, win* w2) {
@@ -141,71 +142,26 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid) {
     assert(drawable != NULL);
-    assert(context != NULL);
 
-    drawable->context = context;
     drawable->wid = wid;
-    drawable->pixmap = 0;
-
-    texture_init_nospace(&drawable->texture, GL_TEXTURE_2D, NULL);
-    return true;
+    return xtexture_init(&drawable->xtexture, context);
 }
 
 bool wd_bind(struct WindowDrawable* drawable) {
     assert(drawable != NULL);
-    assert(!drawable->bound);
 
-    drawable->pixmap = XCompositeNameWindowPixmap(drawable->context->display, drawable->wid);
-    if(drawable->pixmap == 0) {
+    Pixmap pixmap = XCompositeNameWindowPixmap(drawable->context->display, drawable->wid);
+    if(pixmap == 0) {
         printf_errf("Failed getting window pixmap");
         return false;
     }
 
-    Window root;
-    int rx,  ry;
-    uint32_t width, height;
-    uint32_t border;
-    uint32_t depth;
-    if(!XGetGeometry(drawable->context->display, drawable->pixmap, &root, &rx,
-                &ry, &width, &height, &border, &depth)) {
-        printf_errf("Failed querying pixmap info for %#010lx", drawable->pixmap);
-        // @INCOMPLETE: free
-        return false;
-    }
-
-    Vector2 size = {{width, height}};
-
-    const int attrib[] = {
-        GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-        GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
-        None,
-    };
-    drawable->glxPixmap = glXCreatePixmap(
-            drawable->context->display,
-            drawable->context->selected_config,
-            drawable->pixmap,
-            attrib
-            );
-
-    drawable->texture.size = size;
-
-    glXBindTexImageEXT(drawable->context->display, drawable->glxPixmap,
-            GLX_FRONT_LEFT_EXT, NULL);
-
-    drawable->bound = true;
-    return true;
+    return xtexture_bind(&drawable->xtexture, pixmap);
 }
 
 bool wd_unbind(struct WindowDrawable* drawable) {
     assert(drawable != NULL);
-    assert(drawable->bound);
-    texture_bind(&drawable->texture, GL_TEXTURE0);
-    glXReleaseTexImageEXT(drawable->context->display, drawable->pixmap,
-            GLX_FRONT_LEFT_EXT);
-    glXDestroyPixmap(drawable->context->display, drawable->pixmap);
-    drawable->pixmap = 0;
-
-    drawable->bound = false;
+    xtexture_unbind(&drawable->xtexture);
     return true;
 }
 
