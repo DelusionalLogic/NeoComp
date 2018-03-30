@@ -1425,6 +1425,12 @@ map_win(session_t *ps, Window id) {
 
   w->damaged = false;
 
+  // configure_win might rebind, so we need to bind before
+  if(!wd_bind(&w->drawable)) {
+      printf_errf("Failed binding window drawable %s", w->name);
+      return;
+  }
+
   /* if any configure events happened while
      the window was unmapped, then configure
      the window to its correct place */
@@ -1438,18 +1444,6 @@ map_win(session_t *ps, Window id) {
     cdbus_ev_win_mapped(ps, w);
   }
 #endif
-
-  XWindowAttributes aa;
-  XGetWindowAttributes(ps->dpy, w->id, &aa);
-  assert(w->a.map_state == IsViewable);
-  assert(aa.map_state != IsUnmapped);
-  assert(aa.map_state == IsViewable);
-  assert(aa.class == InputOutput);
-  XCompositeNameWindowPixmap(ps->dpy, w->id);
-  if(!wd_bind(&w->drawable)) {
-      printf_errf("Failed binding window drawable %s", w->name);
-      return;
-  }
 }
 
 static void
@@ -2258,8 +2252,12 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     if (w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
       free_wpaint(ps, w);
-      wd_unbind(&w->drawable);
-      wd_bind(&w->drawable);
+      if(!wd_unbind(&w->drawable)) {
+          printf_errf("Failed unbinding window on resize");
+      }
+      if(!wd_bind(&w->drawable)) {
+          printf_errf("Failed unbinding window on resize");
+      }
     }
 
     if (w->a.width != ce->width || w->a.height != ce->height

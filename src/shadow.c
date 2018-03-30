@@ -83,7 +83,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
 
     glEnable(GL_BLEND);
 
-    if(!vec2_eq(size, &cache->wSize) || true) {
+    if(!vec2_eq(size, &cache->wSize)) {
         // @BUG: If the size is 0 we will never initialize.
         if(!cache->initialized) {
             shadow_cache_init(cache, size);

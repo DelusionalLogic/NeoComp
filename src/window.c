@@ -52,17 +52,13 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
-    if(blur_cache_init(&w->glx_blur_cache, &size) != 0) {
-        printf_errf("(): Failed to initializing cache");
-        return false;
-    }
 
     if(w->glx_blur_cache.damaged) {
         struct Texture* tex = &w->glx_blur_cache.texture[0];
         // Read destination pixels into a texture
 
         Vector2 glpos = X11_rectpos_to_gl(ps, &pos, &size);
-        /* texture_read_from(tex, 0, GL_BACK, &glpos, &size); */
+        texture_read_from(tex, 0, GL_BACK, &glpos, &size);
 
         framebuffer_resetTarget(&blur->fbo);
         framebuffer_targetTexture(&blur->fbo, tex);

@@ -48,9 +48,11 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     // Make sure the blur cache is initialized. This is a noop if it's already
     // initialized
-    if(blur_cache_init(pbc, size) != 0) {
-        printf_errf("(): Failed to initializing cache");
-        return false;
+    if(!vec2_eq(size, &pbc->size)) {
+        if(blur_cache_init(pbc, size) != 0) {
+            printf_errf("(): Failed to initializing cache");
+            return false;
+        }
     }
 
     struct Texture* tex_scr = &pbc->texture[0];
