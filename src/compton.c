@@ -2256,8 +2256,11 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     w->a.y = ce->y;
 
     if (w->a.width != ce->width || w->a.height != ce->height
-        || w->a.border_width != ce->border_width)
+        || w->a.border_width != ce->border_width) {
       free_wpaint(ps, w);
+      wd_unbind(&w->drawable);
+      wd_bind(&w->drawable);
+    }
 
     if (w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
