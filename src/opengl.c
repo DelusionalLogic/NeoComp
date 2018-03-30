@@ -396,7 +396,8 @@ void
 glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_width, ps->root_height);
 
-  ps->psglx->view = orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
+  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
+  view = ps->psglx->view;
 }
 
 /**
@@ -868,18 +869,12 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
       Vector2 rectSize = {{rects[i].width, rects[i].height}};
       Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
-      Vector2 scale = pixeluv;
-      vec2_mul(&scale, &rectSize);
-
-      Vector2 relpos = pixeluv;
-      vec2_mul(&relpos, &glRectPos);
-
 
 #ifdef DEBUG_GLX
       printf_dbgf("(): Rect %d: %f, %f, %f, %f\n", i, relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, passthough_type->mvp, relpos, scale);
+      draw_rect(face, passthough_type->mvp, glRectPos, rectSize);
     }
 
     /* glUseProgram(0); */
@@ -1025,11 +1020,6 @@ glx_render_(session_t *ps, const struct Texture* ptex,
   printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
 #endif
 
-  // @CLEANUP: remove this
-  Vector2 root_size = {{ps->root_width, ps->root_height}};
-  Vector2 pixeluv = {{1.0f, 1.0f}};
-  vec2_div(&pixeluv, &root_size);
-
   struct face* face = assets_load("window.face");
 
   // Painting
@@ -1038,17 +1028,11 @@ glx_render_(session_t *ps, const struct Texture* ptex,
       Vector2 rectSize = {{width, height}};
       Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
-      Vector2 scale = pixeluv;
-      vec2_mul(&scale, &rectSize);
-
-      Vector2 relpos = pixeluv;
-      vec2_mul(&relpos, &glRectPos);
-
 #ifdef DEBUG_GLX
       printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, global_type->mvp, relpos, scale);
+      draw_rect(face, global_type->mvp, glRectPos, rectSize);
   }
 
   /* glUseProgram(0); */

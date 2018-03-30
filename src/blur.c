@@ -104,19 +104,9 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     //Final render
     {
-        Vector2 root_size = {{ps->root_width, ps->root_height}};
-        Vector2 pixeluv = {{1.0f, 1.0f}};
-        vec2_div(&pixeluv, &root_size);
-
         Vector2 rectPos = *pos;
         Vector2 rectSize = *size;
         Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
-
-        Vector2 scale = pixeluv;
-        vec2_mul(&scale, &rectSize);
-
-        Vector2 relpos = pixeluv;
-        vec2_mul(&relpos, &glRectPos);
 
 #ifdef DEBUG_GLX
         printf_dbgf("glpos: %f %f, relpos %f %f scale %f %f\n",
@@ -124,7 +114,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
                 scale.y);
 #endif
 
-        draw_rect(ps->psglx->blur.face, passthough_type->mvp, relpos, scale);
+        draw_rect(ps->psglx->blur.face, passthough_type->mvp, glRectPos, rectSize);
     }
 
     // Restore the default rendering context

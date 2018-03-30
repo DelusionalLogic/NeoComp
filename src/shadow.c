@@ -100,6 +100,8 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         framebuffer_targetTexture(&framebuffer, &cache->texture);
         framebuffer_targetRenderBuffer_stencil(&framebuffer, &cache->stencil);
         framebuffer_bind(&framebuffer);
+        Matrix old_view = view;
+        view = mat4_orthogonal(0, cache->texture.size.x, 0, cache->texture.size.y, -1, 1);
 
         glViewport(0, 0, cache->texture.size.x, cache->texture.size.y);
 
@@ -126,6 +128,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         if(global_program->shader_type_info != &global_info) {
             printf_errf("Shader was not a global shader\n");
             framebuffer_delete(&framebuffer);
+            view = old_view;
             return;
         }
 
@@ -138,23 +141,16 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         shader_set_uniform_sampler(global_type->tex_scr, 0);
 
         {
-            Vector2 pixeluv = {{1.0f, 1.0f}};
-            vec2_div(&pixeluv, &cache->texture.size);
-
-            Vector2 scale = pixeluv;
-            vec2_mul(&scale, size);
-
-            Vector2 relpos = pixeluv;
-            vec2_mul(&relpos, &cache->border);
 
 #ifdef DEBUG_GLX
             printf_dbgf("SHADOW %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-            draw_rect(face, global_type->mvp, relpos, scale);
+            draw_rect(face, global_type->mvp, cache->border, *size);
         }
 
         glDisable(GL_STENCIL_TEST);
+        view = old_view;
 
         // Do the blur
         struct TextureBlurData blurData = {
@@ -179,6 +175,8 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
                 glEnable(GL_SCISSOR_TEST);
             return;
         }
+        old_view = view;
+        view = mat4_orthogonal(0, cache->effect.size.x, 0, cache->effect.size.y, -1, 1);
         glViewport(0, 0, cache->effect.size.x, cache->effect.size.y);
 
         glClearColor(0.0, 0.0, 0.0, 0.0);
@@ -190,9 +188,10 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         glStencilFunc(GL_EQUAL, 0, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-        draw_tex(ps, face, &cache->texture, &VEC2_ZERO, &VEC2_UNIT);
+        draw_tex(ps, face, &cache->texture, &VEC2_ZERO, &cache->effect.size);
 
         glDisable(GL_STENCIL_TEST);
+        view = old_view;
 
         framebuffer_delete(&framebuffer);
     }
@@ -218,16 +217,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         vec2_sub(&rpos, &cache->border);
         Vector2 rsize = cache->texture.size;
 
-        Vector2 pixeluv = {{1.0f, 1.0f}};
-        vec2_div(&pixeluv, &root_size);
-
-        Vector2 scale = pixeluv;
-        vec2_mul(&scale, &rsize);
-
-        Vector2 relpos = pixeluv;
-        vec2_mul(&relpos, &rpos);
-
-        draw_tex(ps, face, &cache->effect, &relpos, &scale);
+        draw_tex(ps, face, &cache->effect, &rpos, &rsize);
     }
 
     glDisable(GL_BLEND);

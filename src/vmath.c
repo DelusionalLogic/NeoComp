@@ -76,7 +76,7 @@ bool vec##n##_eq(const Vector##n * a, const Vector##n * b)                   \
 }
 
 #define DEFINE_VEC_CONST(n, k)                                          \
-Vector##n vec##n##_from_vec##k (const Vector##n * const v, ...) {       \
+Vector##n vec##n##_from_vec##k (const Vector##k * const v, ...) {       \
     va_list args;                                                       \
     va_start(args, v);                                                  \
                                                                         \
@@ -91,8 +91,11 @@ Vector##n vec##n##_from_vec##k (const Vector##n * const v, ...) {       \
 }
 
 DEFINE_VEC_OPS(2)
+DEFINE_VEC_OPS(3)
 DEFINE_VEC_OPS(4)
 DEFINE_VEC_CONST(4, 2)
+DEFINE_VEC_CONST(3, 2)
+DEFINE_VEC_CONST(4, 3)
 
 #undef DEFINE_VEC_CONST
 #undef DEFINE_VEC_OPS
@@ -221,14 +224,17 @@ Matrix perspective(float fovy, float aspect_ratio, float near_plane, float far_p
     return out;
 }
 
-Matrix orthogonal(float left, float right, float bottom, float top, float near, float far) {
+Matrix mat4_orthogonal(float left, float right, float bottom, float top, float near, float far) {
     Matrix out = IDENTITY_MATRIX;
     out.m[0] = 2 / (right - left);
     out.m[5] = 2 / (top - bottom);
     out.m[10] = -2 / (far - near);
+
     out.m[12] = - (right + left) / (right - left);
     out.m[13] = - (top + bottom) / (top - bottom);
     out.m[14] = - (far + near) / (far - near);
+
+    out.m[15] = 1;
 
     return out;
 }

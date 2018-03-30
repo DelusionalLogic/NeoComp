@@ -5,23 +5,16 @@
 #include "shaders/shaderinfo.h"
 #include "common.h"
 
+Matrix view;
+
 void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size) {
-    Matrix root = IDENTITY_MATRIX;
-    {
-        Matrix op = {{
-        2  , 0  , 0 , 0 ,
-        0  , 2  , 0 , 0 ,
-        0  , 0  , 1 , 0 ,
-        -1 , -1 , 0 , 1 ,
-        }};
-        root = mat4_multiply(&root, &op);
-    }
+    Matrix root = view;
     {
         Matrix op = {{
         size.x , 0      , 0 , 0 ,
         0      , size.y , 0 , 0 ,
         0      , 0      , 1 , 0 ,
-        pos.x  , pos.y  , 0 , 1 ,
+        pos.x  , pos.y  , 1 , 1 ,
         }};
         root = mat4_multiply(&root, &op);
     }

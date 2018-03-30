@@ -628,7 +628,8 @@ static void paint_root(session_t *ps) {
     glViewport(0, 0, ps->root_width, ps->root_height);
 
     struct face* face = assets_load("window.face");
-    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &VEC2_UNIT);
+    Vector2 rootSize = {{ps->root_width, ps->root_height}};
+    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &rootSize);
 }
 
 /**

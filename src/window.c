@@ -60,31 +60,29 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
         Vector2 glpos = X11_rectpos_to_gl(ps, &pos, &size);
         texture_read_from(tex, 0, GL_BACK, &glpos, &size);
 
-        framebuffer_resetTarget(&blur->fbo);
-        framebuffer_targetTexture(&blur->fbo, tex);
-        framebuffer_bind(&blur->fbo);
+        /* framebuffer_resetTarget(&blur->fbo); */
+        /* framebuffer_targetTexture(&blur->fbo, tex); */
+        /* framebuffer_bind(&blur->fbo); */
 
-        glDisable(GL_STENCIL_TEST);
-        glDisable(GL_SCISSOR_TEST);
+        /* glDisable(GL_STENCIL_TEST); */
+        /* glDisable(GL_SCISSOR_TEST); */
 
-        glClearColor(1.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
+        /* glClearColor(1.0, 1.0, 0.0, 1.0); */
+        /* glClear(GL_COLOR_BUFFER_BIT); */
 
-        glViewport(0, 0, size.x, size.y);
+        /* glViewport(0, 0, size.x, size.y); */
 
-        struct shader_program* global_program = assets_load("passthough.shader");
-        if(global_program->shader_type_info != &passthough_info) {
-            printf_errf("Shader was not a passthough shader\n");
-            return false;
-        }
+        /* struct shader_program* global_program = assets_load("passthough.shader"); */
+        /* if(global_program->shader_type_info != &passthough_info) { */
+        /*     printf_errf("Shader was not a passthough shader\n"); */
+        /*     return false; */
+        /* } */
 
-        struct face* face = assets_load("window.face");
+        /* struct face* face = assets_load("window.face"); */
 
-        texture_read_from(tex, 0, GL_BACK, &glpos, &size);
-
-        Vector2 root_size = size;
-        Vector2 pixeluv = {{1.0f, 1.0f}};
-        vec2_div(&pixeluv, &tex->size);
+        /* Vector2 root_size = size; */
+        /* Vector2 pixeluv = {{1.0f, 1.0f}}; */
+        /* vec2_div(&pixeluv, &tex->size); */
 
         /* for(win* t = w->next_trans; t != NULL; t = t->next_trans) { */
         /*     Vector2 tpos = {{t->a.x, t->a.y}}; */
@@ -108,8 +106,8 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
         /* } */
 
         // Texture scaling factor
-        Vector2 halfpixel = pixeluv;
-        vec2_idiv(&halfpixel, 2);
+        /* Vector2 halfpixel = pixeluv; */
+        /* vec2_idiv(&halfpixel, 2); */
 
         // Disable the options. We will restore later
         glDisable(GL_STENCIL_TEST);

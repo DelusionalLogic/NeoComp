@@ -18,19 +18,7 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
 
     struct Texture* otherPtr = data->swap;
 
-    framebuffer_resetTarget(data->buffer);
-
     assert(texture_initialized(otherPtr));
-
-    // Disable the options. We will restore later
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-
-	framebuffer_targetTexture(data->buffer, otherPtr);
-	framebuffer_bind(data->buffer);
-	//Clear the new texture to transparent
-	glClearColor(0.0, 0.0, 0.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT);
 
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
@@ -44,6 +32,21 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
     shader_use(downscale_program);
 
     shader_set_uniform_bool(downscale_type->flip, false);
+
+    // Disable the options. We will restore later
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST);
+
+    framebuffer_resetTarget(data->buffer);
+    framebuffer_targetTexture(data->buffer, otherPtr);
+    framebuffer_bind(data->buffer);
+
+    Matrix old_view = view;
+    view = mat4_orthogonal(0, 1, 0, 1, -1, 1);
+
+    //Clear the new texture to transparent
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     Vector2 pixeluv = {{1.0f, 1.0f}};
     vec2_div(&pixeluv, &texture->size);
@@ -120,6 +123,7 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
         printf("Shader was not a upsample shader");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
+        view = old_view;
         return false;
     }
 
@@ -188,5 +192,6 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
         }
     }
 
+    view = old_view;
     return true;
 }
