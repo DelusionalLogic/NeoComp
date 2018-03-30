@@ -57,6 +57,8 @@ static void draw(size_t head, size_t tail, const Vector2* size) {
     struct Global* profiler_type = profiler_program->shader_type;
     shader_use(profiler_program);
 
+    Matrix old_view = view;
+    view = mat4_orthogonal(0, 1, 0, 1, -1, 1);
     int steps = 0;
     for(size_t i = head; i != tail; i = getLast(i)) {
         Vector2 scale = {{1.0f/255, mbuffer[i].height}};
@@ -67,6 +69,7 @@ static void draw(size_t head, size_t tail, const Vector2* size) {
         draw_rect(face, profiler_type->mvp, relpos, scale);
         steps++;
     }
+    view = old_view;
 }
 
 void profiler_render(struct ProgramZone* root) {
