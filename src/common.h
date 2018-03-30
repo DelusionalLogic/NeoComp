@@ -1125,8 +1125,6 @@ typedef struct _win {
   bool pixmap_damaged;
   /// Damage of the window.
   Damage damage;
-  /// Paint info of the window.
-  paint_t paint;
   /// Bounding shape of the window.
   XserverRegion border_size;
   /// Window flags. Definitions above.
@@ -2273,14 +2271,6 @@ free_texture(session_t *ps, glx_texture_t **pptex) {
 static inline void
 free_paint_glx(session_t *ps, paint_t *ppaint) {
   free_texture(ps, &ppaint->ptex);
-}
-
-/**
- * Free GLX part of win.
- */
-static inline void
-free_win_res_glx(session_t *ps, win *w) {
-  free_paint_glx(ps, &w->paint);
 }
 
 /**

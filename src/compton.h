@@ -9,6 +9,7 @@
 // === Includes ===
 
 #include "common.h"
+#include "window.h"
 
 #include <math.h>
 #include <sys/select.h>
@@ -273,24 +274,16 @@ free_paint(session_t *ps, paint_t *ppaint) {
 }
 
 /**
- * Free w->paint.
- */
-static inline void
-free_wpaint(session_t *ps, win *w) {
-  free_paint(ps, &w->paint);
-  free_fence(ps, &w->fence);
-}
-
-/**
  * Destroy all resources in a <code>struct _win</code>.
  * Free w (struct _win)
  */
 static inline void
 free_win_res(session_t *ps, win *w) {
-  free_win_res_glx(ps, w);
   blur_cache_delete(&w->glx_blur_cache);
   shadow_cache_delete(&w->shadow_cache);
-  free_paint(ps, &w->paint);
+
+  wd_delete(&w->drawable);
+
   free_region(ps, &w->border_size);
   free_damage(ps, &w->damage);
   free_region(ps, &w->reg_ignore);
@@ -556,16 +549,6 @@ validate_pixmap(session_t *ps, Pixmap pxmap) {
 }
 
 /**
- * Validate pixmap of a window, and destroy pixmap and picture if invalid.
- */
-static inline void
-win_validate_pixmap(session_t *ps, win *w) {
-  // Destroy pixmap and picture, if invalid
-  if (!validate_pixmap(ps, w->paint.pixmap))
-    free_paint(ps, &w->paint);
-}
-
-/**
  * Wrapper of c2_match().
  */
 static inline bool
@@ -674,23 +657,23 @@ paint_preprocess(session_t *ps, win *list);
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
     double opacity, bool neg,
-    Picture pict, struct Texture* ptex,
+    struct Texture* ptex,
     const glx_prog_main_t *pprogram
     );
 
 #define \
-   render(ps, x, y, dx, dy, wid, hei, opacity, neg, pict, ptex, pprogram) \
-  render_(ps, x, y, dx, dy, wid, hei, opacity, neg, pict, ptex, pprogram)
+   render(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex, pprogram) \
+  render_(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex, pprogram)
 
 static inline void
 win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
-    double opacity, Picture pict) {
+    double opacity) {
   const int dx = (w ? w->a.x: 0) + x;
   const int dy = (w ? w->a.y: 0) + y;
   const bool neg = (w && w->invert_color);
 
   render(ps, x, y, dx, dy, wid, hei, opacity, neg,
-      pict, (w ? &w->drawable.texture: &ps->root_texture.texture),
+      (w ? &w->drawable.texture: &ps->root_texture.texture),
       (w ? &ps->o.glx_prog_win: NULL));
 }
 

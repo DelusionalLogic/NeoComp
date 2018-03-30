@@ -848,7 +848,7 @@ paint_preprocess(session_t *ps, win *list) {
     if (!w->damaged
         || w->a.x + w->a.width < 1 || w->a.y + w->a.height < 1
         || w->a.x >= ps->root_width || w->a.y >= ps->root_height
-        || ((IsUnmapped == w->a.map_state || w->destroyed) && !w->paint.pixmap)
+        || ((IsUnmapped == w->a.map_state || w->destroyed))
         || get_alpha_pict_o(ps, w->opacity) == ps->alpha_picts[0]
         || w->paint_excluded)
       to_paint = false;
@@ -1059,8 +1059,7 @@ static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool neg,
-    Picture pict, struct Texture* ptex,
+    double opacity, bool neg, struct Texture* ptex,
     const glx_prog_main_t *pprogram
     ) {
     glx_render(ps, ptex, x, y, dx, dy, wid, hei,
@@ -1074,47 +1073,17 @@ render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
 static void win_paint_win(session_t *ps, win *w) {
   glx_mark(ps, w->id, true);
 
-  // Fetch Pixmap
-  if (!w->paint.pixmap && ps->has_name_pixmap) {
-    set_ignore_next(ps);
-    w->paint.pixmap = XCompositeNameWindowPixmap(ps->dpy, w->id);
-    if (w->paint.pixmap)
-      free_fence(ps, &w->fence);
-  }
-
-  Drawable draw = w->paint.pixmap;
-  if (!draw)
-    draw = w->id;
-
-  if (IsViewable == w->a.map_state)
-    xr_sync(ps, draw, &w->fence);
-
-  // GLX: Build texture
-  // Let glx_bind_pixmap() determine pixmap size, because if the user
-  // is resizing windows, the width and height we get may not be up-to-date,
-  // causing the jittering issue M4he reported in #7.
-  if (!paint_bind_tex(ps, &w->paint, 0, 0, 0,
-        (!ps->o.glx_no_rebind_pixmap && w->pixmap_damaged))) {
-    printf_errf("(%#010lx): Failed to bind texture. Expect troubles.", w->id);
-  }
   w->pixmap_damaged = false;
-
-  if (!paint_isvalid(ps, &w->paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
 
   const int x = w->a.x;
   const int y = w->a.y;
   const int wid = w->widthb;
   const int hei = w->heightb;
 
-  Picture pict = w->paint.pict;
-
   const double dopacity = get_opacity_percent(w);
 
   if (!w->frame_opacity) {
-    win_render(ps, w, 0, 0, wid, hei, dopacity, pict);
+    win_render(ps, w, 0, 0, wid, hei, dopacity);
   }
   else {
     // Painting parameters
@@ -1125,8 +1094,7 @@ static void win_paint_win(session_t *ps, win *w) {
     const int r = extents.right;
 
 #define COMP_BDR(cx, cy, cwid, chei) \
-    win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity, \
-        pict)
+    win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity)
 
     // The following complicated logic is required because some broken
     // window managers (I'm talking about you, Openbox!) that makes
@@ -1161,7 +1129,7 @@ static void win_paint_win(session_t *ps, win *w) {
           pwid = wid - l - pwid;
           if (pwid > 0) {
             // body
-            win_render(ps, w, l, t, pwid, phei, dopacity, pict);
+            win_render(ps, w, l, t, pwid, phei, dopacity);
           }
         }
       }
@@ -1169,9 +1137,6 @@ static void win_paint_win(session_t *ps, win *w) {
   }
 
 #undef COMP_BDR
-
-  if (pict != w->paint.pict)
-    free_picture(ps, &pict);
 
   // Dimming the window if needed
   if (w->dim) {
@@ -1462,7 +1427,6 @@ finish_unmap_win(session_t *ps, win *w) {
 
   update_reg_ignore_expire(ps, w);
 
-  free_wpaint(ps, w);
   free_region(ps, &w->border_size);
   wd_unbind(&w->drawable);
 }
@@ -1476,9 +1440,6 @@ static void
 unmap_win(session_t *ps, win *w) {
   if (!w || IsUnmapped == w->a.map_state) return;
 
-  // One last synchronization
-  if (w->paint.pixmap)
-    xr_sync(ps, w->paint.pixmap, &w->fence);
   free_fence(ps, &w->fence);
 
   // Set focus out
@@ -1491,10 +1452,6 @@ unmap_win(session_t *ps, win *w) {
   set_fade_callback(ps, w, unmap_callback, false);
   w->in_openclose = true;
   win_determine_fade(ps, w);
-
-  // Validate pixmap if we have to do fading
-  if (w->fade)
-    win_validate_pixmap(ps, w);
 
   // don't care about properties anymore
   win_ev_stop(ps, w);
@@ -1964,7 +1921,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .damaged = false,
     .damage = None,
     .pixmap_damaged = false,
-    .paint = PAINT_INIT,
     .border_size = None,
     .flags = 0,
     .need_configure = false,
@@ -2251,12 +2207,11 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     if (w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
-      free_wpaint(ps, w);
       if(!wd_unbind(&w->drawable)) {
           printf_errf("Failed unbinding window on resize");
       }
       if(!wd_bind(&w->drawable)) {
-          printf_errf("Failed unbinding window on resize");
+          printf_errf("Failed rebinding window on resize");
       }
     }
 
@@ -2323,8 +2278,6 @@ finish_destroy_win(session_t *ps, Window id) {
       // Clear active_win if it's pointing to the destroyed window
       if (w == ps->active_win)
         ps->active_win = NULL;
-
-      free_win_res(ps, w);
 
       // Drop w from all prev_trans to avoid accessing freed memory in
       // repair_win()
@@ -5570,8 +5523,9 @@ redir_stop(session_t *ps) {
     // Destroy all Pictures as they expire once windows are unredirected
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
-    for (win *w = ps->list; w; w = w->next)
-      free_wpaint(ps, w);
+    for (win *w = ps->list; w; w = w->next) {
+        wd_unbind(&w->drawable);
+    }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
     // Unmap overlay window
@@ -6225,7 +6179,7 @@ session_destroy(session_t *ps) {
       if (IsViewable == w->a.map_state && !w->destroyed)
         win_ev_stop(ps, w);
 
-      free_win_res(ps, w);
+      wd_delete(&w->drawable);
       free(w);
     }
 
