@@ -14,6 +14,10 @@
 #include "opengl.h"
 #include "vmath.h"
 #include "window.h"
+#include "xtexture.h"
+
+#include "assets/assets.h"
+#include "renderutil.h"
 
 #include "profiler/zone.h"
 #include "profiler/render.h"
@@ -560,76 +564,72 @@ recheck_focus(session_t *ps) {
 
 static bool
 get_root_tile(session_t *ps) {
-  /*
-  if (ps->o.paint_on_overlay) {
-    return ps->root_picture;
-  } */
+    Pixmap pixmap = None;
 
-  assert(!ps->root_tile_paint.pixmap);
-  ps->root_tile_fill = false;
-
-  bool fill = false;
-  Pixmap pixmap = None;
-
-  // Get the values of background attributes
-  for (int p = 0; background_props_str[p]; p++) {
-    winprop_t prop = wid_get_prop(ps, ps->root,
-        get_atom(ps, background_props_str[p]),
-        1L, XA_PIXMAP, 32);
-    if (prop.nitems) {
-      pixmap = *prop.data.p32;
-      fill = false;
-      free_winprop(&prop);
-      break;
+    // Get the values of background attributes
+    for (int p = 0; background_props_str[p]; p++) {
+        winprop_t prop = wid_get_prop(ps, ps->root,
+                get_atom(ps, background_props_str[p]),
+                1L, XA_PIXMAP, 32);
+        if (prop.nitems) {
+            pixmap = *prop.data.p32;
+            free_winprop(&prop);
+            break;
+        }
+        free_winprop(&prop);
     }
-    free_winprop(&prop);
-  }
 
-  // Make sure the pixmap we got is valid
-  if (pixmap && !validate_pixmap(ps, pixmap))
-    pixmap = None;
+    // Make sure the pixmap we got is valid
+    if (pixmap && !validate_pixmap(ps, pixmap))
+        pixmap = None;
 
-  // Create a pixmap if there isn't any
-  if (!pixmap) {
-    pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
-    fill = true;
-  }
+    // Create a pixmap if there isn't any
+    if (!pixmap) {
+        pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
 
-  // Create Picture
-  {
-    XRenderPictureAttributes pa = {
-      .repeat = True,
-    };
-    ps->root_tile_paint.pict = XRenderCreatePicture(
-        ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
-        CPRepeat, &pa);
-  }
+        //Fill pixmap with default color
+        Picture root_picture;
+        XRenderPictureAttributes pa = {
+            .repeat = True,
+        };
+        root_picture = XRenderCreatePicture(
+                ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
+                CPRepeat, &pa);
+        XRenderColor  c;
 
-  // Fill pixmap if needed
-  if (fill) {
-    XRenderColor  c;
+        c.red = c.green = c.blue = 0x8080;
+        c.alpha = 0xffff;
+        XRenderFillRectangle(ps->dpy, PictOpSrc, root_picture, &c, 0, 0, 1, 1);
+        XRenderFreePicture(ps->dpy, root_picture);
+    }
 
-    c.red = c.green = c.blue = 0x8080;
-    c.alpha = 0xffff;
-    XRenderFillRectangle(ps->dpy, PictOpSrc, ps->root_tile_paint.pict, &c, 0, 0, 1, 1);
-  }
 
-  ps->root_tile_fill = fill;
-  ps->root_tile_paint.pixmap = pixmap;
-  if (BKEND_GLX == ps->o.backend)
-    return glx_bind_pixmap(ps, &ps->root_tile_paint.ptex, ps->root_tile_paint.pixmap, 0, 0, 0);
+    if(!xtexture_bind(&ps->root_texture, pixmap)) {
+        printf_errf("Failed binding the root texture to gl");
+        return false;
+    }
 
-  return true;
+    return true;
 }
 
 /**
  * Paint root window content.
  */
 static void paint_root(session_t *ps) {
-  if (!ps->root_tile_paint.pixmap)
-    get_root_tile(ps);
+    // @CLEANUP: This doesn't belong here, but rather when we get notified of
+    // a new root texture
+    if (!ps->root_texture.bound)
+        get_root_tile(ps);
 
-  win_render(ps, NULL, 0, 0, ps->root_width, ps->root_height, 1.0, ps->root_tile_paint.pict);
+    assert(ps->root_texture.bound);
+    glClearColor(0.0, 0.0, 1.0, 1.0);
+    /* glClear(GL_COLOR_BUFFER_BIT); */
+
+    glViewport(0, 0, ps->root_width, ps->root_height);
+
+    struct face* face = assets_load("window.face");
+    Vector2 rootSize = {{ps->root_width, ps->root_height}};
+    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &rootSize);
 }
 
 /**
@@ -849,7 +849,7 @@ paint_preprocess(session_t *ps, win *list) {
     if (!w->damaged
         || w->a.x + w->a.width < 1 || w->a.y + w->a.height < 1
         || w->a.x >= ps->root_width || w->a.y >= ps->root_height
-        || ((IsUnmapped == w->a.map_state || w->destroyed) && !w->paint.pixmap)
+        || ((IsUnmapped == w->a.map_state || w->destroyed))
         || get_alpha_pict_o(ps, w->opacity) == ps->alpha_picts[0]
         || w->paint_excluded)
       to_paint = false;
@@ -967,6 +967,8 @@ paint_preprocess(session_t *ps, win *list) {
 
     if (to_paint) {
       w->prev_trans = t;
+      if(t != NULL)
+          t->next_trans = w;
       t = w;
     }
     else {
@@ -997,15 +999,15 @@ paint_preprocess(session_t *ps, win *list) {
     unredir_possible = true;
   if (unredir_possible) {
     if (ps->redirected) {
-      if (!ps->o.unredir_if_possible_delay || ps->tmout_unredir_hit)
+      if (!ps->o.unredir_if_possible_delay || ps->tmout_unredir_hit) {
         redir_stop(ps);
+      }
       else if (!ps->tmout_unredir->enabled) {
         timeout_reset(ps, ps->tmout_unredir);
         ps->tmout_unredir->enabled = true;
       }
     }
-  }
-  else {
+  } else if(!ps->redirected) {
     ps->tmout_unredir->enabled = false;
     redir_start(ps);
   }
@@ -1018,44 +1020,14 @@ paint_preprocess(session_t *ps, win *list) {
  */
 static inline void
 win_paint_shadow(session_t *ps, win *w) {
-
-  // Fetch Pixmap
-  if (!w->paint.pixmap && ps->has_name_pixmap) {
-    set_ignore_next(ps);
-    w->paint.pixmap = XCompositeNameWindowPixmap(ps->dpy, w->id);
-    if (w->paint.pixmap)
-      free_fence(ps, &w->fence);
-  }
-
-  Drawable draw = w->paint.pixmap;
-  if (!draw)
-    draw = w->id;
-
-  if (IsViewable == w->a.map_state)
-    xr_sync(ps, draw, &w->fence);
-
-  // GLX: Build texture
-  // Let glx_bind_pixmap() determine pixmap size, because if the user
-  // is resizing windows, the width and height we get may not be up-to-date,
-  // causing the jittering issue M4he reported in #7.
-  if (!paint_bind_tex(ps, &w->paint, 0, 0, 0,
-        (!ps->o.glx_no_rebind_pixmap && w->pixmap_damaged))) {
-    printf_errf("(%#010lx): Failed to bind texture. Expect troubles.", w->id);
-  }
-  w->pixmap_damaged = false;
-
-  if (!paint_isvalid(ps, &w->paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
-
   const Vector2 pos = {{
       w->a.x, w->a.y,
   }};
   const Vector2 size = {{
       w->widthb, w->heightb,
   }};
-  glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
+  if(w->a.map_state == IsViewable)
+      glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
 
   /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
   /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
@@ -1083,17 +1055,16 @@ static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
 
   // TODO: Handle frame opacity
   glx_blur_dst(ps, &pos, &size, ps->psglx->z - 0.5, factor_center,
-          &w->glx_blur_cache);
+          &w->glx_blur_cache, w);
 }
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool argb, bool neg,
-    Picture pict, glx_texture_t *ptex,
+    double opacity, bool neg, struct Texture* ptex,
     const glx_prog_main_t *pprogram
     ) {
     glx_render(ps, ptex, x, y, dx, dy, wid, hei,
-            ps->psglx->z, opacity, argb, neg, pprogram);
+            ps->psglx->z, opacity, neg, pprogram);
     ps->psglx->z += 1;
 }
 
@@ -1103,47 +1074,17 @@ render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
 static void win_paint_win(session_t *ps, win *w) {
   glx_mark(ps, w->id, true);
 
-  // Fetch Pixmap
-  if (!w->paint.pixmap && ps->has_name_pixmap) {
-    set_ignore_next(ps);
-    w->paint.pixmap = XCompositeNameWindowPixmap(ps->dpy, w->id);
-    if (w->paint.pixmap)
-      free_fence(ps, &w->fence);
-  }
-
-  Drawable draw = w->paint.pixmap;
-  if (!draw)
-    draw = w->id;
-
-  if (IsViewable == w->a.map_state)
-    xr_sync(ps, draw, &w->fence);
-
-  // GLX: Build texture
-  // Let glx_bind_pixmap() determine pixmap size, because if the user
-  // is resizing windows, the width and height we get may not be up-to-date,
-  // causing the jittering issue M4he reported in #7.
-  if (!paint_bind_tex(ps, &w->paint, 0, 0, 0,
-        (!ps->o.glx_no_rebind_pixmap && w->pixmap_damaged))) {
-    printf_errf("(%#010lx): Failed to bind texture. Expect troubles.", w->id);
-  }
   w->pixmap_damaged = false;
-
-  if (!paint_isvalid(ps, &w->paint)) {
-    printf_errf("(%#010lx): Missing painting data. This is a bad sign.", w->id);
-    return;
-  }
 
   const int x = w->a.x;
   const int y = w->a.y;
   const int wid = w->widthb;
   const int hei = w->heightb;
 
-  Picture pict = w->paint.pict;
-
   const double dopacity = get_opacity_percent(w);
 
   if (!w->frame_opacity) {
-    win_render(ps, w, 0, 0, wid, hei, dopacity, pict);
+    win_render(ps, w, 0, 0, wid, hei, dopacity);
   }
   else {
     // Painting parameters
@@ -1154,8 +1095,7 @@ static void win_paint_win(session_t *ps, win *w) {
     const int r = extents.right;
 
 #define COMP_BDR(cx, cy, cwid, chei) \
-    win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity, \
-        pict)
+    win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity)
 
     // The following complicated logic is required because some broken
     // window managers (I'm talking about you, Openbox!) that makes
@@ -1190,7 +1130,7 @@ static void win_paint_win(session_t *ps, win *w) {
           pwid = wid - l - pwid;
           if (pwid > 0) {
             // body
-            win_render(ps, w, l, t, pwid, phei, dopacity, pict);
+            win_render(ps, w, l, t, pwid, phei, dopacity);
           }
         }
       }
@@ -1198,9 +1138,6 @@ static void win_paint_win(session_t *ps, win *w) {
   }
 
 #undef COMP_BDR
-
-  if (pict != w->paint.pict)
-    free_picture(ps, &pict);
 
   // Dimming the window if needed
   if (w->dim) {
@@ -1258,9 +1195,9 @@ paint_all(session_t *ps, win *t) {
 #endif
 
 #ifdef MONITOR_REPAINT
-  glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+  glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 #endif
 
   /* set_tgt_clip(ps, reg_paint, NULL); */
@@ -1454,6 +1391,12 @@ map_win(session_t *ps, Window id) {
 
   w->damaged = false;
 
+  // configure_win might rebind, so we need to bind before
+  if(!wd_bind(&w->drawable)) {
+      printf_errf("Failed binding window drawable %s", w->name);
+      return;
+  }
+
   /* if any configure events happened while
      the window was unmapped, then configure
      the window to its correct place */
@@ -1485,8 +1428,8 @@ finish_unmap_win(session_t *ps, win *w) {
 
   update_reg_ignore_expire(ps, w);
 
-  free_wpaint(ps, w);
   free_region(ps, &w->border_size);
+  wd_unbind(&w->drawable);
 }
 
 static void
@@ -1498,9 +1441,6 @@ static void
 unmap_win(session_t *ps, win *w) {
   if (!w || IsUnmapped == w->a.map_state) return;
 
-  // One last synchronization
-  if (w->paint.pixmap)
-    xr_sync(ps, w->paint.pixmap, &w->fence);
   free_fence(ps, &w->fence);
 
   // Set focus out
@@ -1513,10 +1453,6 @@ unmap_win(session_t *ps, win *w) {
   set_fade_callback(ps, w, unmap_callback, false);
   w->in_openclose = true;
   win_determine_fade(ps, w);
-
-  // Validate pixmap if we have to do fading
-  if (w->fade)
-    win_validate_pixmap(ps, w);
 
   // don't care about properties anymore
   win_ev_stop(ps, w);
@@ -1564,6 +1500,8 @@ win_determine_mode(session_t *ps, win *w) {
 
   if(mode == WMODE_SOLID) {
       w->solid = true;
+  } else {
+      w->solid = false;
   }
 
   w->mode = mode;
@@ -1972,6 +1910,7 @@ add_win(session_t *ps, Window id, Window prev) {
   const static win win_def = {
     .next = NULL,
     .prev_trans = NULL,
+    .next_trans = NULL,
 
     .id = None,
     .a = { },
@@ -1983,7 +1922,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .damaged = false,
     .damage = None,
     .pixmap_damaged = false,
-    .paint = PAINT_INIT,
     .border_size = None,
     .flags = 0,
     .need_configure = false,
@@ -2089,16 +2027,21 @@ add_win(session_t *ps, Window id, Window prev) {
   new->a.map_state = IsUnmapped;
 
   if (InputOutput == new->a.class) {
-       // Get window picture format
-    new->pictfmt = XRenderFindVisualFormat(ps->dpy, new->a.visual);
+      // Get window picture format
+      new->pictfmt = XRenderFindVisualFormat(ps->dpy, new->a.visual);
 
-       // Create Damage for window
-       set_ignore_next(ps);
-       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
+      // Create Damage for window
+      set_ignore_next(ps);
+      new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
   }
 
   calc_win_size(ps, new);
 
+  if(!wd_init(&new->drawable, &ps->psglx->xcontext, new->id)) {
+      printf_errf("Failed initializing window drawable");
+      free(new);
+      return false;
+  }
   new->next = *p;
   *p = new;
 
@@ -2110,7 +2053,7 @@ add_win(session_t *ps, Window id, Window prev) {
 #endif
 
   if (IsViewable == map_state) {
-    map_win(ps, id);
+      map_win(ps, id);
   }
 
   return true;
@@ -2264,8 +2207,14 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     w->a.y = ce->y;
 
     if (w->a.width != ce->width || w->a.height != ce->height
-        || w->a.border_width != ce->border_width)
-      free_wpaint(ps, w);
+        || w->a.border_width != ce->border_width) {
+      if(!wd_unbind(&w->drawable)) {
+          printf_errf("Failed unbinding window on resize");
+      }
+      if(!wd_bind(&w->drawable)) {
+          printf_errf("Failed rebinding window on resize");
+      }
+    }
 
     if (w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
@@ -2325,20 +2274,20 @@ finish_destroy_win(session_t *ps, Window id) {
       printf_dbgf("(%#010lx \"%s\"): %p\n", id, w->name, w);
 #endif
 
-      finish_unmap_win(ps, w);
       *prev = w->next;
 
       // Clear active_win if it's pointing to the destroyed window
       if (w == ps->active_win)
         ps->active_win = NULL;
 
-      free_win_res(ps, w);
-
       // Drop w from all prev_trans to avoid accessing freed memory in
       // repair_win()
-      for (win *w2 = ps->list; w2; w2 = w2->next)
+      for (win *w2 = ps->list; w2; w2 = w2->next) {
         if (w == w2->prev_trans)
           w2->prev_trans = NULL;
+        if (w == w2->next_trans)
+          w2->next_trans = NULL;
+      }
 
       free(w);
       break;
@@ -2360,14 +2309,14 @@ destroy_win(session_t *ps, Window id) {
 #endif
 
   if (w) {
-    unmap_win(ps, w);
-
     w->destroyed = true;
 
     if (ps->o.no_fading_destroyed_argb)
       win_determine_fade(ps, w);
 
     // Set fading callback
+    // @LEAK @PERFORMANCE: We override the unmap callback here, and never call
+    // it.
     set_fade_callback(ps, w, destroy_callback, false);
 
 #ifdef CONFIG_DBUS
@@ -2381,16 +2330,8 @@ destroy_win(session_t *ps, Window id) {
 
 static inline void
 root_damaged(session_t *ps) {
-  if (ps->root_tile_paint.pixmap) {
-    XClearArea(ps->dpy, ps->root, 0, 0, 0, 0, true);
-    // if (ps->root_picture != ps->root_tile) {
-      free_root_tile(ps);
-    /* }
-    if (root_damage) {
-      XserverRegion parts = XFixesCreateRegion(ps->dpy, 0, 0);
-      XDamageSubtract(ps->dpy, root_damage, None, parts);
-      add_damage(ps, parts);
-    } */
+  if (ps->root_texture.bound) {
+    xtexture_unbind(&ps->root_texture);
   }
 
   // Mark screen damaged
@@ -5583,8 +5524,9 @@ redir_stop(session_t *ps) {
     // Destroy all Pictures as they expire once windows are unredirected
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
-    for (win *w = ps->list; w; w = w->next)
-      free_wpaint(ps, w);
+    for (win *w = ps->list; w; w = w->next) {
+        wd_unbind(&w->drawable);
+    }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
     // Unmap overlay window
@@ -5741,8 +5683,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .root_width = 0,
     // .root_damage = None,
     .overlay = None,
-    .root_tile_fill = false,
-    .root_tile_paint = PAINT_INIT,
     .screen_reg = None,
     .tgt_picture = None,
     .tgt_buffer = PAINT_INIT,
@@ -6146,6 +6086,10 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   XGrabServer(ps->dpy);
 
+  xtexture_init(&ps->root_texture, &ps->psglx->xcontext);
+
+  redir_start(ps);
+
   {
     Window root_return, parent_return;
     Window *children;
@@ -6236,7 +6180,7 @@ session_destroy(session_t *ps) {
       if (IsViewable == w->a.map_state && !w->destroyed)
         win_ev_stop(ps, w);
 
-      free_win_res(ps, w);
+      wd_delete(&w->drawable);
       free(w);
     }
 
@@ -6306,10 +6250,11 @@ session_destroy(session_t *ps) {
   free_paint(ps, &ps->tgt_buffer);
 
   // Free other X resources
-  free_root_tile(ps);
   free_region(ps, &ps->screen_reg);
   free(ps->expose_rects);
   free(ps->gaussian_map);
+
+  xtexture_delete(&ps->root_texture);
 
   free(ps->o.config_file);
   free(ps->o.write_pid_path);
@@ -6431,12 +6376,14 @@ session_run(session_t *ps) {
     ps->tmout_unredir_hit = false;
 
     static int paint = 0;
-    paint_all(ps, t);
-    ps->reg_ignore_expire = false;
-    paint++;
-    if (ps->o.benchmark && paint >= ps->o.benchmark)
-        exit(0);
-    XSync(ps->dpy, False);
+    if (ps->redirected || ps->o.stoppaint_force == OFF) {
+        paint_all(ps, t);
+        ps->reg_ignore_expire = false;
+        paint++;
+        if (ps->o.benchmark && paint >= ps->o.benchmark)
+            exit(0);
+        XSync(ps->dpy, False);
+    }
 
     if (ps->idling)
       ps->fade_time = 0L;

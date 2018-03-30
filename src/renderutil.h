@@ -8,6 +8,8 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
 
+extern Matrix view;
+
 void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size);
 
 void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,

@@ -8,10 +8,14 @@
 struct Texture {
     GLuint gl_texture;
     GLenum target;
+
     Vector2 size;
+
+    bool flipped;
 };
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size);
+int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* size);
 void texture_delete(struct Texture* texture);
 bool texture_initialized(const struct Texture* texture);
 

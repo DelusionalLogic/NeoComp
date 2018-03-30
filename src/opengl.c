@@ -130,11 +130,20 @@ glx_init(session_t *ps, bool need_render) {
 
   glx_session_t *psglx = ps->psglx;
 
+  if(!xorgContext_init(&psglx->xcontext, ps->dpy, ps->scr)) {
+      printf_errf("Failed initializing the xorg context");
+      goto glx_init_end;
+  }
+
+  int visId = XVisualIDFromVisual(ps->vis);
+  if(!xorgContext_selectConfig(&psglx->xcontext, visId)) {
+      printf_errf("Failed selecting a an fbconfig");
+      goto glx_init_end;
+  }
+  
+
   if (!psglx->context) {
     // Get GLX context
-#ifndef DEBUG_GLX_DEBUG_CONTEXT
-    psglx->context = glXCreateContext(ps->dpy, pvis, None, GL_TRUE);
-#else
     {
       GLXFBConfig fbconfig = get_fbconfig_from_visualinfo(ps, pvis);
       if (!fbconfig) {
@@ -161,7 +170,6 @@ glx_init(session_t *ps, bool need_render) {
       psglx->context = p_glXCreateContextAttribsARB(ps->dpy, fbconfig, NULL,
           GL_TRUE, attrib_list);
     }
-#endif
     if (!psglx->context) {
       printf_errf("(): Failed to get GLX context.");
       goto glx_init_end;
@@ -278,7 +286,7 @@ glx_init(session_t *ps, bool need_render) {
     }
 
     // Clear screen
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
@@ -331,7 +339,6 @@ glx_destroy(session_t *ps) {
 
   // Free all GLX resources of windows
   for (win *w = ps->list; w; w = w->next) {
-    free_win_res_glx(ps, w);
     blur_cache_delete(&w->glx_blur_cache);
     shadow_cache_delete(&w->shadow_cache);
   }
@@ -347,6 +354,8 @@ glx_destroy(session_t *ps) {
     free(ps->psglx->fbconfigs[i]);
     ps->psglx->fbconfigs[i] = NULL;
   }
+
+  xorgContext_delete(&ps->psglx->xcontext);
 
   // Destroy GLX context
   if (ps->psglx->context) {
@@ -387,7 +396,8 @@ void
 glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_width, ps->root_height);
 
-  ps->psglx->view = orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
+  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
+  view = ps->psglx->view;
 }
 
 /**
@@ -859,18 +869,12 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
       Vector2 rectSize = {{rects[i].width, rects[i].height}};
       Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
-      Vector2 scale = pixeluv;
-      vec2_mul(&scale, &rectSize);
-
-      Vector2 relpos = pixeluv;
-      vec2_mul(&relpos, &glRectPos);
-
 
 #ifdef DEBUG_GLX
       printf_dbgf("(): Rect %d: %f, %f, %f, %f\n", i, relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, passthough_type->mvp, relpos, scale);
+      draw_rect(face, passthough_type->mvp, glRectPos, rectSize);
     }
 
     /* glUseProgram(0); */
@@ -928,8 +932,8 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
     GLfloat factor_center,
-    glx_blur_cache_t *pbc) {
-    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, pbc);
+    glx_blur_cache_t *pbc, win* w) {
+    bool ret = blur_backbuffer(&ps->psglx->blur, ps, pos, size, z, factor_center, pbc, w);
     glx_check_err(ps);
     return ret;
 }
@@ -980,18 +984,13 @@ void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* si
  * @brief Render a region with texture data.
  */
 bool
-glx_render_(session_t *ps, const glx_texture_t *ptex,
+glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool argb, bool neg,
+    double opacity, bool neg,
     const glx_prog_main_t *pprogram
     ) {
-  if (!ptex || !ptex->texture) {
-    printf_errf("(): Missing texture.");
-    return false;
-  }
+    assert(ptex != NULL);
 
-  argb = argb || (GLX_TEXTURE_FORMAT_RGBA_EXT ==
-      ps->psglx->fbconfigs[ptex->depth]->texture_fmt);
   glEnable(GL_BLEND);
 
   // This is all weird, but X Render is using premultiplied ARGB format, and
@@ -1010,22 +1009,16 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
   shader_use(global_program);
 
   // Bind texture
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, ptex->texture);
+  texture_bind(ptex, GL_TEXTURE0);
 
   shader_set_uniform_float(global_type->invert, neg);
-  shader_set_uniform_float(global_type->flip, ptex->y_inverted);
+  shader_set_uniform_float(global_type->flip, ptex->flipped);
   shader_set_uniform_float(global_type->opacity, opacity);
   shader_set_uniform_sampler(global_type->tex_scr, 0);
 
 #ifdef DEBUG_GLX
   printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
 #endif
-
-  // @CLEANUP: remove this
-  Vector2 root_size = {{ps->root_width, ps->root_height}};
-  Vector2 pixeluv = {{1.0f, 1.0f}};
-  vec2_div(&pixeluv, &root_size);
 
   struct face* face = assets_load("window.face");
 
@@ -1035,17 +1028,11 @@ glx_render_(session_t *ps, const glx_texture_t *ptex,
       Vector2 rectSize = {{width, height}};
       Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
 
-      Vector2 scale = pixeluv;
-      vec2_mul(&scale, &rectSize);
-
-      Vector2 relpos = pixeluv;
-      vec2_mul(&relpos, &glRectPos);
-
 #ifdef DEBUG_GLX
       printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, global_type->mvp, relpos, scale);
+      draw_rect(face, global_type->mvp, glRectPos, rectSize);
   }
 
   /* glUseProgram(0); */

@@ -125,6 +125,7 @@
 #include "vmath.h"
 #include "texture.h"
 #include "framebuffer.h"
+#include "xorg.h"
 
 // @CLEANUP @HACK We don't actually want this here, but because everything is in
 // here i do now.
@@ -136,6 +137,29 @@ struct blur {
     struct face* face;
     struct Framebuffer fbo;
     GLuint array;
+};
+
+struct XTexture {
+    struct X11Context* context;
+
+    bool bound;
+    Pixmap pixmap;
+    GLXDrawable glxPixmap;
+    struct Texture texture;
+};
+
+struct WindowDrawable {
+    Window wid;
+
+    // This is a bit of magic. In C11 we can have anonymous struct members, but
+    // they have to be untagged. We'd prefer to be able to use a tagged one,
+    // luckily the "ms-extensions" allow us to do just that. The union here
+    // just means that we can also access the struct explicitly. Let me just
+    // give an early "I'm sorry".
+    union {
+        struct XTexture xtexture;
+        struct XTexture;
+    };
 };
 
 typedef struct {
@@ -816,7 +840,10 @@ typedef struct {
   Matrix view;
   /// FBConfig-s for GLX pixmap of different depths.
   glx_fbconfig_t *fbconfigs[OPENGL_MAX_DEPTH + 1];
+
   glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
+
+  struct X11Context xcontext;
 } glx_session_t;
 
 #define CGLX_SESSION_INIT { .context = NULL }
@@ -842,10 +869,10 @@ typedef struct _session_t {
   // Damage root_damage;
   /// X Composite overlay window. Used if <code>--paint-on-overlay</code>.
   Window overlay;
-  /// Whether the root tile is filled by compton.
-  bool root_tile_fill;
-  /// Picture of the root window background.
-  paint_t root_tile_paint;
+
+  /// The root tile, but better
+  struct XTexture root_texture;
+
   /// A region of the size of the screen.
   XserverRegion screen_reg;
   /// Picture of root window. Destination of painting in no-DBE painting
@@ -1072,6 +1099,8 @@ typedef struct _win {
   struct _win *next;
   /// Pointer to the next higher window to paint.
   struct _win *prev_trans;
+  /// Pointer to the next lower window to paint.
+  struct _win *next_trans;
 
   // Core members
   /// ID of the top-level frame window.
@@ -1096,8 +1125,6 @@ typedef struct _win {
   bool pixmap_damaged;
   /// Damage of the window.
   Damage damage;
-  /// Paint info of the window.
-  paint_t paint;
   /// Bounding shape of the window.
   XserverRegion border_size;
   /// Window flags. Definitions above.
@@ -1229,6 +1256,8 @@ typedef struct _win {
   glx_blur_cache_t glx_blur_cache;
 
   struct glx_shadow_cache shadow_cache;
+
+  struct WindowDrawable drawable;
 } win;
 
 /// Temporary structure used for communication between
@@ -2158,22 +2187,22 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg);
 
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
-    GLfloat factor_center, glx_blur_cache_t *pbc);
+    GLfloat factor_center, glx_blur_cache_t *pbc, win* w);
 
 bool
 glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
     GLfloat factor);
 
 bool
-glx_render_(session_t *ps, const glx_texture_t *ptex,
+glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool argb, bool neg,
+    double opacity, bool neg,
     const glx_prog_main_t *pprogram
     );
 
 #define \
-   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram) \
-  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, argb, neg, pprogram)
+   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram) \
+  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram)
 
 void
 glx_swap_copysubbuffermesa(session_t *ps, XserverRegion reg);
@@ -2242,14 +2271,6 @@ free_texture(session_t *ps, glx_texture_t **pptex) {
 static inline void
 free_paint_glx(session_t *ps, paint_t *ppaint) {
   free_texture(ps, &ppaint->ptex);
-}
-
-/**
- * Free GLX part of win.
- */
-static inline void
-free_win_res_glx(session_t *ps, win *w) {
-  free_paint_glx(ps, &w->paint);
 }
 
 /**

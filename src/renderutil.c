@@ -5,23 +5,16 @@
 #include "shaders/shaderinfo.h"
 #include "common.h"
 
+Matrix view;
+
 void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size) {
-    Matrix root = IDENTITY_MATRIX;
-    {
-        Matrix op = {{
-        2  , 0  , 0 , 0 ,
-        0  , 2  , 0 , 0 ,
-        0  , 0  , 1 , 0 ,
-        -1 , -1 , 0 , 1 ,
-        }};
-        root = mat4_multiply(&root, &op);
-    }
+    Matrix root = view;
     {
         Matrix op = {{
         size.x , 0      , 0 , 0 ,
         0      , size.y , 0 , 0 ,
         0      , 0      , 1 , 0 ,
-        pos.x  , pos.y  , 0 , 1 ,
+        pos.x  , pos.y  , 1 , 1 ,
         }};
         root = mat4_multiply(&root, &op);
     }
@@ -50,7 +43,7 @@ void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
     struct Passthough* passthough_type = passthough_program->shader_type;
     shader_use(passthough_program);
 
-    shader_set_uniform_bool(passthough_type->flip, false);
+    shader_set_uniform_bool(passthough_type->flip, texture->flipped);
 
     texture_bind(texture, GL_TEXTURE0);
 
@@ -63,11 +56,5 @@ void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
 
         draw_rect(face, passthough_type->mvp, *pos, *size);
     }
-
-    // Restore the default rendering context
-    glUseProgram(0);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
