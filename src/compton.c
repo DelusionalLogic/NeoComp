@@ -5360,6 +5360,13 @@ redir_start(session_t *ps) {
     // Must call XSync() here
     XSync(ps->dpy, False);
 
+    for (win *w = ps->list; w; w = w->next) {
+        // It it was mapped we want to just release that pixmap.
+        if(w->a.map_state == IsViewable) {
+            wd_bind(&w->drawable);
+        }
+    }
+
     ps->redirected = true;
 
     // Repaint the whole screen
@@ -5525,7 +5532,10 @@ redir_stop(session_t *ps) {
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
     for (win *w = ps->list; w; w = w->next) {
-        wd_unbind(&w->drawable);
+        // It it was mapped we want to just release that pixmap.
+        if(w->a.map_state == IsViewable) {
+            wd_unbind(&w->drawable);
+        }
     }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
