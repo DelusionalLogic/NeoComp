@@ -56,15 +56,15 @@ bool xtexture_bind(struct XTexture* tex, GLXFBConfig* fbconfig, Pixmap pixmap) {
     }
 
     int texFmt;
-    if (Success == glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_BIND_TO_TEXTURE_RGB_EXT, &value)) {
+    if (Success == glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_BIND_TO_TEXTURE_RGBA_EXT, &value)) {
         if(value == true) { // We can bind to RGBA
             texFmt = GLX_TEXTURE_FORMAT_RGBA_EXT;
         }
     }
 
     // @CLEANUP: This should probably be extracted out of here
-    if (Success == glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_BIND_TO_TEXTURE_RGBA_EXT, &value)) {
-        if(value == true) { // We can bind to RGBA
+    if (Success == glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_BIND_TO_TEXTURE_RGB_EXT, &value)) {
+        if(value == true) { // We can bind to RGB
             // If we can only bind to RGBA, then just do that
             if(texFmt == 0) {
                 texFmt = GLX_TEXTURE_FORMAT_RGB_EXT;
