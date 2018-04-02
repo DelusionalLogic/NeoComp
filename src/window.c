@@ -137,7 +137,12 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid) {
     assert(drawable != NULL);
 
+    XWindowAttributes attribs;
+    XGetWindowAttributes(context->display, wid, &attribs);
+
     drawable->wid = wid;
+    drawable->fbconfig = xorgContext_selectConfig(context, XVisualIDFromVisual(attribs.visual));
+
     return xtexture_init(&drawable->xtexture, context);
 }
 
@@ -150,7 +155,7 @@ bool wd_bind(struct WindowDrawable* drawable) {
         return false;
     }
 
-    return xtexture_bind(&drawable->xtexture, pixmap);
+    return xtexture_bind(&drawable->xtexture, drawable->fbconfig, pixmap);
 }
 
 bool wd_unbind(struct WindowDrawable* drawable) {

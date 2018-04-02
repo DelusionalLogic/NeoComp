@@ -9,8 +9,6 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen) 
     context->display = display;
     context->screen = screen;
 
-    context->selected = false;
-
     context->configs = glXGetFBConfigs(display, screen, &context->numConfigs);
     if(context->configs == NULL) {
         printf_errf("Failed retrieving the fboconfigs");
@@ -20,9 +18,10 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen) 
     return true;
 }
 
-bool xorgContext_selectConfig(struct X11Context* context, VisualID visualid) {
-    assert(context->selected == false);
+GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visualid) {
     assert(visualid != 0);
+
+	GLXFBConfig* selected = NULL;
 
     int value;
     for(int i = 0; i < context->numConfigs; i++) {
@@ -54,20 +53,17 @@ bool xorgContext_selectConfig(struct X11Context* context, VisualID visualid) {
         if (value == false)
             continue;
 
-        // We found something we like
-        context->selected = true;
-        context->selected_config = fbconfig;
+        selected = &context->configs[i];
         break;
     }
     // If we ran out of fbconfigs before we found something we like.
-    if(context->selected == false)
-        return false;
+    if(selected == NULL)
+        return NULL;
 
     // Save if the y is inverted compared to GL
-    glXGetFBConfigAttrib(context->display, context->selected_config,
-            GLX_Y_INVERTED_EXT, &value);
-    context->y_inverted = value;
-    return true;
+    /* glXGetFBConfigAttrib(context->display, context->selected_config, */
+    /*         GLX_Y_INVERTED_EXT, &value); */
+    return selected;
 }
 
 void xorgContext_delete(struct X11Context* context) {

@@ -10,5 +10,5 @@
 bool xtexture_init(struct XTexture* tex, struct X11Context* context);
 void xtexture_delete(struct XTexture* tex);
 
-bool xtexture_bind(struct XTexture* tex, Pixmap pixmap);
+bool xtexture_bind(struct XTexture* tex, GLXFBConfig* fbconfig, Pixmap pixmap);
 bool xtexture_unbind(struct XTexture* tex);

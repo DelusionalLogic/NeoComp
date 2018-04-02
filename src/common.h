@@ -150,6 +150,7 @@ struct XTexture {
 
 struct WindowDrawable {
     Window wid;
+    GLXFBConfig* fbconfig;
 
     // This is a bit of magic. In C11 we can have anonymous struct members, but
     // they have to be untagged. We'd prefer to be able to use a tagged one,

@@ -603,8 +603,11 @@ get_root_tile(session_t *ps) {
         XRenderFreePicture(ps->dpy, root_picture);
     }
 
+    XWindowAttributes attribs;
+    XGetWindowAttributes(ps->psglx->xcontext.display, ps->root, &attribs);
+    GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->psglx->xcontext, XVisualIDFromVisual(attribs.visual));
 
-    if(!xtexture_bind(&ps->root_texture, pixmap)) {
+    if(!xtexture_bind(&ps->root_texture, fbconfig, pixmap)) {
         printf_errf("Failed binding the root texture to gl");
         return false;
     }

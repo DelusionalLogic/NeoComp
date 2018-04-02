@@ -135,13 +135,6 @@ glx_init(session_t *ps, bool need_render) {
       goto glx_init_end;
   }
 
-  int visId = XVisualIDFromVisual(ps->vis);
-  if(!xorgContext_selectConfig(&psglx->xcontext, visId)) {
-      printf_errf("Failed selecting a an fbconfig");
-      goto glx_init_end;
-  }
-  
-
   if (!psglx->context) {
     // Get GLX context
     {

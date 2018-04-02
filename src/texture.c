@@ -28,7 +28,7 @@ int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
     texture->target = target;
     texture->size = *size;
 
-    glTexImage2D(texture->target, 0, GL_RGBA, size->x, size->y, 0, GL_RGBA,
+    glTexImage2D(texture->target, 0, GL_RGBA8, size->x, size->y, 0, GL_RGBA,
             GL_UNSIGNED_BYTE, NULL);
 
     return 0;

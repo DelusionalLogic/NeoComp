@@ -19,15 +19,10 @@ struct X11Context {
     int screen;
     GLXFBConfig* configs;
     int numConfigs;
-
-    bool selected;
-    GLXFBConfig selected_config;
-
-    bool y_inverted;
 };
 
 bool xorgContext_init(struct X11Context* context, Display* display, int screen);
 
-bool xorgContext_selectConfig(struct X11Context* context, VisualID visualid);
+GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visualid);
 
 void xorgContext_delete(struct X11Context* context);
