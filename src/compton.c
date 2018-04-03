@@ -2210,13 +2210,15 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     w->a.y = ce->y;
 
     if (w->a.width != ce->width || w->a.height != ce->height
-        || w->a.border_width != ce->border_width) {
-      if(!wd_unbind(&w->drawable)) {
-          printf_errf("Failed unbinding window on resize");
-      }
-      if(!wd_bind(&w->drawable)) {
-          printf_errf("Failed rebinding window on resize");
-      }
+            || w->a.border_width != ce->border_width) {
+        if(ps->redirected) {
+            if(!wd_unbind(&w->drawable)) {
+                printf_errf("Failed unbinding window on resize");
+            }
+            if(!wd_bind(&w->drawable)) {
+                printf_errf("Failed rebinding window on resize");
+            }
+        }
     }
 
     if (w->a.width != ce->width || w->a.height != ce->height
