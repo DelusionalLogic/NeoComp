@@ -34,7 +34,6 @@ bool win_overlap(win* w1, win* w2) {
 
 bool win_covers(win* w) {
     return w->solid
-        && (!w->has_frame || !w->frame_opacity)
         && w->fullscreen
         && !w->unredir_if_possible_excluded;
 }

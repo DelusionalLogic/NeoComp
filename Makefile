@@ -129,7 +129,7 @@ else
   CFG += -DDEBUG_RESTACK
   # OBJS += backtrace-symbols.o
   LIBS += -lbfd
-  CFLAGS += -O0 -g -Wshadow -rdynamic
+  CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif
 

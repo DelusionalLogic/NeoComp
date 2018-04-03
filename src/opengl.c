@@ -564,42 +564,6 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
   glx_mark(ps, 0xDEADBEEF, false);
 }
 
-#define P_PAINTREG_START() \
-  XserverRegion reg_new = None; \
-  XRectangle rec_all = { .x = dx, .y = dy, .width = width, .height = height }; \
-  XRectangle *rects = &rec_all; \
-  int nrects = 1; \
- \
-  if (ps->o.glx_no_stencil && reg_tgt) { \
-    if (pcache_reg) { \
-      rects = pcache_reg->rects; \
-      nrects = pcache_reg->nrects; \
-    } \
-    else { \
-      reg_new = XFixesCreateRegion(ps->dpy, &rec_all, 1); \
-      XFixesIntersectRegion(ps->dpy, reg_new, reg_new, reg_tgt); \
- \
-      nrects = 0; \
-      rects = XFixesFetchRegion(ps->dpy, reg_new, &nrects); \
-    } \
-  } \
-  glBegin(GL_QUADS); \
- \
-  for (int ri = 0; ri < nrects; ++ri) { \
-    XRectangle crect; \
-    rect_crop(&crect, &rects[ri], &rec_all); \
- \
-    if (!crect.width || !crect.height) \
-      continue; \
-
-#define P_PAINTREG_END() \
-  } \
-  glEnd(); \
- \
-  if (rects && rects != &rec_all && !(pcache_reg && pcache_reg->rects == rects)) \
-    cxfree(rects); \
-  free_region(ps, &reg_new); \
-
 /**
  * Blur contents in a particular region.
  */

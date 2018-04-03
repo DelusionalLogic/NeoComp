@@ -721,7 +721,6 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_win_get_do(opacity_prop_client, cdbus_reply_uint32);
   cdbus_m_win_get_do(opacity_set, cdbus_reply_uint32);
 
-  cdbus_m_win_get_do(frame_opacity, cdbus_reply_double);
   if (!strcmp("left_width", target)) {
     cdbus_reply_uint32(ps, msg, w->frame_extents.left);
     return true;

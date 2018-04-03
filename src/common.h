@@ -732,9 +732,6 @@ typedef struct _options_t {
   /// Whether inactive_opacity overrides the opacity set by window
   /// attributes.
   bool inactive_opacity_override;
-  /// Frame opacity. Relative to window opacity, also affects shadow
-  /// opacity.
-  double frame_opacity;
   /// Whether to detect _NET_WM_OPACITY on client windows. Used on window
   /// managers that don't pass _NET_WM_OPACITY to frame windows.
   bool detect_client_opacity;
@@ -1122,8 +1119,6 @@ typedef struct _win {
   /// X Sync fence of drawable.
   XSyncFence fence;
 #endif
-  /// Whether the window was damaged after last paint.
-  bool pixmap_damaged;
   /// Damage of the window.
   Damage damage;
   /// Bounding shape of the window.
@@ -1226,9 +1221,6 @@ typedef struct _win {
   /// Callback to be called after fading completed.
   void (*fade_callback) (session_t *ps, struct _win *w);
 
-  // Frame-opacity-related members
-  /// Current window frame opacity. Affected by window opacity.
-  double frame_opacity;
   /// Frame extents. Acquired from _NET_FRAME_EXTENTS.
   margin_t frame_extents;
 

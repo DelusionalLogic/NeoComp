@@ -211,7 +211,7 @@ struct shader_program* shader_program_load_file(const char* path) {
             int* index;
             JSLG(index, program->attributes, name);
             if(index != NULL) {
-                printf("Attrib name %d redefine ignored\n", name);
+                printf("Attrib name %s redefine ignored\n", name);
                 continue;
             }
 

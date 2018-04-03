@@ -7,5 +7,6 @@
     M(tex_scr)              \
     M(flip)                 \
     M(invert)               \
+    M(dim)                  \
     M(opacity)
-#define UNIFORMS_COUNT 5
+#define UNIFORMS_COUNT 6

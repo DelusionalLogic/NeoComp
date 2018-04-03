@@ -17,7 +17,11 @@
 #include "xtexture.h"
 
 #include "assets/assets.h"
+#include "assets/shader.h"
+
 #include "renderutil.h"
+
+#include "shaders/shaderinfo.h"
 
 #include "profiler/zone.h"
 #include "profiler/render.h"
@@ -117,6 +121,14 @@ fade_timeout(session_t *ps) {
 
   return diff;
 }
+
+static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
+    Vector2 glpos = {{
+        xpos->x, ps->root_height - xpos->y - size->y
+    }};
+    return glpos;
+}
+
 
 /**
  * Run fading on a window.
@@ -374,8 +386,7 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
   // Check if it's a mapped client window
   if (WIN_EVMODE_CLIENT == mode
       || ((w = find_toplevel(ps, wid)) && IsViewable == w->a.map_state)) {
-    if (ps->o.frame_opacity || ps->o.track_wdata || ps->track_atom_lst
-        || ps->o.detect_client_opacity)
+    if (ps->o.track_wdata || ps->track_atom_lst || ps->o.detect_client_opacity)
       evmask |= PropertyChangeMask;
   }
 
@@ -648,11 +659,9 @@ get_frame_extents(session_t *ps, win *w, Window client) {
     w->frame_extents.right = extents[1];
     w->frame_extents.top = extents[2];
     w->frame_extents.bottom = extents[3];
-    
+
     w->has_frame = win_has_frame(w);
 
-    if (ps->o.frame_opacity)
-      update_reg_ignore_expire(ps, w);
   }
 
 #ifdef DEBUG_FRAME
@@ -762,24 +771,6 @@ paint_preprocess(session_t *ps, win *list) {
       if (!w->border_size)
         w->border_size = border_size(ps, w, true);
 
-      // Calculate frame_opacity
-      {
-        double frame_opacity_old = w->frame_opacity;
-
-        if (ps->o.frame_opacity && 1.0 != ps->o.frame_opacity
-            && win_has_frame(w))
-          w->frame_opacity = get_opacity_percent(w) *
-            ps->o.frame_opacity;
-        else
-          w->frame_opacity = 0.0;
-
-        // Destroy all reg_ignore above when frame opaque state changes on
-        // SOLID mode
-        if (w->to_paint && WMODE_SOLID == mode_old
-            && (0.0 == frame_opacity_old) != (0.0 == w->frame_opacity))
-          ps->reg_ignore_expire = true;
-      }
-
 	  // @INCOMPLETE: Vary the shadow opacity
     }
 
@@ -801,22 +792,14 @@ paint_preprocess(session_t *ps, win *list) {
         // If the window is solid, we add the window region to the
         // ignored region
         if (w->solid) {
-          if (!w->frame_opacity) {
-            if (w->border_size)
-              w->reg_ignore = copy_region(ps, w->border_size);
-            else
-              w->reg_ignore = win_get_region(ps, w, true);
-          }
-          else {
             w->reg_ignore = win_get_region_noframe(ps, w, true);
             if (w->border_size)
-              XFixesIntersectRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
-                  w->border_size);
-          }
+                XFixesIntersectRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
+                        w->border_size);
 
-          if (last_reg_ignore)
-            XFixesUnionRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
-                last_reg_ignore);
+            if (last_reg_ignore)
+                XFixesUnionRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
+                        last_reg_ignore);
         }
         // Otherwise we copy the last region over
         else if (last_reg_ignore)
@@ -969,83 +952,72 @@ render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
  * Paint a window itself and dim it if asked.
  */
 static void win_paint_win(session_t *ps, win *w) {
-  glx_mark(ps, w->id, true);
+    glx_mark(ps, w->id, true);
 
-  w->pixmap_damaged = false;
+    const double dopacity = get_opacity_percent(w);
 
-  const int x = w->a.x;
-  const int y = w->a.y;
-  const int wid = w->widthb;
-  const int hei = w->heightb;
+    glEnable(GL_BLEND);
 
-  const double dopacity = get_opacity_percent(w);
+    // This is all weird, but X Render is using premultiplied ARGB format, and
+    // we need to use those things to correct it. Thanks to derhass for help.
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    /* glColor4f(opacity, opacity, opacity, opacity); */
 
-  if (!w->frame_opacity) {
-    win_render(ps, w, 0, 0, wid, hei, dopacity);
-  }
-  else {
-    // Painting parameters
-    const margin_t extents = win_calc_frame_extents(ps, w);
-    const int t = extents.top;
-    const int l = extents.left;
-    const int b = extents.bottom;
-    const int r = extents.right;
-
-#define COMP_BDR(cx, cy, cwid, chei) \
-    win_render(ps, w, (cx), (cy), (cwid), (chei), w->frame_opacity)
-
-    // The following complicated logic is required because some broken
-    // window managers (I'm talking about you, Openbox!) that makes
-    // top_width + bottom_width > height in some cases.
-
-    // top
-    int phei = min_i(t, hei);
-    if (phei > 0)
-      COMP_BDR(0, 0, wid, phei);
-
-    if (hei > t) {
-      phei = min_i(hei - t, b);
-
-      // bottom
-      if (phei > 0)
-        COMP_BDR(0, hei - phei, wid, phei);
-
-      phei = hei - t - phei;
-      if (phei > 0) {
-        int pwid = min_i(l, wid);
-        // left
-        if (pwid > 0)
-          COMP_BDR(0, t, pwid, phei);
-
-        if (wid > l) {
-          pwid = min_i(wid - l, r);
-
-          // right
-          if (pwid > 0)
-            COMP_BDR(wid - pwid, t, pwid, phei);
-
-          pwid = wid - l - pwid;
-          if (pwid > 0) {
-            // body
-            win_render(ps, w, l, t, pwid, phei, dopacity);
-          }
-        }
-      }
+    struct shader_program* global_program = assets_load("global.shader");
+    if(global_program->shader_type_info != &global_info) {
+        printf_errf("Shader was not a global shader");
+        // @INCOMPLETE: Make sure the config is correct
+        return;
     }
-  }
 
-#undef COMP_BDR
+    struct Global* global_type = global_program->shader_type;
+    shader_use(global_program);
 
-  // Dimming the window if needed
-  if (w->dim) {
-    double dim_opacity = ps->o.inactive_dim;
-    if (!ps->o.inactive_dim_fixed)
-      dim_opacity *= get_opacity_percent(w);
+    // Bind texture
+    texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
-    glx_dim_dst(ps, x, y, wid, hei, ps->psglx->z - 0.7, dim_opacity);
-  }
+    shader_set_uniform_float(global_type->invert, w->invert_color);
+    shader_set_uniform_float(global_type->flip, w->drawable.texture.flipped);
+    shader_set_uniform_float(global_type->opacity, dopacity);
+    shader_set_uniform_sampler(global_type->tex_scr, 0);
 
-  glx_mark(ps, w->id, false);
+    // Dimming the window if needed
+    if (w->dim) {
+        double dim_opacity = ps->o.inactive_dim;
+        if (!ps->o.inactive_dim_fixed)
+            dim_opacity *= get_opacity_percent(w);
+        shader_set_uniform_float(global_type->dim, dim_opacity);
+    } else {
+        shader_set_uniform_float(global_type->dim, 1.0);
+    }
+
+#ifdef DEBUG_GLX
+    printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
+#endif
+
+    struct face* face = assets_load("window.face");
+
+    // Painting
+    {
+        Vector2 rectPos = {{w->a.x, w->a.y}};
+        Vector2 rectSize = {{w->widthb, w->heightb}};
+        Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+
+#ifdef DEBUG_GLX
+        printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
+#endif
+
+        draw_rect(face, global_type->mvp, glRectPos, rectSize);
+    }
+
+    /* glUseProgram(0); */
+
+    // Cleanup
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDisable(GL_BLEND);
+
+    glx_check_err(ps);
+    glx_mark(ps, w->id, false);
 }
 
 /**
@@ -1098,7 +1070,7 @@ paint_all(session_t *ps, win *t) {
 
     // Blur the backbuffer behind the window to make transparent areas blurred.
     // @PERFORMANCE: We are also blurring things that are opaque
-    if (w->blur_background && (!w->solid || (ps->o.blur_background_frame && w->frame_opacity))) {
+    if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
         win_blur_background(ps, w, ps->tgt_buffer.pict);
     }
 
@@ -1150,28 +1122,6 @@ add_damage(session_t *ps, XserverRegion damage) {
     free_region(ps, &damage);
 
     if (!damage) return;
-}
-
-static void
-repair_win(session_t *ps, win *w) {
-  if (IsViewable != w->a.map_state)
-    return;
-
-  //Reset the XDamage region, so we continue to recieve new damage
-  XDamageSubtract(ps->dpy, w->damage, None, None);
-
-  w->damaged = true;
-  w->pixmap_damaged = true;
-
-
-  // Damage all the bg blurs of the windows on top of this one
-  for (win *t = w; t; t = t->prev_trans) {
-      // @CLEANUP: Ideally we should just recalculate the blur right now. We need
-      // to render the windows behind this though, and that takes time. For now we
-      // just do it indirectly
-      if(win_overlap(w, t))
-              t->glx_blur_cache.damaged = true;
-  }
 }
 
 static wintype_t
@@ -1574,7 +1524,7 @@ win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
 
   // Only consider window damaged if it's previously painted with background
   // blurred
-  if (!w->solid || (ps->o.blur_background_frame && w->frame_opacity))
+  if (!w->solid || (ps->o.blur_background_frame))
     add_damage_win(ps, w);
 }
 
@@ -1718,8 +1668,7 @@ win_mark_client(session_t *ps, win *w, Window client) {
   win_upd_wintype(ps, w);
 
   // Get frame widths. The window is in damaged area already.
-  if (ps->o.frame_opacity)
-    get_frame_extents(ps, w, client);
+  get_frame_extents(ps, w, client);
 
   // Get window group
   if (ps->o.track_leader)
@@ -1811,7 +1760,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .mode = WMODE_TRANS,
     .damaged = false,
     .damage = None,
-    .pixmap_damaged = false,
     .border_size = None,
     .flags = 0,
     .need_configure = false,
@@ -1855,7 +1803,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .fade_force = UNSET,
     .fade_callback = NULL,
 
-    .frame_opacity = 0.0,
     .frame_extents = MARGIN_INIT,
 
     .shadow = false,
@@ -2173,7 +2120,6 @@ finish_destroy_win(session_t *ps, Window id) {
         ps->active_win = NULL;
 
       // Drop w from all prev_trans to avoid accessing freed memory in
-      // repair_win()
       for (win *w2 = ps->list; w2; w2 = w2->next) {
         if (w == w2->prev_trans)
           w2->prev_trans = NULL;
@@ -2243,7 +2189,22 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
 
   if (!w) return;
 
-  repair_win(ps, w);
+  if (IsViewable != w->a.map_state)
+    return;
+
+  //Reset the XDamage region, so we continue to recieve new damage
+  XDamageSubtract(ps->dpy, w->damage, None, None);
+
+  w->damaged = true;
+
+  // Damage all the bg blurs of the windows on top of this one
+  for (win *t = w; t; t = t->prev_trans) {
+      // @CLEANUP: Ideally we should just recalculate the blur right now. We need
+      // to render the windows behind this though, and that takes time. For now we
+      // just do it indirectly
+      if(win_overlap(w, t))
+          t->glx_blur_cache.damaged = true;
+  }
 }
 
 /**
@@ -3158,7 +3119,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   }
 
   // If frame extents property changes
-  if (ps->o.frame_opacity && ev->atom == ps->atom_frame_extents) {
+  if (ev->atom == ps->atom_frame_extents) {
     win *w = find_toplevel(ps, ev->window);
     if (w) {
       get_frame_extents(ps, w, ev->window);
@@ -4231,8 +4192,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --active_opacity
   if (config_lookup_float(&cfg, "active-opacity", &dval))
     ps->o.active_opacity = normalize_d(dval) * OPAQUE;
-  // -e (frame_opacity)
-  config_lookup_float(&cfg, "frame-opacity", &ps->o.frame_opacity);
   // -z (clear_shadow)
   lcfg_lookup_bool(&cfg, "clear-shadow", &ps->o.clear_shadow);
   // -c (shadow_enable)
@@ -4572,9 +4531,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 'i':
         ps->o.inactive_opacity = (normalize_d(atof(optarg)) * OPAQUE);
         break;
-      case 'e':
-        ps->o.frame_opacity = atof(optarg);
-        break;
       P_CASEBOOL('z', clear_shadow);
       case 'n':
       case 'a':
@@ -4719,7 +4675,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   ps->o.fade_delta = max_i(ps->o.fade_delta, 1);
   ps->o.shadow_radius = max_i(ps->o.shadow_radius, 1);
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
-  ps->o.frame_opacity = normalize_d(ps->o.frame_opacity);
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
   ps->o.refresh_rate = normalize_i_range(ps->o.refresh_rate, 0, 300);
   ps->o.alpha_step = normalize_d_range(ps->o.alpha_step, 0.01, 1.0);
@@ -5639,7 +5594,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .inactive_opacity = 0,
       .inactive_opacity_override = false,
       .active_opacity = 0,
-      .frame_opacity = 0.0,
       .detect_client_opacity = false,
       .alpha_step = 0.03,
 

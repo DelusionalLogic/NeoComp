@@ -9,7 +9,7 @@
 
 // Types {{{
 struct type_info {
-    type_id id;
+    int id;
     size_t size;
 };
 
