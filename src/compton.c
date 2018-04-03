@@ -171,112 +171,6 @@ set_fade_callback(session_t *ps, win *w,
   }
 }
 
-// === Shadows ===
-
-static double __attribute__((const))
-gaussian(double r, double x, double y) {
-  return ((1 / (sqrt(2 * M_PI * r))) *
-    exp((- (x * x + y * y)) / (2 * r * r)));
-}
-
-static conv *
-make_gaussian_map(double r) {
-  conv *c;
-  int size = ((int) ceil((r * 3)) + 1) & ~1;
-  int center = size / 2;
-  int x, y;
-  double t;
-  double g;
-
-  c = malloc(sizeof(conv) + size * size * sizeof(double));
-  c->size = size;
-  c->data = (double *) (c + 1);
-  t = 0.0;
-
-  for (y = 0; y < size; y++) {
-    for (x = 0; x < size; x++) {
-      g = gaussian(r, x - center, y - center);
-      t += g;
-      c->data[y * size + x] = g;
-    }
-  }
-
-  for (y = 0; y < size; y++) {
-    for (x = 0; x < size; x++) {
-      c->data[y * size + x] /= t;
-    }
-  }
-
-  return c;
-}
-
-/*
- * A picture will help
- *
- *      -center   0                width  width+center
- *  -center +-----+-------------------+-----+
- *          |     |                   |     |
- *          |     |                   |     |
- *        0 +-----+-------------------+-----+
- *          |     |                   |     |
- *          |     |                   |     |
- *          |     |                   |     |
- *   height +-----+-------------------+-----+
- *          |     |                   |     |
- * height+  |     |                   |     |
- *  center  +-----+-------------------+-----+
- */
-
-static unsigned char
-sum_gaussian(conv *map, double opacity,
-             int x, int y, int width, int height) {
-  int fx, fy;
-  double *g_data;
-  double *g_line = map->data;
-  int g_size = map->size;
-  int center = g_size / 2;
-  int fx_start, fx_end;
-  int fy_start, fy_end;
-  double v;
-
-  /*
-   * Compute set of filter values which are "in range",
-   * that's the set with:
-   *    0 <= x + (fx-center) && x + (fx-center) < width &&
-   *  0 <= y + (fy-center) && y + (fy-center) < height
-   *
-   *  0 <= x + (fx - center)    x + fx - center < width
-   *  center - x <= fx    fx < width + center - x
-   */
-
-  fx_start = center - x;
-  if (fx_start < 0) fx_start = 0;
-  fx_end = width + center - x;
-  if (fx_end > g_size) fx_end = g_size;
-
-  fy_start = center - y;
-  if (fy_start < 0) fy_start = 0;
-  fy_end = height + center - y;
-  if (fy_end > g_size) fy_end = g_size;
-
-  g_line = g_line + fy_start * g_size + fx_start;
-
-  v = 0;
-
-  for (fy = fy_start; fy < fy_end; fy++) {
-    g_data = g_line;
-    g_line += g_size;
-
-    for (fx = fx_start; fx < fx_end; fx++) {
-      v += *g_data++;
-    }
-  }
-
-  if (v > 1) v = 1;
-
-  return ((unsigned char) (v * opacity * 255.0));
-}
-
 /**
  * Generate a 1x1 <code>Picture</code> of a particular color.
  */
@@ -1164,16 +1058,6 @@ rebuild_screen_reg(session_t *ps) {
   ps->screen_reg = get_screen_region(ps);
 }
 
-/**
- * Rebuild <code>shadow_exclude_reg</code>.
- */
-static void
-rebuild_shadow_exclude_reg(session_t *ps) {
-  free_region(ps, &ps->shadow_exclude_reg);
-  XRectangle rect = geom_to_rect(ps, &ps->o.shadow_exclude_reg_geom, NULL);
-  ps->shadow_exclude_reg = rect_to_reg(ps, &rect);
-}
-
 static void
 paint_all(session_t *ps, win *t) {
   zone_enter(&ZONE_global);
@@ -1394,10 +1278,12 @@ map_win(session_t *ps, Window id) {
 
   w->damaged = false;
 
-  // configure_win might rebind, so we need to bind before
-  if(!wd_bind(&w->drawable)) {
-      printf_errf("Failed binding window drawable %s", w->name);
-      return;
+  if(ps->redirected) {
+      // configure_win might rebind, so we need to bind before
+      if(!wd_bind(&w->drawable)) {
+          printf_errf("Failed binding window drawable %s", w->name);
+          return;
+      }
   }
 
   /* if any configure events happened while
@@ -1432,7 +1318,8 @@ finish_unmap_win(session_t *ps, win *w) {
   update_reg_ignore_expire(ps, w);
 
   free_region(ps, &w->border_size);
-  wd_unbind(&w->drawable);
+  if(ps->redirected)
+      wd_unbind(&w->drawable);
 }
 
 static void

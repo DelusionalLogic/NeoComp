@@ -9,8 +9,6 @@ struct face* face_load_file(const char* path) {
         return NULL;
     }
 
-    fseek(file, 0, SEEK_END);
-    size_t length = ftell(file);
     fseek(file, 0, SEEK_SET);
 
     struct face* face = malloc(sizeof(struct face));

@@ -211,7 +211,6 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
     if(hadScissor)
         glEnable(GL_SCISSOR_TEST);
 
-    Vector2 root_size = {{ps->root_width, ps->root_height}};
     {
         Vector2 rpos = X11_rectpos_to_gl(ps, pos, size);
         vec2_sub(&rpos, &cache->border);

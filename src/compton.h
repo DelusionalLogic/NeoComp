@@ -231,29 +231,6 @@ paint_isvalid(session_t *ps, const paint_t *ppaint) {
 }
 
 /**
- * Bind texture in paint_t if we are using GLX backend.
- */
-static inline bool
-paint_bind_tex_real(session_t *ps, paint_t *ppaint,
-    unsigned wid, unsigned hei, unsigned depth, bool force) {
-  if (!ppaint->pixmap)
-    return false;
-
-  if (force || !glx_tex_binded(ppaint->ptex, ppaint->pixmap))
-    return glx_bind_pixmap(ps, &ppaint->ptex, ppaint->pixmap, wid, hei, depth);
-
-  return true;
-}
-
-static inline bool
-paint_bind_tex(session_t *ps, paint_t *ppaint,
-    unsigned wid, unsigned hei, unsigned depth, bool force) {
-  if (BKEND_GLX == ps->o.backend)
-    return paint_bind_tex_real(ps, ppaint, wid, hei, depth, force);
-  return true;
-}
-
-/**
  * Free data in a reg_data_t.
  */
 static inline void
@@ -268,7 +245,6 @@ free_reg_data(reg_data_t *pregd) {
  */
 static inline void
 free_paint(session_t *ps, paint_t *ppaint) {
-  free_paint_glx(ps, ppaint);
   free_picture(ps, &ppaint->pict);
   free_pixmap(ps, &ppaint->pixmap);
 }
@@ -380,25 +356,6 @@ check_fade_fin(session_t *ps, win *w) {
 static void
 set_fade_callback(session_t *ps, win *w,
     void (*callback) (session_t *ps, win *w), bool exec_callback);
-
-static double
-gaussian(double r, double x, double y);
-
-static conv *
-make_gaussian_map(double r);
-
-static unsigned char
-sum_gaussian(conv *map, double opacity,
-             int x, int y, int width, int height);
-
-static void
-presum_gaussian(session_t *ps, conv *map);
-
-static XImage *
-make_shadow(session_t *ps, double opacity, int width, int height);
-
-static bool
-win_build_shadow(session_t *ps, win *w, double opacity);
 
 static Picture
 solid_picture(session_t *ps, bool argb, double a,
@@ -640,9 +597,6 @@ static XserverRegion
 win_get_region_noframe(session_t *ps, win *w, bool use_offset);
 
 static XserverRegion
-win_extents(session_t *ps, win *w);
-
-static XserverRegion
 border_size(session_t *ps, win *w, bool use_offset);
 
 static Window
@@ -797,15 +751,6 @@ static void
 win_update_shape(session_t *ps, win *w);
 
 static void
-win_update_prop_shadow_raw(session_t *ps, win *w);
-
-static void
-win_update_prop_shadow(session_t *ps, win *w);
-
-static void
-win_set_shadow(session_t *ps, win *w, bool shadow_new);
-
-static void
 win_determine_shadow(session_t *ps, win *w);
 
 static void
@@ -828,9 +773,6 @@ win_on_factor_change(session_t *ps, win *w);
 
 static void
 calc_win_size(session_t *ps, win *w);
-
-static void
-calc_shadow_geometry(session_t *ps, win *w);
 
 static void
 win_upd_wintype(session_t *ps, win *w);

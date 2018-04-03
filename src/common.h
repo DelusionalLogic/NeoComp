@@ -2164,10 +2164,6 @@ glx_load_prog_main(session_t *ps,
     const char *vshader_str, const char *fshader_str,
     glx_prog_main_t *pprogram);
 
-bool
-glx_bind_pixmap(session_t *ps, glx_texture_t **pptex, Pixmap pixmap,
-    unsigned width, unsigned height, unsigned depth);
-
 void
 glx_release_pixmap(session_t *ps, glx_texture_t *ptex);
 
@@ -2243,35 +2239,6 @@ free_glx_fbo(session_t *ps, GLuint *pfbo) {
     *pfbo = 0;
   }
   assert(!*pfbo);
-}
-
-/**
- * Free a glx_texture_t.
- */
-static inline void
-free_texture(session_t *ps, glx_texture_t **pptex) {
-  glx_texture_t *ptex = *pptex;
-
-  // Quit if there's nothing
-  if (!ptex)
-    return;
-
-  glx_release_pixmap(ps, ptex);
-
-  free_texture_r(ps, &ptex->texture);
-
-  // Free structure itself
-  free(ptex);
-  *pptex = NULL;
-  assert(!*pptex);
-}
-
-/**
- * Free GLX part of paint_t.
- */
-static inline void
-free_paint_glx(session_t *ps, paint_t *ppaint) {
-  free_texture(ps, &ppaint->ptex);
 }
 
 /**

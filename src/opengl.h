@@ -130,10 +130,3 @@ get_visualinfo_from_visual(session_t *ps, Visual *visual) {
 
   return XGetVisualInfo(ps->dpy, VisualIDMask, &vreq, &nitems);
 }
-
-static bool
-glx_update_fbconfig(session_t *ps);
-
-static int
-glx_cmp_fbconfig(session_t *ps,
-    const glx_fbconfig_t *pfbc_a, const glx_fbconfig_t *pfbc_b);
