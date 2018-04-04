@@ -44,6 +44,10 @@ int renderbuffer_stencil_init(struct RenderBuffer* buffer, const Vector2* size) 
     return 0;
 }
 
+bool renderbuffer_initialized(struct RenderBuffer* buffer) {
+    return buffer->gl_buffer != 0;
+}
+
 void renderbuffer_resize(struct RenderBuffer* buffer, const Vector2* size) {
     assert(buffer->gl_buffer != 0);
 
@@ -62,6 +66,8 @@ void renderbuffer_delete(struct RenderBuffer* buffer) {
 }
 
 void renderbuffer_bind_to_framebuffer(struct RenderBuffer* buffer, GLenum attachment) {
+    assert(buffer != NULL);
+    assert(renderbuffer_initialized(buffer));
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, attachment, GL_RENDERBUFFER,
             buffer->gl_buffer);
 }

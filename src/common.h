@@ -168,6 +168,7 @@ typedef struct {
   struct Framebuffer fbo;
   /// Textures used for blurring.
   struct Texture texture[2];
+  struct RenderBuffer stencil;
   Vector2 size;
   /// Width of the textures.
   int width;

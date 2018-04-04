@@ -7,6 +7,7 @@
 #include "shaders/shaderinfo.h"
 #include "xtexture.h"
 #include "textureeffects.h"
+#include "renderutil.h"
 
 bool win_overlap(win* w1, win* w2) {
     const Vector2 w1lpos = {{
@@ -57,60 +58,54 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
         // Read destination pixels into a texture
 
         Vector2 glpos = X11_rectpos_to_gl(ps, &pos, &size);
-        texture_read_from(tex, 0, GL_BACK, &glpos, &size);
+        /* texture_read_from(tex, 0, GL_BACK, &glpos, &size); */
 
-        /* framebuffer_resetTarget(&blur->fbo); */
-        /* framebuffer_targetTexture(&blur->fbo, tex); */
-        /* framebuffer_bind(&blur->fbo); */
+        glEnable(GL_STENCIL_TEST);
+        glEnable(GL_BLEND);
+        glDisable(GL_SCISSOR_TEST);
 
-        /* glDisable(GL_STENCIL_TEST); */
-        /* glDisable(GL_SCISSOR_TEST); */
+        framebuffer_resetTarget(&blur->fbo);
+        framebuffer_targetRenderBuffer_stencil(&blur->fbo, &w->glx_blur_cache.stencil);
+        framebuffer_targetTexture(&blur->fbo, tex);
+        framebuffer_bind(&blur->fbo);
 
-        /* glClearColor(1.0, 1.0, 0.0, 1.0); */
-        /* glClear(GL_COLOR_BUFFER_BIT); */
+        glClearColor(1.0, 1.0, 0.0, 1.0);
 
-        /* glViewport(0, 0, size.x, size.y); */
+        glStencilMask(0xFF);
+        glClearStencil(0);
+        glStencilFunc(GL_EQUAL, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
-        /* struct shader_program* global_program = assets_load("passthough.shader"); */
-        /* if(global_program->shader_type_info != &passthough_info) { */
-        /*     printf_errf("Shader was not a passthough shader\n"); */
-        /*     return false; */
-        /* } */
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        /* struct face* face = assets_load("window.face"); */
+        glViewport(0, 0, size.x, size.y);
+        Matrix old_view = view;
+        view = mat4_orthogonal(glpos.x, glpos.x + size.x, glpos.y, glpos.y + size.y, -1, 1);
 
-        /* Vector2 root_size = size; */
-        /* Vector2 pixeluv = {{1.0f, 1.0f}}; */
-        /* vec2_div(&pixeluv, &tex->size); */
+        struct shader_program* global_program = assets_load("passthough.shader");
+        if(global_program->shader_type_info != &passthough_info) {
+            printf_errf("Shader was not a passthough shader\n");
+            return false;
+        }
 
-        /* for(win* t = w->next_trans; t != NULL; t = t->next_trans) { */
-        /*     Vector2 tpos = {{t->a.x, t->a.y}}; */
-        /*     Vector2 tsize = {{t->widthb, t->heightb}}; */
-        /*     Vector2 tglpos = X11_rectpos_to_gl(ps, &tpos, &tsize); */
-        /*     vec2_sub(&tglpos, &glpos); */
+        struct face* face = assets_load("window.face");
 
-        /*     Vector2 scale = pixeluv; */
-        /*     vec2_mul(&scale, &tsize); */
+        for(win* t = w->next_trans; t != NULL; t = t->next_trans) {
+            Vector2 tpos = {{t->a.x, t->a.y}};
+            Vector2 tsize = {{t->widthb, t->heightb}};
+            Vector2 tglpos = X11_rectpos_to_gl(ps, &tpos, &tsize);
 
-        /*     Vector2 relpos = pixeluv; */
-        /*     vec2_mul(&relpos, &tglpos); */
+            draw_tex(ps, face, &t->drawable.texture, &tglpos, &tsize);
+        }
 
-        /*     /1* draw_tex(ps, face, &t->glx_blur_cache.texture[0], &relpos, &scale); *1/ */
-        /*     struct Texture ttt = { */
-        /*         .target = GL_TEXTURE_2D, */
-        /*         /1* .gl_texture = t->paint.ptex->texture, *1/ */
-        /*         .gl_texture = ps->root_tile_paint.ptex->texture, */
-        /*     }; */
-        /*     draw_tex(ps, face, &ttt, &relpos, &scale); */
-        /* } */
+        Vector2 root_size = {{ps->root_width, ps->root_height}};
+        draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &root_size);
 
-        // Texture scaling factor
-        /* Vector2 halfpixel = pixeluv; */
-        /* vec2_idiv(&halfpixel, 2); */
+        view = old_view;
 
         // Disable the options. We will restore later
-        glDisable(GL_STENCIL_TEST);
         glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
 
         int level = ps->o.blur_level;
 

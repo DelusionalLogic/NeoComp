@@ -113,6 +113,8 @@ void texture_bind_to_framebuffer_2(struct Texture* texture, GLenum target) {
 }
 
 void texture_bind(const struct Texture* texture, GLenum unit) {
+    assert(texture != NULL);
+    assert(texture_initialized(texture));
     glActiveTexture(unit);
     glBindTexture(texture->target, texture->gl_texture);
 }
