@@ -114,7 +114,10 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
                 scale.y);
 #endif
 
-        draw_rect(ps->psglx->blur.face, passthough_type->mvp, glRectPos, rectSize);
+        {
+            Vector3 pos = vec3_from_vec2(&glRectPos, 1);
+            draw_rect(ps->psglx->blur.face, passthough_type->mvp, pos, rectSize);
+        }
     }
 
     // Restore the default rendering context

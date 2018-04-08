@@ -228,11 +228,11 @@ Matrix mat4_orthogonal(float left, float right, float bottom, float top, float n
     Matrix out = IDENTITY_MATRIX;
     out.m[0] = 2 / (right - left);
     out.m[5] = 2 / (top - bottom);
-    out.m[10] = -2 / (far - near);
+    out.m[10] = 2 / (far - near);
 
-    out.m[12] = - (right + left) / (right - left);
-    out.m[13] = - (top + bottom) / (top - bottom);
-    out.m[14] = - (far + near) / (far - near);
+    out.m[12] = -((right + left) / (right - left));
+    out.m[13] = -((top + bottom) / (top - bottom));
+    out.m[14] = -((far + near) / (far - near));
 
     out.m[15] = 1;
 

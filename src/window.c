@@ -95,11 +95,14 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
             Vector2 tsize = {{t->widthb, t->heightb}};
             Vector2 tglpos = X11_rectpos_to_gl(ps, &tpos, &tsize);
 
-            draw_tex(ps, face, &t->drawable.texture, &tglpos, &tsize);
+            {
+                Vector3 pos = vec3_from_vec2(&tglpos, 0.0);
+                draw_tex(ps, face, &t->drawable.texture, &pos, &tsize);
+            }
         }
 
         Vector2 root_size = {{ps->root_width, ps->root_height}};
-        draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &root_size);
+        draw_tex(ps, face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
 
         view = old_view;
 

@@ -146,7 +146,10 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
             printf_dbgf("SHADOW %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-            draw_rect(face, global_type->mvp, cache->border, *size);
+            {
+                Vector3 pos = vec3_from_vec2(&cache->border, 0.0);
+                draw_rect(face, global_type->mvp, pos, *size);
+            }
         }
 
         glDisable(GL_STENCIL_TEST);
@@ -188,7 +191,7 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         glStencilFunc(GL_EQUAL, 0, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-        draw_tex(ps, face, &cache->texture, &VEC2_ZERO, &cache->effect.size);
+        draw_tex(ps, face, &cache->texture, &VEC3_ZERO, &cache->effect.size);
 
         glDisable(GL_STENCIL_TEST);
         view = old_view;
@@ -203,8 +206,8 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
     glViewport(0, 0, ps->root_width, ps->root_height);
 
     /* { */
-    /*     Vector2 rpos = {{0, 0}}; */
-    /*     Vector2 rsize = {{.4, .6}}; */
+    /*     Vector3 rpos = {{0, 0, 1}}; */
+    /*     Vector2 rsize = {{500, 500}}; */
     /*     draw_tex(ps, face, &cache->effect, &rpos, &rsize); */
     /* } */
 
@@ -214,9 +217,10 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
     {
         Vector2 rpos = X11_rectpos_to_gl(ps, pos, size);
         vec2_sub(&rpos, &cache->border);
+        Vector3 tdrpos = vec3_from_vec2(&rpos, 0.0);
         Vector2 rsize = cache->texture.size;
 
-        draw_tex(ps, face, &cache->effect, &rpos, &rsize);
+        draw_tex(ps, face, &cache->effect, &tdrpos, &rsize);
     }
 
     glDisable(GL_BLEND);

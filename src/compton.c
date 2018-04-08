@@ -537,7 +537,7 @@ static void paint_root(session_t *ps) {
 
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
-    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &rootSize);
+    draw_tex(ps, face, &ps->root_texture.texture, &VEC3_Z, &rootSize);
 }
 
 /**
@@ -951,12 +951,15 @@ render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
 /**
  * Paint a window itself and dim it if asked.
  */
-static void win_paint_win(session_t *ps, win *w) {
+static void win_paint_win(session_t *ps, win *w, float z) {
     glx_mark(ps, w->id, true);
+
+    printf("z: %f\n", z);
 
     const double dopacity = get_opacity_percent(w);
 
     glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
 
     // This is all weird, but X Render is using premultiplied ARGB format, and
     // we need to use those things to correct it. Thanks to derhass for help.
@@ -988,7 +991,7 @@ static void win_paint_win(session_t *ps, win *w) {
             dim_opacity *= get_opacity_percent(w);
         shader_set_uniform_float(global_type->dim, dim_opacity);
     } else {
-        shader_set_uniform_float(global_type->dim, 1.0);
+        shader_set_uniform_float(global_type->dim, 0.0);
     }
 
 #ifdef DEBUG_GLX
@@ -1002,19 +1005,21 @@ static void win_paint_win(session_t *ps, win *w) {
         Vector2 rectPos = {{w->a.x, w->a.y}};
         Vector2 rectSize = {{w->widthb, w->heightb}};
         Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+        Vector3 winpos = vec3_from_vec2(&glRectPos, z);
 
 #ifdef DEBUG_GLX
         printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-        draw_rect(face, global_type->mvp, glRectPos, rectSize);
+        draw_rect(face, global_type->mvp, winpos, rectSize);
     }
 
     /* glUseProgram(0); */
 
     // Cleanup
-    glBindTexture(GL_TEXTURE_2D, 0);
     glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+
 
     glx_check_err(ps);
     glx_mark(ps, w->id, false);
@@ -1059,13 +1064,25 @@ paint_all(session_t *ps, win *t) {
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 #endif
 
+  glClearDepth(0.0);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glDepthFunc(GL_GREATER);
+
   /* set_tgt_clip(ps, reg_paint, NULL); */
   paint_root(ps);
 
+  win* lastWin = NULL;
+  int numWins = 0;
   for (win *w = t; w; w = w->prev_trans) {
+      lastWin = w;
+      numWins++;
+  }
+
+  float z = 1;
+  for (win *w = lastWin; w; w = w->next_trans) {
     // Painting shadow
     if (w->shadow) {
-      win_paint_shadow(ps, w);
+        win_paint_shadow(ps, w);
     }
 
     // Blur the backbuffer behind the window to make transparent areas blurred.
@@ -1077,7 +1094,13 @@ paint_all(session_t *ps, win *t) {
     // Painting the window
 
     // Paint the window contents
-    win_paint_win(ps, w);
+    if(w->a.map_state == IsViewable) {
+        win_paint_win(ps, w, z);
+    }
+
+    // @HACK: This shouldn't be hardcoded. As it stands, it will probably break
+    // for more than 1k windows
+    z -= .0001;
   }
 
   // Finish the profiling before the vsync, since we don't want that to drag out the time
