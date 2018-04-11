@@ -615,10 +615,6 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
   return true;
 }
 
-void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* size, float z) {
-    window_shadow(ps, w, pos, size);
-}
-
 /**
  * @brief Render a region with texture data.
  */

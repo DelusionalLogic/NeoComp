@@ -13,8 +13,11 @@ enum BufferType {
 struct RenderBuffer {
     GLuint gl_buffer;
     GLenum gl_type;
-    enum BufferType type;
+
     Vector2 size;
+    bool hasSpace;
+
+    enum BufferType type;
 };
 
 int renderbuffer_init(struct RenderBuffer* buffer, const Vector2* size);

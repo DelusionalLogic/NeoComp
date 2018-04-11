@@ -74,7 +74,7 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
     return;
 }
 
-void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size) {
+void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size, float z) {
     glx_mark(ps, w->id, true);
     struct glx_shadow_cache* cache = &w->shadow_cache;
 
@@ -215,12 +215,16 @@ void window_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* siz
         glEnable(GL_SCISSOR_TEST);
 
     {
-        Vector2 rpos = X11_rectpos_to_gl(ps, pos, size);
+        Vector2 rpos = *pos;
         vec2_sub(&rpos, &cache->border);
-        Vector3 tdrpos = vec3_from_vec2(&rpos, 0.0);
+        Vector3 tdrpos = vec3_from_vec2(&rpos, z);
         Vector2 rsize = cache->texture.size;
 
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
         draw_tex(ps, face, &cache->effect, &tdrpos, &rsize);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_DEPTH_TEST);
     }
 
     glDisable(GL_BLEND);

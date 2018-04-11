@@ -11,13 +11,16 @@ static GLuint generate_buffer(const Vector2* size, GLenum type) {
 
     glBindRenderbuffer(GL_RENDERBUFFER, b);
 
-    glRenderbufferStorage(GL_RENDERBUFFER, type, size->x, size->y);
+    // If we don't get a size, just don't allocate any storage for now
+    if(size != NULL)
+        glRenderbufferStorage(GL_RENDERBUFFER, type, size->x, size->y);
 
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
     return b;
 }
 
+// FOR ALL INIT FUNCTIONS: We can give them NULL for size to specify that we
+// don't want any storage
 int renderbuffer_init(struct RenderBuffer* buffer, const Vector2* size) {
     buffer->gl_type = GL_RGBA;
     buffer->gl_buffer = generate_buffer(size, buffer->gl_type);
@@ -26,7 +29,8 @@ int renderbuffer_init(struct RenderBuffer* buffer, const Vector2* size) {
     }
 
     buffer->type = BUFFERTYPE_COLOR;
-    buffer->size = *size;
+    if(size != NULL)
+        buffer->size = *size;
 
     return 0;
 }
@@ -39,7 +43,15 @@ int renderbuffer_stencil_init(struct RenderBuffer* buffer, const Vector2* size) 
     }
 
     buffer->type = BUFFERTYPE_STENCIL;
-    buffer->size = *size;
+
+    // If the size was NULL, then we didn't allocate any space in the
+    // generate_buffer call
+    if(size != NULL) {
+        buffer->size = *size;
+        buffer->hasSpace = true;
+    } else {
+        buffer->hasSpace = false;
+    }
 
     return 0;
 }
@@ -53,7 +65,8 @@ void renderbuffer_resize(struct RenderBuffer* buffer, const Vector2* size) {
 
     glBindRenderbuffer(GL_RENDERBUFFER, buffer->gl_buffer);
     glRenderbufferStorage(GL_RENDERBUFFER, buffer->gl_type, size->x, size->y);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    buffer->hasSpace = true;
     buffer->size = *size;
 }
 
@@ -68,6 +81,8 @@ void renderbuffer_delete(struct RenderBuffer* buffer) {
 void renderbuffer_bind_to_framebuffer(struct RenderBuffer* buffer, GLenum attachment) {
     assert(buffer != NULL);
     assert(renderbuffer_initialized(buffer));
+    assert(buffer->hasSpace);
+
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, attachment, GL_RENDERBUFFER,
             buffer->gl_buffer);
 }

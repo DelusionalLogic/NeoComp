@@ -46,17 +46,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
 
-    // Make sure the blur cache is initialized. This is a noop if it's already
-    // initialized
-    if(!vec2_eq(size, &pbc->size)) {
-        if(blur_cache_init(pbc, size) != 0) {
-            printf_errf("(): Failed to initializing cache");
-            return false;
-        }
-    }
-
     struct Texture* tex_scr = &pbc->texture[0];
-    win_calculate_blur(blur, ps, w);
 
     glViewport(0, 0, ps->root_width, ps->root_height);
 
@@ -138,51 +128,52 @@ void blur_destroy(struct blur* blur) {
     free(blur);
 }
 
-int blur_cache_init(glx_blur_cache_t* cache, const Vector2* size) {
-    if(!vec2_eq(size, &cache->size)) {
-        if(texture_initialized(&cache->texture[0]))
-            texture_delete(&cache->texture[0]);
+bool blur_cache_resize(glx_blur_cache_t* cache, const Vector2* size) {
+    assert(renderbuffer_initialized(&cache->stencil));
+    assert(texture_initialized(&cache->texture[0]));
+    assert(texture_initialized(&cache->texture[1]));
 
-        if(texture_initialized(&cache->texture[1]))
-            texture_delete(&cache->texture[1]);
-
-        if(renderbuffer_initialized(&cache->stencil))
-            renderbuffer_delete(&cache->stencil);
-    }
-
-    // Generate textures if needed
-    if(!renderbuffer_initialized(&cache->stencil)) {
-        if(renderbuffer_stencil_init(&cache->stencil, size) != 0) {
-            printf("Failed allocating stencil for cache\n");
-            return 1;
-        }
-    }
-
-    if(!texture_initialized(&cache->texture[0])) {
-        if(texture_init(&cache->texture[0], GL_TEXTURE_2D, size) != 0) {
-            printf("Failed allocating texture for cache\n");
-            renderbuffer_delete(&cache->stencil);
-            return 1;
-        }
-    }
-
-    if(!texture_initialized(&cache->texture[1])) {
-        if(texture_init(&cache->texture[1], GL_TEXTURE_2D, size) != 0) {
-            printf("Failed allocating texture for cache\n");
-            renderbuffer_delete(&cache->stencil);
-            texture_delete(&cache->texture[0]);
-            return 1;
-        }
-    }
-
-    // Set the size
     cache->size = *size;
+    // Start out damaged for force a redraw when we resize
     cache->damaged = true;
 
-    return 0;
+    renderbuffer_resize(&cache->stencil, size);
+    texture_resize(&cache->texture[0], size);
+    texture_resize(&cache->texture[1], size);
+    return true;
+}
+
+bool blur_cache_init(glx_blur_cache_t* cache) {
+    assert(!renderbuffer_initialized(&cache->stencil));
+    assert(!texture_initialized(&cache->texture[0]));
+    assert(!texture_initialized(&cache->texture[1]));
+
+    if(renderbuffer_stencil_init(&cache->stencil, NULL) != 0) {
+        printf("Failed allocating stencil for cache\n");
+        return false;
+    }
+
+    if(texture_init(&cache->texture[0], GL_TEXTURE_2D, NULL) != 0) {
+        printf("Failed allocating texture for cache\n");
+        renderbuffer_delete(&cache->stencil);
+        return false;
+    }
+
+    if(texture_init(&cache->texture[1], GL_TEXTURE_2D, NULL) != 0) {
+        printf("Failed allocating texture for cache\n");
+        renderbuffer_delete(&cache->stencil);
+        texture_delete(&cache->texture[0]);
+        return false;
+    }
+
+    return true;
 }
 
 void blur_cache_delete(glx_blur_cache_t* cache) {
+    assert(renderbuffer_initialized(&cache->stencil));
+    assert(texture_initialized(&cache->texture[0]));
+    assert(texture_initialized(&cache->texture[1]));
+
     renderbuffer_delete(&cache->stencil);
     texture_delete(&cache->texture[0]);
     texture_delete(&cache->texture[1]);
