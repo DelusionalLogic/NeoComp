@@ -130,12 +130,21 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 void win_update(session_t* ps, win* w) {
     if(w->a.map_state != IsViewable)
         return;
+
+    Vector2 pos = {{w->a.x, w->a.y}};
+    Vector2 size = {{w->widthb, w->heightb}};
+
     if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
         if(w->glx_blur_cache.damaged == true) {
             win_calculate_blur(&ps->psglx->blur, ps, w);
             w->glx_blur_cache.damaged = false;
         }
     }
+
+    if(!vec2_eq(&size, &w->shadow_cache.wSize)) {
+        win_calc_shadow(ps, w);
+    }
+
 }
 
 static double
@@ -235,7 +244,8 @@ void win_draw(session_t* ps, win* w, float z) {
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
-    struct face* face = assets_load("window.face");
+    if(w->a.map_state != IsViewable)
+        return;
 
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
@@ -243,9 +253,7 @@ void win_postdraw(session_t* ps, win* w, float z) {
 
     // Painting shadow
     if (w->shadow) {
-        if(w->a.map_state == IsViewable)
-            window_shadow(ps, w, &glPos, &size, z + 0.00001);
-        /* win_paint_shadow(ps, w); */
+        win_paint_shadow(ps, w, &glPos, &size, z + 0.00001);
     }
 }
 
