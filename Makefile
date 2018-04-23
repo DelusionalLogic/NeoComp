@@ -25,7 +25,7 @@ OBJS += opengl.o
 OBJS += vmath.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o shadow.o texture.o include.o
 OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer.o
-OBJS += window.o
+OBJS += window.o windowlist.o
 OBJS += xorg.o xtexture.o
 
 ifneq "$(GLX_MARK)" ""

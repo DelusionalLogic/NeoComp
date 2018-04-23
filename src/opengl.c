@@ -263,7 +263,6 @@ glx_init(session_t *ps, bool need_render) {
     glx_on_root_change(ps);
 
     glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
     glDisable(GL_BLEND);
 
     if (!ps->o.glx_no_stencil) {
@@ -385,7 +384,7 @@ void
 glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_width, ps->root_height);
 
-  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, -1000.0, 1000.0);
+  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, 0, 1);
   view = ps->psglx->view;
 }
 
@@ -519,7 +518,6 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
     glClear(GL_STENCIL_BUFFER_BIT);
 
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    glDepthMask(GL_FALSE);
     glStencilOp(GL_REPLACE, GL_KEEP, GL_KEEP);
 
     // @CLEANUP: remove this
@@ -548,7 +546,10 @@ glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
       printf_dbgf("(): Rect %d: %f, %f, %f, %f\n", i, relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, passthough_type->mvp, glRectPos, rectSize);
+      {
+          Vector3 pos = vec3_from_vec2(&glRectPos, 0.0);
+          draw_rect(face, passthough_type->mvp, pos, rectSize);
+      }
     }
 
     /* glUseProgram(0); */
@@ -614,10 +615,6 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
   return true;
 }
 
-void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* size, float z) {
-    window_shadow(ps, w, pos, size);
-}
-
 /**
  * @brief Render a region with texture data.
  */
@@ -670,7 +667,10 @@ glx_render_(session_t *ps, const struct Texture* ptex,
       printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-      draw_rect(face, global_type->mvp, glRectPos, rectSize);
+	  {
+          Vector3 pos = vec3_from_vec2(&glRectPos, 0.0);
+          draw_rect(face, global_type->mvp, pos, rectSize);
+	  }
   }
 
   /* glUseProgram(0); */

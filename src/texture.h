@@ -10,6 +10,7 @@ struct Texture {
     GLenum target;
 
     Vector2 size;
+    bool hasSpace;
 
     bool flipped;
 };

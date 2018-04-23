@@ -52,7 +52,6 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
     vec2_div(&pixeluv, &texture->size);
     Vector2 halfpixel = {{1.0f, 1.0f}};
     vec2_div(&halfpixel, &texture->size);
-    Vector2 zero_vec = {{0.0, 0.0}};
 
     struct face* face = assets_load("window.face");
 
@@ -105,7 +104,7 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
             shader_set_uniform_vec2(downscale_type->extent, &uv_max);
             shader_set_uniform_vec2(downscale_type->uvscale, &uv_scale);
 
-            draw_rect(face, downscale_type->mvp, zero_vec, scale);
+            draw_rect(face, downscale_type->mvp, VEC3_ZERO, scale);
         }
 
         // Swap main and secondary
@@ -181,7 +180,7 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
             shader_set_uniform_vec2(upsample_type->extent, &uv_max);
             shader_set_uniform_vec2(upsample_type->uvscale, &uv_scale);
 
-            draw_rect(face, upsample_type->mvp, zero_vec, scale);
+            draw_rect(face, upsample_type->mvp, VEC3_ZERO, scale);
         }
 
         // Swap main and secondary

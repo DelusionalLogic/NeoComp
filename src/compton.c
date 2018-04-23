@@ -14,6 +14,8 @@
 #include "opengl.h"
 #include "vmath.h"
 #include "window.h"
+#include "windowlist.h"
+#include "blur.h"
 #include "xtexture.h"
 
 #include "assets/assets.h"
@@ -537,7 +539,8 @@ static void paint_root(session_t *ps) {
 
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
-    draw_tex(ps, face, &ps->root_texture.texture, &VEC2_ZERO, &rootSize);
+	Vector3 pos = {{0, 0, 0.000001}};
+    draw_tex(ps, face, &ps->root_texture.texture, &pos, &rootSize);
 }
 
 /**
@@ -896,25 +899,6 @@ paint_preprocess(session_t *ps, win *list) {
 }
 
 /**
- * Paint the shadow of a window.
- */
-static inline void
-win_paint_shadow(session_t *ps, win *w) {
-  const Vector2 pos = {{
-      w->a.x, w->a.y,
-  }};
-  const Vector2 size = {{
-      w->widthb, w->heightb,
-  }};
-  if(w->a.map_state == IsViewable)
-      glx_shadow_dst(ps, w, &pos, &size, ps->psglx->z);
-
-  /* render(ps, 0, 0, w->a.x + w->shadow_dx, w->a.y + w->shadow_dy, */
-  /*     w->shadow_width, w->shadow_height, w->shadow_opacity, true, false, */
-  /*     w->shadow_paint.pict, w->shadow_paint.ptex, reg_paint, pcache_reg, NULL); */
-}
-
-/**
  * Blur the background of a window.
  */
 static void win_blur_background(session_t *ps, win *w, Picture tgt_buffer) {
@@ -951,73 +935,7 @@ render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
 /**
  * Paint a window itself and dim it if asked.
  */
-static void win_paint_win(session_t *ps, win *w) {
-    glx_mark(ps, w->id, true);
-
-    const double dopacity = get_opacity_percent(w);
-
-    glEnable(GL_BLEND);
-
-    // This is all weird, but X Render is using premultiplied ARGB format, and
-    // we need to use those things to correct it. Thanks to derhass for help.
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    /* glColor4f(opacity, opacity, opacity, opacity); */
-
-    struct shader_program* global_program = assets_load("global.shader");
-    if(global_program->shader_type_info != &global_info) {
-        printf_errf("Shader was not a global shader");
-        // @INCOMPLETE: Make sure the config is correct
-        return;
-    }
-
-    struct Global* global_type = global_program->shader_type;
-    shader_use(global_program);
-
-    // Bind texture
-    texture_bind(&w->drawable.texture, GL_TEXTURE0);
-
-    shader_set_uniform_float(global_type->invert, w->invert_color);
-    shader_set_uniform_float(global_type->flip, w->drawable.texture.flipped);
-    shader_set_uniform_float(global_type->opacity, dopacity);
-    shader_set_uniform_sampler(global_type->tex_scr, 0);
-
-    // Dimming the window if needed
-    if (w->dim) {
-        double dim_opacity = ps->o.inactive_dim;
-        if (!ps->o.inactive_dim_fixed)
-            dim_opacity *= get_opacity_percent(w);
-        shader_set_uniform_float(global_type->dim, dim_opacity);
-    } else {
-        shader_set_uniform_float(global_type->dim, 1.0);
-    }
-
-#ifdef DEBUG_GLX
-    printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
-#endif
-
-    struct face* face = assets_load("window.face");
-
-    // Painting
-    {
-        Vector2 rectPos = {{w->a.x, w->a.y}};
-        Vector2 rectSize = {{w->widthb, w->heightb}};
-        Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
-
-#ifdef DEBUG_GLX
-        printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
-#endif
-
-        draw_rect(face, global_type->mvp, glRectPos, rectSize);
-    }
-
-    /* glUseProgram(0); */
-
-    // Cleanup
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glDisable(GL_BLEND);
-
-    glx_check_err(ps);
-    glx_mark(ps, w->id, false);
+static void win_paint_win(session_t *ps, win *w, float z) {
 }
 
 /**
@@ -1059,25 +977,35 @@ paint_all(session_t *ps, win *t) {
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 #endif
 
+  glClearDepth(0.0);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glDepthFunc(GL_GREATER);
+
+  win* lastWin = NULL;
+  int numWins = 0;
+  for (win *w = t; w; w = w->prev_trans) {
+      lastWin = w;
+      win_update(ps, w);
+      numWins++;
+  }
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
+  glDrawBuffers(1, DRAWBUFS);
+  glViewport(0, 0, ps->root_width, ps->root_height);
+
+  float z = 0;
+  windowlist_draw(ps, lastWin, &z);
+
   /* set_tgt_clip(ps, reg_paint, NULL); */
+  glEnable(GL_DEPTH_TEST);
   paint_root(ps);
+  glDisable(GL_DEPTH_TEST);
+
 
   for (win *w = t; w; w = w->prev_trans) {
-    // Painting shadow
-    if (w->shadow) {
-      win_paint_shadow(ps, w);
-    }
-
-    // Blur the backbuffer behind the window to make transparent areas blurred.
-    // @PERFORMANCE: We are also blurring things that are opaque
-    if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-        win_blur_background(ps, w, ps->tgt_buffer.pict);
-    }
-
-    // Painting the window
-
-    // Paint the window contents
-    win_paint_win(ps, w);
+      win_postdraw(ps, w, z);
+      z += .0001;
   }
 
   // Finish the profiling before the vsync, since we don't want that to drag out the time
@@ -1232,6 +1160,11 @@ map_win(session_t *ps, Window id) {
       // configure_win might rebind, so we need to bind before
       if(!wd_bind(&w->drawable)) {
           printf_errf("Failed binding window drawable %s", w->name);
+          return;
+      }
+
+      if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
+          printf_errf("Failed resizing window blur %s", w->name);
           return;
       }
   }
@@ -1879,6 +1812,14 @@ add_win(session_t *ps, Window id, Window prev) {
       free(new);
       return false;
   }
+
+  if(!blur_cache_init(&new->glx_blur_cache)) {
+      printf_errf("Failed initializing window blur");
+	  wd_delete(&new->drawable);
+      free(new);
+      return false;
+  }
+
   new->next = *p;
   *p = new;
 
@@ -2052,6 +1993,11 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
             if(!wd_bind(&w->drawable)) {
                 printf_errf("Failed rebinding window on resize");
             }
+
+            if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
+                printf_errf("Failed resizing window blur %s", w->name);
+                return;
+            }
         }
     }
 
@@ -2171,6 +2117,7 @@ root_damaged(session_t *ps) {
   if (ps->root_texture.bound) {
     xtexture_unbind(&ps->root_texture);
   }
+  get_root_tile(ps);
 
   // Mark screen damaged
   force_repaint(ps);
@@ -5208,9 +5155,17 @@ redir_start(session_t *ps) {
     XSync(ps->dpy, False);
 
     for (win *w = ps->list; w; w = w->next) {
-        // It it was mapped we want to just release that pixmap.
+        // If the window was mapped, then we need to do the mapping again
         if(w->a.map_state == IsViewable) {
-            wd_bind(&w->drawable);
+            if(!wd_bind(&w->drawable)) {
+                printf_errf("Failed binding window drawable %s", w->name);
+                return;
+            }
+
+            if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
+                printf_errf("Failed resizing window blur %s", w->name);
+                return;
+            }
         }
     }
 
@@ -5943,6 +5898,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
   XGrabServer(ps->dpy);
 
   xtexture_init(&ps->root_texture, &ps->psglx->xcontext);
+  get_root_tile(ps);
 
   redir_start(ps);
 

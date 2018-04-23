@@ -66,7 +66,10 @@ static void draw(size_t head, size_t tail, const Vector2* size) {
 
         Vector2 relpos = {{scale.x * steps, .2}};
 
-        draw_rect(face, profiler_type->mvp, relpos, scale);
+        {
+            Vector3 pos = vec3_from_vec2(&relpos, 0.0);
+            draw_rect(face, profiler_type->mvp, pos, scale);
+        }
         steps++;
     }
     view = old_view;

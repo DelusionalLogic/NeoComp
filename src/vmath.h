@@ -80,6 +80,7 @@ typedef union Vector3 {
 
 static const Vector3 VEC3_ZERO = {{0, 0, 0}};
 static const Vector3 VEC3_UNIT = {{1, 1, 1}};
+static const Vector3 VEC3_Z    = {{0, 0, 1}};
 
 DEFINE_VEC_OPS(3)
 DEFINE_VEC_CONST(4, 3)

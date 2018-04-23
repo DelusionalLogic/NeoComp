@@ -7,14 +7,14 @@
 
 Matrix view;
 
-void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size) {
+void draw_rect(struct face* face, GLuint mvp, Vector3 pos, Vector2 size) {
     Matrix root = view;
     {
         Matrix op = {{
-        size.x , 0      , 0 , 0 ,
-        0      , size.y , 0 , 0 ,
-        0      , 0      , 1 , 0 ,
-        pos.x  , pos.y  , 1 , 1 ,
+        size.x , 0      , 0     , 0 ,
+        0      , size.y , 0     , 0 ,
+        0      , 0      , 1     , 0 ,
+        pos.x  , pos.y  , pos.z , 1 ,
         }};
         root = mat4_multiply(&root, &op);
     }
@@ -33,7 +33,7 @@ void draw_rect(struct face* face, GLuint mvp, Vector2 pos, Vector2 size) {
 }
 
 void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
-        const Vector2* pos, const Vector2* size) {
+        const Vector3* pos, const Vector2* size) {
     // Render back to the backbuffer
     struct shader_program* passthough_program = assets_load("passthough.shader");
     if(passthough_program->shader_type_info != &passthough_info) {

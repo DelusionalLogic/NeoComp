@@ -4,19 +4,23 @@
 #include <assert.h>
 
 static inline GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
-  GLuint tex = 0;
+    GLuint tex = 0;
 
-  glGenTextures(1, &tex);
-  if (!tex)
-      return 0;
+    glGenTextures(1, &tex);
+    if (!tex)
+        return 0;
 
-  glBindTexture(tex_tgt, tex);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(tex_tgt, tex);
+    glTexParameteri(tex_tgt, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(tex_tgt, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-  return tex;
+    if(size != NULL)
+        glTexImage2D(tex_tgt, 0, GL_RGBA8, size->x, size->y, 0, GL_RGBA,
+                GL_UNSIGNED_BYTE, NULL);
+
+    return tex;
 }
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
@@ -26,10 +30,15 @@ int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
     }
 
     texture->target = target;
-    texture->size = *size;
 
-    glTexImage2D(texture->target, 0, GL_RGBA8, size->x, size->y, 0, GL_RGBA,
-            GL_UNSIGNED_BYTE, NULL);
+    // If the size was NULL, then we didn't allocate any space in the
+    // generate_texture call
+    if(size != NULL) {
+        texture->size = *size;
+        texture->hasSpace = true;
+    } else {
+        texture->hasSpace = false;
+    }
 
     return 0;
 }
@@ -53,6 +62,8 @@ void texture_resize(struct Texture* texture, const Vector2* size) {
     glBindTexture(texture->target, texture->gl_texture);
     glTexImage2D(texture->target, 0, GL_RGBA, size->x, size->y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glBindTexture(texture->target, 0);
+
+    texture->hasSpace = true;
     texture->size = *size;
 }
 
@@ -94,6 +105,7 @@ int texture_read_from(struct Texture* texture, GLuint framebuffer,
 
 int texture_bind_to_framebuffer(struct Texture* texture, GLuint framebuffer,
         GLenum buffer) {
+    assert(texture->hasSpace);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
             texture->target, texture->gl_texture, 0);
@@ -108,11 +120,18 @@ int texture_bind_to_framebuffer(struct Texture* texture, GLuint framebuffer,
 }
 
 void texture_bind_to_framebuffer_2(struct Texture* texture, GLenum target) {
+    assert(texture != NULL);
+    assert(texture_initialized(texture));
+    assert(texture->hasSpace);
+
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, target, texture->target,
             texture->gl_texture, 0);
 }
 
 void texture_bind(const struct Texture* texture, GLenum unit) {
+    assert(texture != NULL);
+    assert(texture_initialized(texture));
+
     glActiveTexture(unit);
     glBindTexture(texture->target, texture->gl_texture);
 }
