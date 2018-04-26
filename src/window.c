@@ -145,6 +145,25 @@ void win_update(session_t* ps, win* w) {
         win_calc_shadow(ps, w);
     }
 
+    /* if (!w->fade) */
+    /*     w->opacity = w->opacity_tgt; */
+    /* else if (steps) { */
+    /*     // Use double below because opacity_t will probably overflow during */
+    /*     // calculations */
+    /*     if (w->opacity < w->opacity_tgt) */
+    /*         w->opacity = normalize_d_range( */
+    /*                 (double) w->opacity + (double) ps->o.fade_in_step * steps, */
+    /*                 0.0, w->opacity_tgt); */
+    /*     else */
+    /*         w->opacity = normalize_d_range( */
+    /*                 (double) w->opacity - (double) ps->o.fade_out_step * steps, */
+    /*                 w->opacity_tgt, OPAQUE); */
+    /* } */
+
+    /* if (w->opacity != w->opacity_tgt) { */
+    /*     ps->idling = false; */
+    /* } */
+
 }
 
 static double

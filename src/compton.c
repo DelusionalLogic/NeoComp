@@ -17,6 +17,7 @@
 #include "windowlist.h"
 #include "blur.h"
 #include "xtexture.h"
+#include "timer.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -950,8 +951,6 @@ rebuild_screen_reg(session_t *ps) {
 
 static void
 paint_all(session_t *ps, win *t) {
-  zone_enter(&ZONE_global);
-
   glx_paint_pre(ps);
 
 #ifdef MONITOR_REPAINT
@@ -977,15 +976,10 @@ paint_all(session_t *ps, win *t) {
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 #endif
 
-  glClearDepth(0.0);
-  glClear(GL_DEPTH_BUFFER_BIT);
-  glDepthFunc(GL_GREATER);
-
   win* lastWin = NULL;
   int numWins = 0;
   for (win *w = t; w; w = w->prev_trans) {
       lastWin = w;
-      win_update(ps, w);
       numWins++;
   }
 
@@ -993,6 +987,10 @@ paint_all(session_t *ps, win *t) {
   static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
   glDrawBuffers(1, DRAWBUFS);
   glViewport(0, 0, ps->root_width, ps->root_height);
+
+  glClearDepth(0.0);
+  glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+  glDepthFunc(GL_GREATER);
 
   float z = 0;
   windowlist_draw(ps, lastWin, &z);
@@ -1008,32 +1006,6 @@ paint_all(session_t *ps, win *t) {
       z += .0001;
   }
 
-  // Finish the profiling before the vsync, since we don't want that to drag out the time
-  struct ProgramZone* rootZone = zone_package(&ZONE_global);
-#ifdef DEBUG_PROFILE
-  profiler_render(rootZone);
-#endif
-
-
-  if (ps->o.vsync) {
-    // Make sure all previous requests are processed to achieve best
-    // effect
-    XSync(ps->dpy, False);
-    if (glx_has_context(ps)) {
-        glXWaitX();
-    }
-  }
-
-  /* // Wait for VBlank. We could do it aggressively (send the painting */
-  /* // request and XFlush() on VBlank) or conservatively (send the request */
-  /* // only on VBlank). */
-  /* if (!ps->o.vsync_aggressive) */
-  /*   vsync_wait(ps); */
-
-  glXSwapBuffers(ps->dpy, get_tgt_window(ps));
-
-  if (ps->o.vsync_aggressive)
-    vsync_wait(ps);
 
   // Check if fading is finished on all painted windows
   {
@@ -1149,6 +1121,7 @@ map_win(session_t *ps, Window id) {
 
   // Set fading state
   w->in_openclose = true;
+  w->state = STATE_MAPPING;
   set_fade_callback(ps, w, finish_map_win, true);
   win_determine_fade(ps, w);
 
@@ -1222,6 +1195,7 @@ unmap_win(session_t *ps, win *w) {
   w->a.map_state = IsUnmapped;
 
   // Fading out
+  w->state = STATE_UNMAPPING;
   w->flags |= WFLAG_OPCT_CHANGE;
   set_fade_callback(ps, w, unmap_callback, false);
   w->in_openclose = true;
@@ -2101,6 +2075,7 @@ destroy_win(session_t *ps, Window id) {
     // Set fading callback
     // @LEAK @PERFORMANCE: We override the unmap callback here, and never call
     // it.
+	w->state = STATE_CLOSING;
     set_fade_callback(ps, w, destroy_callback, false);
 
 #ifdef CONFIG_DBUS
@@ -6144,62 +6119,112 @@ dump_img(session_t *ps) {
  */
 static void
 session_run(session_t *ps) {
-  win *t;
+    win *t;
 
-  if (ps->o.sw_opti)
-    ps->paint_tm_offset = get_time_timeval().tv_usec;
+    if (ps->o.sw_opti)
+        ps->paint_tm_offset = get_time_timeval().tv_usec;
 
-  ps->reg_ignore_expire = true;
-
-  t = paint_preprocess(ps, ps->list);
-
-  if (ps->redirected)
-    paint_all(ps, t);
-
-  // Initialize idling
-  ps->idling = false;
-
-  // Main loop
-  while (!ps->reset) {
-    ps->skip_poll = false;
-
-    while (mainloop(ps))
-      continue;
-
-    if (ps->o.benchmark) {
-      if (ps->o.benchmark_wid) {
-        win *w = find_win(ps, ps->o.benchmark_wid);
-        if (!w) {
-          printf_errf("(): Couldn't find specified benchmark window.");
-          session_destroy(ps);
-          exit(1);
-        }
-        add_damage_win(ps, w);
-      }
-      else {
-        force_repaint(ps);
-      }
-    }
-
-    // idling will be turned off during paint_preprocess() if needed
-    ps->idling = true;
+    ps->reg_ignore_expire = true;
 
     t = paint_preprocess(ps, ps->list);
-    ps->tmout_unredir_hit = false;
 
-    static int paint = 0;
-    if (ps->redirected || ps->o.stoppaint_force == OFF) {
-        paint_all(ps, t);
-        ps->reg_ignore_expire = false;
-        paint++;
-        if (ps->o.benchmark && paint >= ps->o.benchmark)
-            exit(0);
-        XSync(ps->dpy, False);
+    timestamp lastTime;
+    if(!getTime(&lastTime)) {
+        printf_errf("Failed getting time");
+        session_destroy(ps);
+        exit(1);
     }
 
-    if (ps->idling)
-      ps->fade_time = 0L;
-  }
+    if (ps->redirected)
+        paint_all(ps, t);
+
+    // Initialize idling
+    ps->idling = false;
+
+    // Main loop
+    while (!ps->reset) {
+        timestamp currentTime;
+        if(!getTime(&currentTime)) {
+            printf_errf("Failed getting time");
+            session_destroy(ps);
+            exit(1);
+        }
+
+        double delta = timeDiff(&lastTime, &currentTime);
+
+        ps->skip_poll = false;
+
+        zone_enter(&ZONE_global);
+
+        while (mainloop(ps))
+            continue;
+
+        if (ps->o.benchmark) {
+            if (ps->o.benchmark_wid) {
+                win *w = find_win(ps, ps->o.benchmark_wid);
+                if (!w) {
+                    printf_errf("(): Couldn't find specified benchmark window.");
+                    session_destroy(ps);
+                    exit(1);
+                }
+                add_damage_win(ps, w);
+            }
+            else {
+                force_repaint(ps);
+            }
+        }
+
+        // idling will be turned off during paint_preprocess() if needed
+        ps->idling = true;
+
+        t = paint_preprocess(ps, ps->list);
+        ps->tmout_unredir_hit = false;
+
+        for (win *w = t; w; w = w->prev_trans) {
+            win_update(ps, w);
+        }
+
+        static int paint = 0;
+        if (ps->redirected || ps->o.stoppaint_force == OFF) {
+            paint_all(ps, t);
+            ps->reg_ignore_expire = false;
+            paint++;
+            if (ps->o.benchmark && paint >= ps->o.benchmark)
+                exit(0);
+            XSync(ps->dpy, False);
+        }
+
+        // Finish the profiling before the vsync, since we don't want that to drag out the time
+        struct ProgramZone* rootZone = zone_package(&ZONE_global);
+#ifdef DEBUG_PROFILE
+        profiler_render(rootZone);
+#endif
+
+        if (ps->o.vsync) {
+            // Make sure all previous requests are processed to achieve best
+            // effect
+            XSync(ps->dpy, False);
+            if (glx_has_context(ps)) {
+                glXWaitX();
+            }
+        }
+
+        /* // Wait for VBlank. We could do it aggressively (send the painting */
+        /* // request and XFlush() on VBlank) or conservatively (send the request */
+        /* // only on VBlank). */
+        /* if (!ps->o.vsync_aggressive) */
+        /*   vsync_wait(ps); */
+
+        glXSwapBuffers(ps->dpy, get_tgt_window(ps));
+
+        if (ps->o.vsync_aggressive)
+            vsync_wait(ps);
+
+        if (ps->idling)
+            ps->fade_time = 0L;
+
+        lastTime = currentTime;
+    }
 }
 
 /**

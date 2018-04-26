@@ -1092,6 +1092,14 @@ typedef struct _session_t {
 #endif
 } session_t;
 
+enum WindowState {
+	STATE_MAPPED,
+	STATE_UNMAPPED,
+	STATE_MAPPING,
+	STATE_UNMAPPING,
+	STATE_CLOSING,
+};
+
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
   /// Pointer to the next structure in the linked list.
@@ -1106,6 +1114,9 @@ typedef struct _win {
   Window id;
   /// Window attributes.
   XWindowAttributes a;
+
+  enum WindowState state;
+
 #ifdef CONFIG_XINERAMA
   /// Xinerama screen this window is on.
   int xinerama_scr;
