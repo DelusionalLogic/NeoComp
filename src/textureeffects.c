@@ -39,7 +39,9 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
 
     framebuffer_resetTarget(data->buffer);
     framebuffer_targetTexture(data->buffer, otherPtr);
-    framebuffer_bind(data->buffer);
+    if(framebuffer_bind(data->buffer) != 0) {
+        return false;
+    }
 
     Matrix old_view = view;
     view = mat4_orthogonal(0, 1, 0, 1, -1, 1);

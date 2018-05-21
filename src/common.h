@@ -123,9 +123,11 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
+#include "bezier.h"
 #include "texture.h"
 #include "framebuffer.h"
 #include "xorg.h"
+#include "text.h"
 
 // @CLEANUP @HACK We don't actually want this here, but because everything is in
 // here i do now.
@@ -186,6 +188,26 @@ struct glx_shadow_cache {
     struct RenderBuffer stencil;
     Vector2 wSize;
     Vector2 border;
+};
+
+struct FadeKeyframe {
+    double target;
+
+    // The time to fade out the previous keyframe, -1 if the fade is done
+    double duration;
+    double time; // How long we are in the current fade
+
+    // @HACK @CLEANUP: for now we have this bool that signifies if keyframe
+    // should ignore the next time update
+    bool ignore;
+};
+struct Fading {
+    struct FadeKeyframe keyframes[4];
+    size_t head; // The current "active" keyframe
+    size_t tail; // The last fading keyframe
+
+    // The current animated value
+    double value;
 };
 // FUCK
 // FUCK
@@ -708,10 +730,6 @@ typedef struct _options_t {
   // === Fading ===
   /// Enable/disable fading for specific window types.
   bool wintype_fade[NUM_WINTYPES];
-  /// How much to fade in in a single fading step.
-  opacity_t fade_in_step;
-  /// How much to fade out in a single fading step.
-  opacity_t fade_out_step;
   /// Fading time delta. In milliseconds.
   time_ms_t fade_delta;
   /// Whether to disable fading on window open/close.
@@ -727,9 +745,11 @@ typedef struct _options_t {
   /// Default opacity for inactive windows.
   /// 32-bit integer with the format of _NET_WM_OPACITY. 0 stands for
   /// not enabled, default.
-  opacity_t inactive_opacity;
+  double inactive_opacity;
   /// Default opacity for inactive windows.
-  opacity_t active_opacity;
+  double active_opacity;
+
+  double opacity_fade_time;
   /// Whether inactive_opacity overrides the opacity set by window
   /// attributes.
   bool inactive_opacity_override;
@@ -891,6 +911,8 @@ typedef struct _session_t {
   /// Pointer to GLX data.
   glx_session_t *psglx;
 
+  struct Bezier curve;
+
   // === Operation related ===
   /// Program options.
   options_t o;
@@ -917,8 +939,6 @@ typedef struct _session_t {
   struct timeval time_start;
   /// Whether all windows are currently redirected.
   bool redirected;
-  /// Pre-generated alpha pictures.
-  Picture *alpha_picts;
   /// Whether all reg_ignore of windows should expire in this paint.
   bool reg_ignore_expire;
   /// Time of last fading. In milliseconds.
@@ -1092,12 +1112,22 @@ typedef struct _session_t {
 #endif
 } session_t;
 
+extern const char* const StateNames[];
+
 enum WindowState {
-	STATE_MAPPED,
-	STATE_UNMAPPED,
-	STATE_MAPPING,
-	STATE_UNMAPPING,
-	STATE_CLOSING,
+    STATE_MAPPED,
+    STATE_UNMAPPED,
+    STATE_MAPPING,
+    STATE_UNMAPPING,
+    STATE_CLOSING,
+
+    STATE_HIDING,
+    STATE_INVISIBLE,
+    STATE_ACTIVATING,
+    STATE_ACTIVE,
+    STATE_DEACTIVATING,
+    STATE_INACTIVE,
+    STATE_DESTROYED,
 };
 
 /// Structure representing a top-level window compton manages.
@@ -1209,18 +1239,28 @@ typedef struct _win {
   const c2_lptr_t *cache_uipblst;
 
   // Opacity-related members
-  /// Current window opacity.
-  opacity_t opacity;
-  /// Target window opacity.
-  opacity_t opacity_tgt;
+
+  // Current window opacity.
+  struct Fading opacity_fade;
+  double opacity;
+
+  // Target window opacity.
+  double opacity_tgt;
+  // Start window opacity
+  double opacity_srt;
+
+  bool skipFade;
+  double fadeTime;
+  double fadeDuration;
+
   /// Cached value of opacity window attribute.
-  opacity_t opacity_prop;
+  double opacity_prop;
   /// Cached value of opacity window attribute on client window. For
   /// broken window managers not transferring client window's
   /// _NET_WM_OPACITY value
-  opacity_t opacity_prop_client;
+  double opacity_prop_client;
   /// Last window opacity value we set.
-  opacity_t opacity_set;
+  double opacity_set;
 
   // Fading-related members
   /// Do not fade if it's false. Change on window type change.

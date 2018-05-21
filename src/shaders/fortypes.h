@@ -17,3 +17,7 @@
 #define THIS "types/profiler.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/text.h"
+#include HEADER
+#undef THIS

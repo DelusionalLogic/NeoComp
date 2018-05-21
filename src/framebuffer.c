@@ -1,6 +1,7 @@
 #include "framebuffer.h"
 
 #include <stdio.h>
+#include <assert.h>
 
 bool framebuffer_init(struct Framebuffer* framebuffer) {
     glGenFramebuffers(1, &framebuffer->gl_fbo);
@@ -16,11 +17,13 @@ bool framebuffer_initialized(struct Framebuffer* framebuffer) {
 }
 
 void framebuffer_resetTarget(struct Framebuffer* framebuffer) {
+    assert(framebuffer->gl_fbo != 0);
     framebuffer->target = 0;
-    framebuffer->texture = NULL;
 }
 
 void framebuffer_targetTexture(struct Framebuffer* framebuffer, struct Texture* texture) {
+    assert(framebuffer->gl_fbo != 0);
+    assert(texture_initialized(texture));
     if((framebuffer->target & FBT_TEXTURE) != 0) {
         printf("Framebuffer is already targeting a texture\n");
         return;
@@ -30,6 +33,8 @@ void framebuffer_targetTexture(struct Framebuffer* framebuffer, struct Texture* 
 }
 
 void framebuffer_targetRenderBuffer(struct Framebuffer* framebuffer, struct RenderBuffer* buffer) {
+    assert(framebuffer->gl_fbo != 0);
+    assert(renderbuffer_initialized(buffer));
     if((framebuffer->target & FBT_RENDERBUFFER) != 0) {
         printf("Framebuffer is already targeting a renderbuffer\n");
         return;
@@ -39,6 +44,8 @@ void framebuffer_targetRenderBuffer(struct Framebuffer* framebuffer, struct Rend
 }
 
 void framebuffer_targetRenderBuffer_stencil(struct Framebuffer* framebuffer, struct RenderBuffer* buffer) {
+    assert(framebuffer->gl_fbo != 0);
+    assert(renderbuffer_initialized(buffer));
     if((framebuffer->target & FBT_RENDERBUFFER_STENCIL) != 0) {
         printf("Framebuffer is already targeting a renderbuffer stencil\n");
         return;
@@ -90,6 +97,6 @@ int framebuffer_bind_read(struct Framebuffer* framebuffer) {
 
 void framebuffer_delete(struct Framebuffer* framebuffer) {
     glDeleteFramebuffers(1, &framebuffer->gl_fbo);
-    framebuffer->gl_fbo = 0;
     framebuffer_resetTarget(framebuffer);
+    framebuffer->gl_fbo = 0;
 }

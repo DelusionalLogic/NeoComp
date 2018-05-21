@@ -11,6 +11,7 @@
 #include "common.h"
 #include "window.h"
 #include "blur.h"
+#include "shadow.h"
 
 #include <math.h>
 #include <sys/select.h>
@@ -337,9 +338,6 @@ wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
 }
 
 static void
-run_fade(session_t *ps, win *w, unsigned steps);
-
-static void
 set_fade_callback(session_t *ps, win *w,
     void (*callback) (session_t *ps, win *w), bool exec_callback);
 
@@ -458,8 +456,8 @@ win_calc_frame_extents(session_t *ps, const win *w) {
 }
 
 static inline void
-wid_set_opacity_prop(session_t *ps, Window wid, opacity_t val) {
-  const unsigned long v = val;
+wid_set_opacity_prop(session_t *ps, Window wid, double val) {
+  const unsigned long v = (val/100) * 0xFFFFFFFF;
   XChangeProperty(ps->dpy, wid, ps->atom_opacity, XA_CARDINAL, 32,
       PropModeReplace, (unsigned char *) &v, 1);
 }
@@ -674,21 +672,21 @@ unmap_callback(session_t *ps, win *w);
 static void
 unmap_win(session_t *ps, win *w);
 
-static opacity_t
-wid_get_opacity_prop(session_t *ps, Window wid, opacity_t def);
+static double
+wid_get_opacity_prop(session_t *ps, Window wid, double def);
 
 /**
  * Reread opacity property of a window.
  */
 static inline void
 win_update_opacity_prop(session_t *ps, win *w) {
-  w->opacity_prop = wid_get_opacity_prop(ps, w->id, OPAQUE);
+  w->opacity_prop = wid_get_opacity_prop(ps, w->id, 100.0);
   if (!ps->o.detect_client_opacity || !w->client_win
       || w->id == w->client_win)
-    w->opacity_prop_client = OPAQUE;
+    w->opacity_prop_client = 100.0;
   else
     w->opacity_prop_client = wid_get_opacity_prop(ps, w->client_win,
-          OPAQUE);
+          100.0);
 }
 
 static double
@@ -697,8 +695,7 @@ get_opacity_percent(win *w);
 static void
 win_determine_mode(session_t *ps, win *w);
 
-static void
-calc_opacity(session_t *ps, win *w);
+static double calc_opacity(session_t *ps, win *w);
 
 static void
 calc_dim(session_t *ps, win *w);

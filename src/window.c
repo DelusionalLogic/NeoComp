@@ -1,6 +1,7 @@
 #include "window.h"
 
 #include "vmath.h"
+#include "bezier.h"
 #include "windowlist.h"
 #include "blur.h"
 #include "assets/assets.h"
@@ -96,7 +97,7 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
     glEnable(GL_DEPTH_TEST);
 
-    draw_tex(ps, face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
+    draw_tex(face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
 
     glDisable(GL_DEPTH_TEST);
 
@@ -127,54 +128,150 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
     return true;
 }
 
-void win_update(session_t* ps, win* w) {
-    if(w->a.map_state != IsViewable)
-        return;
+void win_start_opacity(win* w, double opacity, double duration) {
+    // Fast path for skipping fading
+    if(duration == 0) {
+        w->opacity_fade.head = 0;
+        w->opacity_fade.tail = 0;
+        w->opacity_fade.keyframes[0].target = opacity;
+        w->opacity_fade.keyframes[0].time = 0;
+        w->opacity_fade.keyframes[0].duration = -1;
+    }
 
+    size_t nextIndex = (w->opacity_fade.tail + 1) % 4;
+    if(nextIndex == w->opacity_fade.head) {
+        printf("Warning: Shoving something off the opacity animation\n");
+        w->opacity_fade.head++;
+    }
+
+    struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[nextIndex];
+    keyframe->target = opacity;
+    keyframe->duration = duration;
+    keyframe->time = 0;
+    keyframe->ignore = true;
+    w->opacity_fade.tail = nextIndex;
+}
+
+bool fade_done(struct Fading* fade) {
+    return fade->tail == fade->head;
+}
+
+static void finish_destroy_win(session_t *ps, Window id) {
+    win **prev = NULL, *w = NULL;
+
+#ifdef DEBUG_EVENTS
+    printf_dbgf("(%#010lx): Starting...\n", id);
+#endif
+
+    for (prev = &ps->list; (w = *prev); prev = &w->next) {
+        if (w->id == id && w->destroyed) {
+#ifdef DEBUG_EVENTS
+            printf_dbgf("(%#010lx \"%s\"): %p\n", id, w->name, w);
+#endif
+
+            *prev = w->next;
+
+            // Clear active_win if it's pointing to the destroyed window
+            if (w == ps->active_win)
+                ps->active_win = NULL;
+
+            // Drop w from all prev_trans to avoid accessing freed memory in
+            for (win *w2 = ps->list; w2; w2 = w2->next) {
+                if (w == w2->prev_trans)
+                    w2->prev_trans = NULL;
+                if (w == w2->next_trans)
+                    w2->next_trans = NULL;
+            }
+
+            free(w);
+            break;
+        }
+    }
+}
+
+void win_update(session_t* ps, win* w, double dt) {
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
 
-    if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-        if(w->glx_blur_cache.damaged == true) {
-            win_calculate_blur(&ps->psglx->blur, ps, w);
-            w->glx_blur_cache.damaged = false;
+    w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
+
+    if(!fade_done(&w->opacity_fade)) {
+        // @CLEANUP: Maybe a while loop?
+        for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
+            // Doing this first means we skip the head
+            i = (i+1) % 4;
+
+            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
+            if(keyframe->ignore == false){
+                keyframe->time += dt;
+            } else {
+                keyframe->ignore = false;
+            }
+
+            double x = keyframe->time / keyframe->duration;
+            if(x >= 1.0) {
+                keyframe->time = 0.0;
+                w->opacity_fade.head = i;
+
+                w->opacity_fade.value = keyframe->target;
+            } else {
+                double t = bezier_getTForX(&ps->curve, x);
+                w->opacity_fade.value = lerp(w->opacity_fade.value, keyframe->target, t);
+            }
+        }
+        ps->skip_poll = true;
+    }
+
+
+    if(w->a.map_state == IsViewable && ps->redirected) {
+        if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
+            if(w->glx_blur_cache.damaged == true) {
+                win_calculate_blur(&ps->psglx->blur, ps, w);
+                w->glx_blur_cache.damaged = false;
+            }
+        }
+
+        if(!vec2_eq(&size, &w->shadow_cache.wSize)) {
+            win_calc_shadow(ps, w);
         }
     }
 
-    if(!vec2_eq(&size, &w->shadow_cache.wSize)) {
-        win_calc_shadow(ps, w);
+    if(fade_done(&w->opacity_fade)) {
+        if(w->state == STATE_MAPPING) {
+            w->state = STATE_MAPPED;
+            w->in_openclose = false;
+        } else if(w->state == STATE_UNMAPPING) {
+            printf("Finish unmap\n");
+            w->state = STATE_UNMAPPED;
+            w->damaged = false;
+
+            w->in_openclose = false;
+
+            free_region(ps, &w->border_size);
+            if(ps->redirected)
+                wd_unbind(&w->drawable);
+        } else if(w->state == STATE_CLOSING) {
+            printf("Finish close\n");
+            finish_destroy_win(ps, w->id);
+        } else if(w->state == STATE_ACTIVATING) {
+            printf("Finish activate\n");
+            w->state = STATE_ACTIVE;
+        } else if(w->state == STATE_DEACTIVATING) {
+            w->state = STATE_INACTIVE;
+        }
+        void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
+        w->fade_callback = NULL;
+        if(old_callback != NULL) {
+            printf("Fade callback\n");
+            old_callback(ps, w);
+            ps->idling = false;
+        }
     }
-
-    /* if (!w->fade) */
-    /*     w->opacity = w->opacity_tgt; */
-    /* else if (steps) { */
-    /*     // Use double below because opacity_t will probably overflow during */
-    /*     // calculations */
-    /*     if (w->opacity < w->opacity_tgt) */
-    /*         w->opacity = normalize_d_range( */
-    /*                 (double) w->opacity + (double) ps->o.fade_in_step * steps, */
-    /*                 0.0, w->opacity_tgt); */
-    /*     else */
-    /*         w->opacity = normalize_d_range( */
-    /*                 (double) w->opacity - (double) ps->o.fade_out_step * steps, */
-    /*                 w->opacity_tgt, OPAQUE); */
-    /* } */
-
-    /* if (w->opacity != w->opacity_tgt) { */
-    /*     ps->idling = false; */
-    /* } */
-
-}
-
-static double
-get_opacity_percent(win *w) {
-  return ((double) w->opacity) / OPAQUE;
+    w->opacity = w->opacity_fade.value;
 }
 
 static void win_drawcontents(session_t* ps, win* w, float z) {
     glx_mark(ps, w->id, true);
-
-    const double dopacity = get_opacity_percent(w);
 
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
@@ -199,14 +296,14 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
 
     shader_set_uniform_float(global_type->invert, w->invert_color);
     shader_set_uniform_float(global_type->flip, w->drawable.texture.flipped);
-    shader_set_uniform_float(global_type->opacity, dopacity);
+    shader_set_uniform_float(global_type->opacity, w->opacity / 100);
     shader_set_uniform_sampler(global_type->tex_scr, 0);
 
     // Dimming the window if needed
     if (w->dim) {
         double dim_opacity = ps->o.inactive_dim;
         if (!ps->o.inactive_dim_fixed)
-            dim_opacity *= get_opacity_percent(w);
+            dim_opacity *= w->opacity / 100.0;
         shader_set_uniform_float(global_type->dim, dim_opacity);
     } else {
         shader_set_uniform_float(global_type->dim, 0.0);
@@ -253,7 +350,7 @@ void win_draw(session_t* ps, win* w, float z) {
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
-        draw_tex(ps, face, &w->glx_blur_cache.texture[0], &dglPos, &size);
+        draw_tex(face, &w->glx_blur_cache.texture[0], &dglPos, &size);
 
         glDepthMask(GL_TRUE);
         glDisable(GL_DEPTH_TEST);
@@ -269,6 +366,16 @@ void win_postdraw(session_t* ps, win* w, float z) {
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
     Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
+
+    {
+        Vector2 text_pos = {{100, 100}};
+        vec2_add(&text_pos, &glPos);
+        Vector2 size = {{1, 1}};
+        char* text;
+        asprintf(&text, "State: %s", StateNames[w->state]);
+        text_draw(&debug_font, text, &text_pos, &size);
+        free(text);
+    }
 
     // Painting shadow
     if (w->shadow) {

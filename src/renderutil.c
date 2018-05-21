@@ -32,7 +32,7 @@ void draw_rect(struct face* face, GLuint mvp, Vector3 pos, Vector2 size) {
     glDisableVertexAttribArray(0);
 }
 
-void draw_tex(session_t* ps, struct face* face, const struct Texture* texture,
+void draw_tex(struct face* face, const struct Texture* texture,
         const Vector3* pos, const Vector2* size) {
     // Render back to the backbuffer
     struct shader_program* passthough_program = assets_load("passthough.shader");

@@ -7,7 +7,11 @@ void windowlist_draw(session_t* ps, win* head, float* z) {
     (*z) = 1;
     for (win *w = head; w; w = w->next_trans) {
 
-        if(w->a.map_state == IsViewable) {
+        if(w->state == STATE_MAPPED || w->state == STATE_MAPPING
+                || w->state == STATE_UNMAPPING || w->state == STATE_CLOSING
+                || w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING
+                || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE) {
+
             win_draw(ps, w, *z);
         }
 

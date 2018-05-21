@@ -9,9 +9,11 @@ bool win_overlap(win* w1, win* w2);
 bool win_covers(win* w);
 bool win_is_solid(win* w);
 
+void win_start_opacity(win* w, double opacity, double duration);
+
 void win_draw(session_t* ps, win* w, float z);
 void win_postdraw(session_t* ps, win* w, float z);
-void win_update(session_t* ps, win* w);
+void win_update(session_t* ps, win* w, double dt);
 
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid);
 void wd_delete(struct WindowDrawable* drawable);

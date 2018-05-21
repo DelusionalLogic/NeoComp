@@ -16,27 +16,22 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
     return glpos;
 }
 
-int shadow_cache_init(struct glx_shadow_cache* cache, const Vector2* size) {
+int shadow_cache_init(struct glx_shadow_cache* cache) {
     Vector2 border = {{32, 32}};
     cache->border = border;
-    cache->wSize = *size;
 
-    Vector2 overflowSize = border;
-    vec2_imul(&overflowSize, 2);
-    vec2_add(&overflowSize, size);
-
-    if(texture_init(&cache->texture, GL_TEXTURE_2D, &overflowSize) != 0) {
+    if(texture_init(&cache->texture, GL_TEXTURE_2D, NULL) != 0) {
         printf("Couldn't create texture for shadow\n");
         return 1;
     }
 
-    if(texture_init(&cache->effect, GL_TEXTURE_2D, &overflowSize) != 0) {
+    if(texture_init(&cache->effect, GL_TEXTURE_2D, NULL) != 0) {
         printf("Couldn't create effect texture for shadow\n");
         texture_delete(&cache->texture);
         return 1;
     }
 
-    if(renderbuffer_stencil_init(&cache->stencil, &overflowSize) != 0) {
+    if(renderbuffer_stencil_init(&cache->stencil, NULL) != 0) {
         printf("Couldn't create renderbuffer stencil for shadow\n");
         texture_delete(&cache->texture);
         texture_delete(&cache->effect);
@@ -77,11 +72,6 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
 void win_calc_shadow(session_t* ps, win* w) {
     Vector2 size = {{w->widthb, w->heightb}};
     struct face* face = assets_load("window.face");
-
-    // @BUG: If the size is 0 we will never initialize.
-    if(!w->shadow_cache.initialized) {
-        shadow_cache_init(&w->shadow_cache, &size);
-    }
 
     shadow_cache_resize(&w->shadow_cache, &size);
 
@@ -180,7 +170,7 @@ void win_calc_shadow(session_t* ps, win* w) {
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-    draw_tex(ps, face, &w->shadow_cache.texture, &VEC3_ZERO, &w->shadow_cache.effect.size);
+    draw_tex(face, &w->shadow_cache.texture, &VEC3_ZERO, &w->shadow_cache.effect.size);
 
     glDisable(GL_STENCIL_TEST);
     view = old_view;
@@ -205,7 +195,7 @@ void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* 
     /* { */
     /*     Vector3 rpos = {{0, 0, 1}}; */
     /*     Vector2 rsize = {{500, 500}}; */
-    /*     draw_tex(ps, face, &cache->effect, &rpos, &rsize); */
+    /*     draw_tex(face, &cache->effect, &rpos, &rsize); */
     /* } */
 
     {
@@ -216,7 +206,7 @@ void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* 
 
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
-        draw_tex(ps, face, &cache->effect, &tdrpos, &rsize);
+        draw_tex(face, &cache->effect, &tdrpos, &rsize);
         glDepthMask(GL_TRUE);
         glDisable(GL_DEPTH_TEST);
     }

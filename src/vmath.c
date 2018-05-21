@@ -2,6 +2,10 @@
 
 #include <string.h>
 
+double lerp(double a, double b, double f) {
+    return a + f * (b - a);
+}
+
 #define DEFINE_VEC_OPS(n)                                                    \
 void vec##n##_add(Vector##n * r, const Vector##n * const a)                  \
 {                                                                            \

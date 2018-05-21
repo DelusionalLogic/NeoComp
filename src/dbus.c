@@ -941,8 +941,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(xinerama_shadow_crop, cdbus_reply_bool);
 
   cdbus_m_opts_get_do(fade_delta, cdbus_reply_int32);
-  cdbus_m_opts_get_do(fade_in_step, cdbus_reply_int32);
-  cdbus_m_opts_get_do(fade_out_step, cdbus_reply_int32);
   cdbus_m_opts_get_do(no_fading_openclose, cdbus_reply_bool);
 
   cdbus_m_opts_get_do(blur_background, cdbus_reply_bool);
@@ -998,24 +996,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
     if (!cdbus_msg_get_arg(msg, 1, DBUS_TYPE_INT32, &val))
       return false;
     ps->o.fade_delta = max_i(val, 1);
-    goto cdbus_process_opts_set_success;
-  }
-
-  // fade_in_step
-  if (!strcmp("fade_in_step", target)) {
-    double val = 0.0;
-    if (!cdbus_msg_get_arg(msg, 1, DBUS_TYPE_DOUBLE, &val))
-      return false;
-    ps->o.fade_in_step = normalize_d(val) * OPAQUE;
-    goto cdbus_process_opts_set_success;
-  }
-
-  // fade_out_step
-  if (!strcmp("fade_out_step", target)) {
-    double val = 0.0;
-    if (!cdbus_msg_get_arg(msg, 1, DBUS_TYPE_DOUBLE, &val))
-      return false;
-    ps->o.fade_out_step = normalize_d(val) * OPAQUE;
     goto cdbus_process_opts_set_success;
   }
 

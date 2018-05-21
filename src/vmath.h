@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+double lerp(double a, double b, double f);
+
 typedef struct Matrix {
     float m[16];
 } Matrix;
