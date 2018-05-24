@@ -22,12 +22,15 @@ CFG = -std=gnu11 -fms-extensions
 LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
-OBJS += vmath.o
+OBJS += vmath.o bezier.o
 OBJS += timer.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o shadow.o texture.o include.o
 OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer.o
 OBJS += window.o windowlist.o
 OBJS += xorg.o xtexture.o
+
+OBJS += text.o
+PACKAGES += freetype2
 
 ifneq "$(GLX_MARK)" ""
     CFG += -DDEBUG_GLX_MARK
@@ -127,7 +130,7 @@ ifeq "$(CFG_DEV)" ""
 else
   CC = clang
   export LD_ALTEXEC = /usr/bin/ld.gold
-  CFG += -DDEBUG_RESTACK
+  # CFG += -DDEBUG_RESTACK
   # OBJS += backtrace-symbols.o
   LIBS += -lbfd
   CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
@@ -137,7 +140,7 @@ endif
 LIBS += $(shell pkg-config --libs $(PACKAGES))
 INCS += $(shell pkg-config --cflags $(PACKAGES))
 
-CFLAGS += -Wall
+CFLAGS += -Wall -Wno-microsoft-anon-tag
 
 BINS = compton bin/compton-trans
 MANPAGES = man/compton.1 man/compton-trans.1

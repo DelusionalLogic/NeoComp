@@ -84,6 +84,7 @@ const char* const StateNames[] = {
     "Active",
     "Deactivating",
     "Inactive",
+    "Destroying",
     "Destroyed",
 };
 
@@ -765,7 +766,7 @@ paint_preprocess(session_t *ps, win *list) {
             }
 
             // If the window doesn't want to be redirected, then who are we to argue
-            {
+            if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) {
                 winprop_t prop = wid_get_prop(ps, w->id, ps->atom_bypass, 1L, XA_CARDINAL, 32);
                 // A value of 1 means that the window has taken special care to ask
                 // us not to do compositing.It would be great if we could just
@@ -1997,7 +1998,7 @@ destroy_win(session_t *ps, Window id) {
     // Set fading callback
     // @LEAK @PERFORMANCE: We override the unmap callback here, and never call
     // it.
-	w->state = STATE_CLOSING;
+	w->state = STATE_DESTROYING;
     /* set_fade_callback(ps, w, destroy_callback, false); */
 
     win_start_opacity(w, 0.0, ps->o.opacity_fade_time);
@@ -6084,6 +6085,14 @@ session_run(session_t *ps) {
 
         for (win *w = t; w != NULL; w = w->prev_trans) {
             win_update(ps, w, delta);
+        }
+
+        for (win *w = t; w != NULL;) {
+            win* next = w->prev_trans;
+            if(w->state == STATE_DESTROYED) {
+                finish_destroy_win(ps, w->id);
+            }
+            w = next;
         }
 
         static int paint = 0;

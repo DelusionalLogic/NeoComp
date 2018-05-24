@@ -250,14 +250,15 @@ void win_update(session_t* ps, win* w, double dt) {
             free_region(ps, &w->border_size);
             if(ps->redirected)
                 wd_unbind(&w->drawable);
-        } else if(w->state == STATE_CLOSING) {
-            printf("Finish close\n");
-            finish_destroy_win(ps, w->id);
         } else if(w->state == STATE_ACTIVATING) {
             printf("Finish activate\n");
             w->state = STATE_ACTIVE;
         } else if(w->state == STATE_DEACTIVATING) {
             w->state = STATE_INACTIVE;
+        } else if(w->state == STATE_HIDING) {
+            w->state = STATE_INVISIBLE;
+        } else if(w->state == STATE_DESTROYING) {
+            w->state = STATE_DESTROYED;
         }
         void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
         w->fade_callback = NULL;
@@ -360,9 +361,6 @@ void win_draw(session_t* ps, win* w, float z) {
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
-    if(w->a.map_state != IsViewable)
-        return;
-
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
     Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
