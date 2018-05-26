@@ -5,5 +5,5 @@ uniform sampler2D tex_scr;
 
 void main() {
     vec2 uv = fragmentUV;
-    gl_FragColor = vec4(1-uv.y, uv.y, 0, 1);
+    gl_FragColor = vec4(.1, .1, .2, 1);
 }

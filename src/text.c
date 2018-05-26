@@ -109,12 +109,12 @@ void text_size(const struct Font* font, const char* text, const Vector2* scale, 
     }
 }
 
-void text_draw(struct Font* font, char* text, Vector2* position, Vector2* size) {
+void text_draw(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     Vector2 pen = *position;
     size_t text_len = strlen(text);
     for(int i = 0; i < text_len; i++) {
-        draw_letter(font, &font->characters[text[i]], &pen, size);
+        draw_letter(font, &font->characters[text[i]], &pen, scale);
     }
 }

@@ -33,7 +33,12 @@
 
 // === Global constants ===
 
-DECLARE_ZONE(global)
+DECLARE_ZONE(global);
+DECLARE_ZONE(input);
+DECLARE_ZONE(preprocess);
+DECLARE_ZONE(preprocess_window);
+DECLARE_ZONE(update);
+DECLARE_ZONE(paint);
 
 /// Name strings for window types.
 const char * const WINTYPES[NUM_WINTYPES] = {
@@ -564,6 +569,7 @@ paint_preprocess(session_t *ps, win *list) {
     // Trace whether it's the highest window to paint
     bool is_highest = true;
     for (win *w = list; w; w = next) {
+        zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
         const winmode_t mode_old = w->mode;
 
@@ -632,31 +638,6 @@ paint_preprocess(session_t *ps, win *list) {
             ps->reg_ignore_expire = true;
 
         if (to_paint) {
-            // Generate ignore region for painting to reduce GPU load
-            if (ps->reg_ignore_expire || !w->to_paint) {
-                free_region(ps, &w->reg_ignore);
-
-                // If the window is solid, we add the window region to the
-                // ignored region
-                if (w->solid) {
-                    w->reg_ignore = win_get_region_noframe(ps, w, true);
-                    if (w->border_size)
-                        XFixesIntersectRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
-                                w->border_size);
-
-                    if (last_reg_ignore)
-                        XFixesUnionRegion(ps->dpy, w->reg_ignore, w->reg_ignore,
-                                last_reg_ignore);
-                }
-                // Otherwise we copy the last region over
-                else if (last_reg_ignore)
-                    w->reg_ignore = copy_region(ps, last_reg_ignore);
-                else
-                    w->reg_ignore = None;
-            }
-
-            last_reg_ignore = w->reg_ignore;
-
             // (Un)redirect screen
             // We could definitely unredirect the screen when there's no window to
             // paint, but this is typically unnecessary, may cause flickering when
@@ -711,6 +692,7 @@ paint_preprocess(session_t *ps, win *list) {
                 w->blur_background_last = w->blur_background;
             }
         }
+        zone_leave(&ZONE_preprocess_window);
     }
 
 
@@ -5842,10 +5824,14 @@ session_run(session_t *ps) {
 
         double delta = timeDiff(&lastTime, &currentTime);
 
-        zone_enter(&ZONE_global);
+        zone_start(&ZONE_global);
+
+        zone_enter(&ZONE_input);
 
         while (mainloop(ps))
             continue;
+
+        zone_leave(&ZONE_input);
 
         ps->skip_poll = false;
 
@@ -5867,12 +5853,20 @@ session_run(session_t *ps) {
         // idling will be turned off during paint_preprocess() if needed
         ps->idling = true;
 
+        zone_enter(&ZONE_preprocess);
+
         t = paint_preprocess(ps, ps->list);
         ps->tmout_unredir_hit = false;
+
+        zone_leave(&ZONE_preprocess);
+
+        zone_enter(&ZONE_update);
 
         for (win *w = t; w != NULL; w = w->prev_trans) {
             win_update(ps, w, delta);
         }
+
+        zone_leave(&ZONE_update);
 
         for (win *w = t; w != NULL;) {
             win* next = w->prev_trans;
@@ -5881,6 +5875,8 @@ session_run(session_t *ps) {
             }
             w = next;
         }
+
+        zone_enter(&ZONE_paint);
 
         static int paint = 0;
         if (ps->redirected || ps->o.stoppaint_force == OFF) {
@@ -5891,6 +5887,8 @@ session_run(session_t *ps) {
                 exit(0);
             XSync(ps->dpy, False);
         }
+
+        zone_leave(&ZONE_paint);
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEvent* event_stream = zone_package(&ZONE_global);

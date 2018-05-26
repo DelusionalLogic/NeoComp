@@ -13,58 +13,92 @@
 #define US_PER_SEC 1000000L
 #define MS_PER_SEC 1000
 
-struct Measurement {
-    float height;
+struct Block {
+    struct timespec* start_time;
+    struct ProgramZone* zone;
+    double millis;
+    float start;
+    float end;
 };
 
-struct Measurement mbuffer[256];
-size_t head;
+#define NUM_TRACKS 10
+#define NUM_BLOCKS 1000
 
-static size_t getNext(size_t index) {
-    return (index + 1) % 256;
+struct ProgramZone* root_zone;
+double root_millis;
+
+struct Block tracks[NUM_TRACKS][NUM_BLOCKS];
+size_t track_cursors[NUM_TRACKS] = {0};
+
+static struct Block* getCurrentBlock(size_t track) {
+    assert(track < NUM_TRACKS);
+    size_t cursor = track_cursors[track];
+    assert(cursor <= NUM_BLOCKS);
+    return &tracks[track][cursor-1];
 }
 
-static size_t getLast(size_t index) {
-    if(index == 0)
-        return 255;
-    return (index - 1);
+static struct Block* getNextBlock(size_t track) {
+    assert(track < NUM_TRACKS);
+    track_cursors[track]++;
+    return getCurrentBlock(track);
 }
 
-static void process(struct ZoneEvent* event_stream, struct Measurement* measurement) {
-    struct timespec* start = NULL;
-    struct timespec* end = NULL;
+double timespec_millis(const struct timespec* time) {
+    return ((double)time->tv_sec * MS_PER_SEC)
+        + ((double)time->tv_nsec / NS_PER_MS);
+}
+
+float timespec_ilerp(const struct timespec* start, const struct timespec* end, const struct timespec* value) {
+    struct timespec duration;
+    timespec_subtract(&duration, end, start);
+
+    struct timespec offset;
+    timespec_subtract(&offset, value, start);
+
+    return timespec_millis(&offset) / timespec_millis(&duration);
+}
+
+static void process(struct ZoneEventStream* stream) {
     int depth = 0;
 
-    assert(event_stream[0].type == ZE_ENTER);
-    start = &event_stream[0].time;
+    root_zone = stream->rootZone;
+    {
+        struct timespec duration;
+        timespec_subtract(&duration, &stream->end, &stream->start);
+        root_millis = timespec_millis(&duration);
+    }
 
-    struct ZoneEvent* cursor = &event_stream[1];
-    while(cursor->type != ZE_END) {
+    for(size_t i = 0; i < stream->events_num; i++) {
+        struct ZoneEvent* cursor = &stream->events[i];
         if(cursor->type == ZE_ENTER) {
+            assert(depth < NUM_TRACKS);
+            struct Block* block = getNextBlock(depth);
+
+            block->start_time = &cursor->time;
+
+            float offset = timespec_ilerp(&stream->start, &stream->end, &cursor->time);
+            block->start = offset;
+            block->zone = cursor->zone;
+
             depth++;
         } else if(cursor->type == ZE_LEAVE) {
             assert(depth >= 0);
-
-            if(depth == 0) {
-                // We are leaving the root
-                end = &cursor->time;
-                break;
-            }
             depth--;
+            struct Block* block = getCurrentBlock(depth);
+
+            assert(block->zone == cursor->zone);
+
+            struct timespec duration = {0};
+            timespec_subtract(&duration, &cursor->time, block->start_time);
+            block->millis = timespec_millis(&duration);
+
+            float offset = timespec_ilerp(&stream->start, &stream->end, &cursor->time);
+            block->end = offset;
         }
-        cursor++;
     }
-
-    assert(start != NULL);
-    assert(end != NULL);
-
-    struct timespec diff = { 0 };
-    timespec_subtract(&diff, end, start);
-
-    measurement->height = ((float)diff.tv_nsec / NS_PER_MS) / 33.33f;
 }
 
-static void draw(size_t head, size_t tail, const Vector2* size) {
+static void draw(const Vector2* pos, const Vector2* size) {
     struct face* face = assets_load("window.face");
 
     glDisable(GL_STENCIL_TEST);
@@ -84,29 +118,92 @@ static void draw(size_t head, size_t tail, const Vector2* size) {
     struct Global* profiler_type = profiler_program->shader_type;
     shader_use(profiler_program);
 
-    Matrix old_view = view;
-    view = mat4_orthogonal(0, 1, 0, 1, -1, 1);
-    int steps = 0;
-    for(size_t i = head; i != tail; i = getLast(i)) {
-        Vector2 scale = {{1.0f/255, mbuffer[i].height}};
-        vec2_mul(&scale, size);
+    float bar_height = size->y / (NUM_TRACKS+1);
 
-        Vector2 relpos = {{scale.x * steps, .2}};
+    {
+        Vector2 scale = {{size->x, bar_height}};
+
+        Vector2 relpos = {{pos->x, pos->y}};
 
         {
             Vector3 pos = vec3_from_vec2(&relpos, 0.0);
             draw_rect(face, profiler_type->mvp, pos, scale);
         }
-        steps++;
     }
-    view = old_view;
+
+    for(size_t track = 0; track < NUM_TRACKS; track++) {
+        for(size_t cursor = 0; cursor < track_cursors[track]; cursor++) {
+            struct Block* block = &tracks[track][cursor];
+            float width = (block->end - block->start) * size->x;
+            Vector2 scale = {{width, bar_height}};
+
+            Vector2 relpos = {{block->start * size->x, bar_height * (track+1) + pos->y}};
+
+            {
+                Vector3 pos = vec3_from_vec2(&relpos, 0.0);
+                draw_rect(face, profiler_type->mvp, pos, scale);
+            }
+        }
+    }
+
+    Vector2 textscale = {{1, 1}};
+    {
+        Vector2 pen = {{pos->x, bar_height + pos->y}};
+        Vector2 size = {{0}};
+
+        {
+            text_size(&debug_font, root_zone->name, &textscale, &size);
+            pen.y -= size.y;
+
+            text_draw(&debug_font, root_zone->name, &pen, &textscale);
+        }
+
+        {
+            char *text;
+            asprintf(&text, "%f ms", root_millis);
+            text_size(&debug_font, text, &textscale, &size);
+            pen.y -= size.y;
+
+            text_draw(&debug_font, text, &pen, &textscale);
+            free(text);
+        }
+    }
+
+    for(size_t track = 0; track < NUM_TRACKS; track++) {
+        for(size_t cursor = 0; cursor < track_cursors[track]; cursor++) {
+            struct Block* block = &tracks[track][cursor];
+
+            Vector2 pen = {{block->start * size->x + pos->x, bar_height * (track+2) + pos->y}};
+            Vector2 size = {{0}};
+
+            {
+                text_size(&debug_font, block->zone->name, &textscale, &size);
+                pen.y -= size.y;
+
+                text_draw(&debug_font, block->zone->name, &pen, &textscale);
+            }
+
+            {
+                char *text;
+                asprintf(&text, "%f ms", block->millis);
+                text_size(&debug_font, text, &textscale, &size);
+                pen.y -= size.y;
+
+                text_draw(&debug_font, text, &pen, &textscale);
+                free(text);
+            }
+        }
+    }
 }
 
-void profiler_render(struct ZoneEvent* event_stream) {
-    size_t next = getNext(head);
-    process(event_stream, &mbuffer[next]);
-    head = next;
+void profiler_render(struct ZoneEventStream* event_stream) {
+    process(event_stream);
 
-    Vector2 diagramSize = {{0.5, 0.5}};
-    draw(head, getNext(head), &diagramSize);
+    Vector2 diagramPos = {{0, 400}};
+    Vector2 diagramSize = {{1920, 680}};
+    draw(&diagramPos, &diagramSize);
+
+    for(size_t track = 0; track < NUM_TRACKS; track++) {
+        track_cursors[track] = 0;
+    }
 }

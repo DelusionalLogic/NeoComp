@@ -5,12 +5,16 @@
 #include "windowlist.h"
 #include "blur.h"
 #include "assets/assets.h"
+#include "profiler/zone.h"
 #include "assets/shader.h"
 #include "shaders/shaderinfo.h"
 #include "xtexture.h"
 #include "textureeffects.h"
 #include "renderutil.h"
 #include "shadow.h"
+
+DECLARE_ZONE(update_window);
+DECLARE_ZONE(update_fade);
 
 static bool win_viewable(win* w) {
     return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
@@ -195,7 +199,9 @@ void win_update(session_t* ps, win* w, double dt) {
 
     w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
 
+    zone_enter(&ZONE_update_window);
     if(!fade_done(&w->opacity_fade)) {
+        zone_enter(&ZONE_update_fade);
         // @CLEANUP: Maybe a while loop?
         for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
             // +1 to skip the head
@@ -232,6 +238,7 @@ void win_update(session_t* ps, win* w, double dt) {
             if(win_overlap(w, t))
                 t->glx_blur_cache.damaged = true;
         }
+        zone_leave(&ZONE_update_fade);
     }
 
     if(fade_done(&w->opacity_fade)) {
@@ -277,6 +284,7 @@ void win_update(session_t* ps, win* w, double dt) {
             win_calc_shadow(ps, w);
         }
     }
+    zone_leave(&ZONE_update_window);
 }
 
 static void win_drawcontents(session_t* ps, win* w, float z) {
