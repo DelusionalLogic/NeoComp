@@ -6,4 +6,4 @@
 #include "zone.h"
 #include "../vmath.h"
 
-void profiler_render(struct ProgramZone* root);
+void profiler_render(struct ZoneEvent* event_stream);

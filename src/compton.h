@@ -337,25 +337,6 @@ wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
   return true;
 }
 
-static void
-set_fade_callback(session_t *ps, win *w,
-    void (*callback) (session_t *ps, win *w), bool exec_callback);
-
-/**
- * Execute fade callback of a window if fading finished.
- */
-static inline void
-check_fade_fin(session_t *ps, win *w) {
-  if (w->fade_callback && w->opacity == w->opacity_tgt) {
-    // Must be the last line as the callback could destroy w!
-    set_fade_callback(ps, w, NULL, true);
-  }
-}
-
-static void
-set_fade_callback(session_t *ps, win *w,
-    void (*callback) (session_t *ps, win *w), bool exec_callback);
-
 static Picture
 solid_picture(session_t *ps, bool argb, double a,
               double r, double g, double b);
@@ -453,18 +434,6 @@ win_calc_frame_extents(session_t *ps, const win *w) {
   result.bottom = max_i(result.bottom, w->a.border_width);
   result.right = max_i(result.right, w->a.border_width);
   return result;
-}
-
-static inline void
-wid_set_opacity_prop(session_t *ps, Window wid, double val) {
-  const unsigned long v = (val/100) * 0xFFFFFFFF;
-  XChangeProperty(ps->dpy, wid, ps->atom_opacity, XA_CARDINAL, 32,
-      PropModeReplace, (unsigned char *) &v, 1);
-}
-
-static inline void
-wid_rm_opacity_prop(session_t *ps, Window wid) {
-  XDeleteProperty(ps->dpy, wid, ps->atom_opacity);
 }
 
 /**
@@ -673,23 +642,6 @@ static void
 unmap_win(session_t *ps, win *w);
 
 static double
-wid_get_opacity_prop(session_t *ps, Window wid, double def);
-
-/**
- * Reread opacity property of a window.
- */
-static inline void
-win_update_opacity_prop(session_t *ps, win *w) {
-  w->opacity_prop = wid_get_opacity_prop(ps, w->id, 100.0);
-  if (!ps->o.detect_client_opacity || !w->client_win
-      || w->id == w->client_win)
-    w->opacity_prop_client = 100.0;
-  else
-    w->opacity_prop_client = wid_get_opacity_prop(ps, w->client_win,
-          100.0);
-}
-
-static double
 get_opacity_percent(win *w);
 
 static void
@@ -738,12 +690,6 @@ win_on_focus_change(session_t *ps, win *w);
 
 static void
 win_determine_fade(session_t *ps, win *w);
-
-static void
-win_update_shape_raw(session_t *ps, win *w);
-
-static void
-win_update_shape(session_t *ps, win *w);
 
 static void
 win_determine_shadow(session_t *ps, win *w);

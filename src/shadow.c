@@ -100,10 +100,6 @@ void win_calc_shadow(session_t* ps, win* w) {
 
     glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
-    // @CLEANUP: We have to do this since the window isn't using the new nice
-    // interface
-    /* glActiveTexture(GL_TEXTURE0); */
-    /* glBindTexture(GL_TEXTURE_2D, w->paint.ptex->texture); */
     assert(w->drawable.bound);
     texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
@@ -198,15 +194,30 @@ void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* 
     /*     draw_tex(face, &cache->effect, &rpos, &rsize); */
     /* } */
 
+    struct shader_program* passthough_program = assets_load("passthough.shader");
+    if(passthough_program->shader_type_info != &passthough_info) {
+        printf_errf("Shader was not a passthough shader\n");
+        return;
+    }
+    struct Passthough* passthough_type = passthough_program->shader_type;
+    shader_use(passthough_program);
+
     {
         Vector2 rpos = *pos;
         vec2_sub(&rpos, &cache->border);
         Vector3 tdrpos = vec3_from_vec2(&rpos, z);
         Vector2 rsize = cache->texture.size;
 
+        shader_set_uniform_bool(passthough_type->flip, cache->effect.flipped);
+        shader_set_uniform_float(passthough_type->opacity, w->opacity / 100.0);
+
+        texture_bind(&cache->effect, GL_TEXTURE0);
+
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
-        draw_tex(face, &cache->effect, &tdrpos, &rsize);
+
+        draw_rect(face, passthough_type->mvp, tdrpos, rsize);
+
         glDepthMask(GL_TRUE);
         glDisable(GL_DEPTH_TEST);
     }

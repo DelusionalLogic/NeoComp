@@ -36,6 +36,7 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
     // Disable the options. We will restore later
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
 
     framebuffer_resetTarget(data->buffer);
     framebuffer_targetTexture(data->buffer, otherPtr);

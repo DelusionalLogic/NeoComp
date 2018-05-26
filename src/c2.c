@@ -764,7 +764,6 @@ c2_l_postprocess(session_t *ps, c2_l_t *pleaf) {
   if (pleaf->predef) {
     switch (pleaf->predef) {
       case C2_L_PFOCUSED: ps->o.track_focus = true; break;
-      // case C2_L_PROUNDED: ps->o.detect_rounded_corners = true; break;
       case C2_L_PNAME:
       case C2_L_PCLASSG:
       case C2_L_PCLASSI:
@@ -1059,7 +1058,6 @@ c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
             case C2_L_PFOCUSED: tgt = win_is_focused_real(ps, w); break;
             case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
             case C2_L_PBSHAPED: tgt = w->bounding_shaped;       break;
-            case C2_L_PROUNDED: tgt = w->rounded_corners;       break;
             case C2_L_PCLIENT:  tgt = w->client_win;            break;
             case C2_L_PLEADER:  tgt = w->leader;                break;
             default:            *perr = true; assert(0);        break;

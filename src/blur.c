@@ -73,6 +73,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     shader_use(passthough_program);
 
     shader_set_uniform_bool(passthough_type->flip, false);
+    shader_set_uniform_float(passthough_type->opacity, 1.0);
 
     // Bind the final blur texture
     texture_bind(tex_scr, GL_TEXTURE0);

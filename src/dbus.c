@@ -716,10 +716,6 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_win_get_do(role, cdbus_reply_string);
 
   cdbus_m_win_get_do(opacity, cdbus_reply_uint32);
-  cdbus_m_win_get_do(opacity_tgt, cdbus_reply_uint32);
-  cdbus_m_win_get_do(opacity_prop, cdbus_reply_uint32);
-  cdbus_m_win_get_do(opacity_prop_client, cdbus_reply_uint32);
-  cdbus_m_win_get_do(opacity_set, cdbus_reply_uint32);
 
   if (!strcmp("left_width", target)) {
     cdbus_reply_uint32(ps, msg, w->frame_extents.left);
@@ -901,7 +897,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(mark_wmwin_focused, cdbus_reply_bool);
   cdbus_m_opts_get_do(mark_ovredir_focused, cdbus_reply_bool);
   cdbus_m_opts_get_do(fork_after_register, cdbus_reply_bool);
-  cdbus_m_opts_get_do(detect_rounded_corners, cdbus_reply_bool);
   cdbus_m_opts_get_do(paint_on_overlay, cdbus_reply_bool);
   // paint_on_overlay_id: Get ID of the X composite overlay window
   if (!strcmp("paint_on_overlay_id", target)) {

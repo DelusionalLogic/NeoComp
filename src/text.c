@@ -20,7 +20,10 @@ int font_load(struct Font* font, char* filename) {
         FT_Done_FreeType(ft);
         return 1;
     }
-    FT_Set_Pixel_Sizes(face, 0, 18);  
+    // @CLEANUP: We should allow the caller to set the fontsize somehow. But
+    // for now this is fine
+    font->size = 12;
+    FT_Set_Pixel_Sizes(face, 0, font->size);
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     for(uint8_t i = 0; i < 128; i++) {
@@ -93,6 +96,17 @@ static void draw_letter(struct Font* font, struct Character* letter, Vector2* po
         draw_rect(face, text_type->mvp, pos, size);
     }
     position->x += letter->advance * scale->x;
+}
+
+void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size) {
+    const float line_height = scale->y * font->size;
+    size->y = line_height;
+
+    size_t text_len = strlen(text);
+    for(int i = 0; i < text_len; i++) {
+        const struct Character* ch = &font->characters[text[i]];
+        size->x += ch->advance;
+    }
 }
 
 void text_draw(struct Font* font, char* text, Vector2* position, Vector2* size) {

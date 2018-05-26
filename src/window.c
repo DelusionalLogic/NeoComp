@@ -12,6 +12,12 @@
 #include "renderutil.h"
 #include "shadow.h"
 
+static bool win_viewable(win* w) {
+    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
+        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
+        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
+}
+
 bool win_overlap(win* w1, win* w2) {
     const Vector2 w1lpos = {{
         w1->a.x, w1->a.y,
@@ -77,14 +83,14 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    glEnable(GL_DEPTH_TEST);
+
     glViewport(0, 0, size.x, size.y);
     Matrix old_view = view;
     view = mat4_orthogonal(glpos.x, glpos.x + size.x, glpos.y, glpos.y + size.y, -1, 1);
 
-    /* glEnable(GL_DEPTH_TEST); */
-
     float z = 0;
-    windowlist_draw(ps, w->next_trans, &z);
+    windowlist_drawoverlap(ps, w->next_trans, w, &z);
 
     Vector2 root_size = {{ps->root_width, ps->root_height}};
 
@@ -95,13 +101,7 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
     }
     struct face* face = assets_load("window.face");
 
-    glEnable(GL_DEPTH_TEST);
-
     draw_tex(face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
-
-    glDisable(GL_DEPTH_TEST);
-
-    /* glDisable(GL_DEPTH_TEST); */
 
     view = old_view;
 
@@ -198,7 +198,7 @@ void win_update(session_t* ps, win* w, double dt) {
     if(!fade_done(&w->opacity_fade)) {
         // @CLEANUP: Maybe a while loop?
         for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
-            // Doing this first means we skip the head
+            // +1 to skip the head
             i = (i+1) % 4;
 
             struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
@@ -210,9 +210,12 @@ void win_update(session_t* ps, win* w, double dt) {
 
             double x = keyframe->time / keyframe->duration;
             if(x >= 1.0) {
+                // We're done, clean out the time and set this as the head
                 keyframe->time = 0.0;
                 w->opacity_fade.head = i;
 
+                // Force the value. We are still going to blend it with stuff
+                // on top of this
                 w->opacity_fade.value = keyframe->target;
             } else {
                 double t = bezier_getTForX(&ps->curve, x);
@@ -220,10 +223,49 @@ void win_update(session_t* ps, win* w, double dt) {
             }
         }
         ps->skip_poll = true;
+
+        // If the fade isn't done, then damage the blur of everyone above
+        for (win *t = w->prev_trans; t; t = t->prev_trans) {
+            // @CLEANUP: Ideally we should just recalculate the blur right now. We need
+            // to render the windows behind this though, and that takes time. For now we
+            // just do it indirectly
+            if(win_overlap(w, t))
+                t->glx_blur_cache.damaged = true;
+        }
     }
 
+    if(fade_done(&w->opacity_fade)) {
+        if(w->state == STATE_ACTIVATING) {
+            w->state = STATE_ACTIVE;
 
-    if(w->a.map_state == IsViewable && ps->redirected) {
+            w->in_openclose = false;
+        } else if(w->state == STATE_DEACTIVATING) {
+            w->state = STATE_INACTIVE;
+        } else if(w->state == STATE_HIDING) {
+            w->damaged = false;
+
+            w->in_openclose = false;
+
+            free_region(ps, &w->border_size);
+            if(ps->redirected)
+                wd_unbind(&w->drawable);
+
+            w->state = STATE_INVISIBLE;
+        } else if(w->state == STATE_DESTROYING) {
+            w->state = STATE_DESTROYED;
+        }
+        void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
+        w->fade_callback = NULL;
+        if(old_callback != NULL) {
+            old_callback(ps, w);
+            ps->idling = false;
+        }
+    }
+    w->opacity = w->opacity_fade.value;
+
+    //Process after unstable transitions to avoid running on destroyed windows
+
+    if(win_viewable(w) && ps->redirected) {
         if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
             if(w->glx_blur_cache.damaged == true) {
                 win_calculate_blur(&ps->psglx->blur, ps, w);
@@ -235,52 +277,20 @@ void win_update(session_t* ps, win* w, double dt) {
             win_calc_shadow(ps, w);
         }
     }
-
-    if(fade_done(&w->opacity_fade)) {
-        if(w->state == STATE_MAPPING) {
-            w->state = STATE_MAPPED;
-            w->in_openclose = false;
-        } else if(w->state == STATE_UNMAPPING) {
-            printf("Finish unmap\n");
-            w->state = STATE_UNMAPPED;
-            w->damaged = false;
-
-            w->in_openclose = false;
-
-            free_region(ps, &w->border_size);
-            if(ps->redirected)
-                wd_unbind(&w->drawable);
-        } else if(w->state == STATE_ACTIVATING) {
-            printf("Finish activate\n");
-            w->state = STATE_ACTIVE;
-        } else if(w->state == STATE_DEACTIVATING) {
-            w->state = STATE_INACTIVE;
-        } else if(w->state == STATE_HIDING) {
-            w->state = STATE_INVISIBLE;
-        } else if(w->state == STATE_DESTROYING) {
-            w->state = STATE_DESTROYED;
-        }
-        void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
-        w->fade_callback = NULL;
-        if(old_callback != NULL) {
-            printf("Fade callback\n");
-            old_callback(ps, w);
-            ps->idling = false;
-        }
-    }
-    w->opacity = w->opacity_fade.value;
 }
 
 static void win_drawcontents(session_t* ps, win* w, float z) {
     glx_mark(ps, w->id, true);
 
     glEnable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
 
     // This is all weird, but X Render is using premultiplied ARGB format, and
     // we need to use those things to correct it. Thanks to derhass for help.
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     /* glColor4f(opacity, opacity, opacity, opacity); */
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
 
     struct shader_program* global_program = assets_load("global.shader");
     if(global_program->shader_type_info != &global_info) {
@@ -330,11 +340,58 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
         draw_rect(face, global_type->mvp, winpos, rectSize);
     }
 
-    // Cleanup
-    glDisable(GL_BLEND);
-    glDisable(GL_DEPTH_TEST);
-
     glx_mark(ps, w->id, false);
+}
+
+static void win_draw_debug(session_t* ps, win* w, float z) {
+    Vector2 scale = {{1, 1}};
+
+    glDisable(GL_DEPTH_TEST);
+    Vector2 pen;
+    {
+        Vector2 xPen = {{w->a.x, w->a.y}};
+        Vector2 size = {{w->widthb, w->heightb}};
+        pen = X11_rectpos_to_gl(ps, &xPen, &size);
+    }
+
+    {
+        Vector2 op = {{0, w->heightb - 20}};
+        vec2_add(&pen, &op);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "State: %s", StateNames[w->state]);
+        text_draw(&debug_font, text, &pen, &scale);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+        free(text);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "blur-background: %d", w->blur_background);
+        text_draw(&debug_font, text, &pen, &scale);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+        free(text);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "fade-status: %d", fade_done(&w->opacity_fade));
+        text_draw(&debug_font, text, &pen, &scale);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+        free(text);
+    }
+    glEnable(GL_DEPTH_TEST);
 }
 
 void win_draw(session_t* ps, win* w, float z) {
@@ -348,16 +405,13 @@ void win_draw(session_t* ps, win* w, float z) {
     if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
         Vector3 dglPos = vec3_from_vec2(&glPos, z - 0.00001);
 
-        glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
-
         draw_tex(face, &w->glx_blur_cache.texture[0], &dglPos, &size);
-
-        glDepthMask(GL_TRUE);
-        glDisable(GL_DEPTH_TEST);
     }
 
     win_drawcontents(ps, w, z);
+
+    /* win_draw_debug(ps, w, z); */
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
@@ -365,19 +419,11 @@ void win_postdraw(session_t* ps, win* w, float z) {
     Vector2 size = {{w->widthb, w->heightb}};
     Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
 
-    {
-        Vector2 text_pos = {{100, 100}};
-        vec2_add(&text_pos, &glPos);
-        Vector2 size = {{1, 1}};
-        char* text;
-        asprintf(&text, "State: %s", StateNames[w->state]);
-        text_draw(&debug_font, text, &text_pos, &size);
-        free(text);
-    }
-
-    // Painting shadow
-    if (w->shadow) {
-        win_paint_shadow(ps, w, &glPos, &size, z + 0.00001);
+    if(win_viewable(w)) {
+        // Painting shadow
+        if (w->shadow) {
+            win_paint_shadow(ps, w, &glPos, &size, z + 0.00001);
+        }
     }
 }
 
@@ -413,6 +459,8 @@ bool wd_unbind(struct WindowDrawable* drawable) {
 
 void wd_delete(struct WindowDrawable* drawable) {
     assert(drawable != NULL);
+    // In debug mode we want to crash if we do this.
+    assert(!drawable->bound);
     if(drawable->bound) {
         wd_unbind(drawable);
     }

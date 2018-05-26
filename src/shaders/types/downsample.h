@@ -5,5 +5,6 @@
 #define UNIFORMS_FOREACH(M) \
     M(mvp)                  \
     M(flip)                 \
+    M(opacity)              \
     M(tex_scr)
-#define UNIFORMS_COUNT 3
+#define UNIFORMS_COUNT 4

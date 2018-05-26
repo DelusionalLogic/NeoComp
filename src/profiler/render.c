@@ -30,9 +30,36 @@ static size_t getLast(size_t index) {
     return (index - 1);
 }
 
-static void process(struct ProgramZone* root, struct Measurement* measurement) {
+static void process(struct ZoneEvent* event_stream, struct Measurement* measurement) {
+    struct timespec* start = NULL;
+    struct timespec* end = NULL;
+    int depth = 0;
+
+    assert(event_stream[0].type == ZE_ENTER);
+    start = &event_stream[0].time;
+
+    struct ZoneEvent* cursor = &event_stream[1];
+    while(cursor->type != ZE_END) {
+        if(cursor->type == ZE_ENTER) {
+            depth++;
+        } else if(cursor->type == ZE_LEAVE) {
+            assert(depth >= 0);
+
+            if(depth == 0) {
+                // We are leaving the root
+                end = &cursor->time;
+                break;
+            }
+            depth--;
+        }
+        cursor++;
+    }
+
+    assert(start != NULL);
+    assert(end != NULL);
+
     struct timespec diff = { 0 };
-    timespec_subtract(&diff, &root->endTime, &root->startTime);
+    timespec_subtract(&diff, end, start);
 
     measurement->height = ((float)diff.tv_nsec / NS_PER_MS) / 33.33f;
 }
@@ -75,9 +102,9 @@ static void draw(size_t head, size_t tail, const Vector2* size) {
     view = old_view;
 }
 
-void profiler_render(struct ProgramZone* root) {
+void profiler_render(struct ZoneEvent* event_stream) {
     size_t next = getNext(head);
-    process(root, &mbuffer[next]);
+    process(event_stream, &mbuffer[next]);
     head = next;
 
     Vector2 diagramSize = {{0.5, 0.5}};

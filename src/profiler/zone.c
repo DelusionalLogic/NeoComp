@@ -3,75 +3,38 @@
 #include <stdio.h>
 #include <assert.h>
 
-struct ProgramZone* current = NULL;
+struct ZoneEvent event_stream[1024];
+size_t event_cursor;
 
-void zone_enter(struct ProgramZone* zone) {
-    if(zone->bound) {
-        printf("Zone %s is already started\n", zone->name);
-        return;
-    }
+static void zone_event(struct ProgramZone* zone, enum ZoneEventType type, struct ZoneEvent* event) {
+    event->zone = zone;
+    event->type = type;
 
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &zone->startTime) != 0) {
+    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &event->time) != 0) {
         printf("Failed setting starttime for the zone %s\n", zone->name);
         return;
     }
+}
 
-    // Initialize the pointers, since we need to do this for every time we
-    // enter
-    zone->nextChild = &zone->child;
-    zone->child = NULL;
-    zone->next = NULL;
-
-    zone->bound = true;
-
-    // We need to bootstrap current if theres nothing in there. We only support
-    // a single outer thing, so you can't stop the global zone and then start
-    // a new one. AKA ONLY ONE GLOBAL
-    if(current == NULL) {
-        current = zone;
-        return;
-    }
-
-    zone->parent = current;
-
-    // If we are not the first. The current zones nextChild ptr will point to
-    // where to attach ourselves
-    *current->nextChild = zone;
-
-    //Now that we have "used up" the currents nextChild, we need to tell it to
-    //use our next ptr as the next child
-    current->nextChild = &zone->next;
-
-    current = zone;
+void zone_enter(struct ProgramZone* zone) {
+    struct ZoneEvent* event = &event_stream[event_cursor];
+    zone_event(zone, ZE_ENTER, event);
+    event_cursor++;
 }
 
 void zone_leave(struct ProgramZone* zone) {
-    if(!zone->parent) {
-        printf("Tried to leave the global Zone %s\n", zone->name);
-        return;
-    }
-    assert(zone->parent);
-
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &zone->endTime) != 0) {
-        printf("Failed setting endtime for the zone %s\n", zone->name);
-        return;
-    }
-
-    // When we end a zone, the parent of the zone is again the current zone.
-    current = zone->parent;
-    zone->bound = false;
+    struct ZoneEvent* event = &event_stream[event_cursor];
+    zone_event(zone, ZE_LEAVE, event);
+    event_cursor++;
 }
 
-struct ProgramZone* zone_package(struct ProgramZone* zone) {
-    zone->bound = false;
+struct ZoneEvent* zone_package(struct ProgramZone* zone) {
+    zone_leave(zone);
 
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &zone->endTime) != 0) {
-        printf("Failed setting endtime for the zone %s\n", zone->name);
-        return NULL;
-    }
+    struct ZoneEvent* event = &event_stream[event_cursor];
+    event->type = ZE_END;
+    event_cursor++;
 
-    struct ProgramZone* now = current;
-
-    current = NULL;
-    return now;
+    event_cursor = 0;
+    return event_stream;
 }

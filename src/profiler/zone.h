@@ -6,18 +6,19 @@
 struct ProgramZone {
     int id;
     const char* name;
+};
 
-    bool bound;
+enum ZoneEventType {
+    ZE_ENTER,
+    ZE_LEAVE,
+    ZE_END,
+};
 
-    struct timespec startTime;
-    struct timespec endTime;
+struct ZoneEvent {
+    struct ProgramZone* zone;
 
-    struct ProgramZone* parent;
-
-    struct ProgramZone* child;
-    struct ProgramZone** nextChild;
-
-    struct ProgramZone* next;
+    struct timespec time;
+    enum ZoneEventType type;
 };
 
 #define DECLARE_ZONE(nme)                   \
@@ -30,4 +31,4 @@ void zone_enter(struct ProgramZone* zone);
 
 void zone_leave(struct ProgramZone* zone);
 
-struct ProgramZone* zone_package(struct ProgramZone* zone);
+struct ZoneEvent* zone_package(struct ProgramZone* zone);

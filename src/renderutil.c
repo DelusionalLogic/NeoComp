@@ -44,6 +44,7 @@ void draw_tex(struct face* face, const struct Texture* texture,
     shader_use(passthough_program);
 
     shader_set_uniform_bool(passthough_type->flip, texture->flipped);
+    shader_set_uniform_float(passthough_type->opacity, 1.0);
 
     texture_bind(texture, GL_TEXTURE0);
 

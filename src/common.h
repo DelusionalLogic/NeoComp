@@ -276,9 +276,6 @@ struct Fading {
 /// @brief Length of generic buffers.
 #define BUF_LEN 80
 
-#define ROUNDED_PERCENT 0.05
-#define ROUNDED_PIXELS  10
-
 #define OPAQUE 0xffffffff
 #define REGISTER_PROP "_NET_WM_CM_S"
 
@@ -648,8 +645,6 @@ typedef struct _options_t {
   glx_prog_main_t glx_prog_win;
   /// Whether to fork to background.
   bool fork_after_register;
-  /// Whether to detect rounded corners.
-  bool detect_rounded_corners;
   /// Whether to paint on X Composite overlay window instead of root
   /// window.
   bool paint_on_overlay;
@@ -1071,8 +1066,6 @@ typedef struct _session_t {
   bool xrfilter_convolution_exists;
 
   // === Atoms ===
-  /// Atom of property <code>_NET_WM_OPACITY</code>.
-  Atom atom_opacity;
   /// Atom of <code>_NET_FRAME_EXTENTS</code>.
   Atom atom_frame_extents;
   /// Property atom to identify top-level frame window. Currently
@@ -1115,12 +1108,6 @@ typedef struct _session_t {
 extern const char* const StateNames[];
 
 enum WindowState {
-    STATE_MAPPED,
-    STATE_UNMAPPED,
-    STATE_MAPPING,
-    STATE_UNMAPPING,
-    STATE_CLOSING,
-
     STATE_HIDING,
     STATE_INVISIBLE,
     STATE_ACTIVATING,
@@ -1184,8 +1171,6 @@ typedef struct _win {
   bool destroyed;
   /// Whether the window is bounding-shaped.
   bool bounding_shaped;
-  /// Whether the window just have rounded corners.
-  bool rounded_corners;
   /// Whether this window is to be painted.
   bool to_paint;
   /// Whether the window is painting excluded.
@@ -1245,23 +1230,9 @@ typedef struct _win {
   struct Fading opacity_fade;
   double opacity;
 
-  // Target window opacity.
-  double opacity_tgt;
-  // Start window opacity
-  double opacity_srt;
-
   bool skipFade;
   double fadeTime;
   double fadeDuration;
-
-  /// Cached value of opacity window attribute.
-  double opacity_prop;
-  /// Cached value of opacity window attribute on client window. For
-  /// broken window managers not transferring client window's
-  /// _NET_WM_OPACITY value
-  double opacity_prop_client;
-  /// Last window opacity value we set.
-  double opacity_set;
 
   // Fading-related members
   /// Do not fade if it's false. Change on window type change.
@@ -2090,8 +2061,7 @@ rect_is_fullscreen(session_t *ps, int x, int y, unsigned wid, unsigned hei) {
  */
 static inline bool
 win_is_fullscreen(session_t *ps, const win *w) {
-  return rect_is_fullscreen(ps, w->a.x, w->a.y, w->widthb, w->heightb)
-      && (!w->bounding_shaped || w->rounded_corners);
+  return rect_is_fullscreen(ps, w->a.x, w->a.y, w->widthb, w->heightb);
 }
 
 /**

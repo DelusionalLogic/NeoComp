@@ -72,12 +72,6 @@ const char * const BACKEND_STRS[NUM_BKEND + 1] = {
 };
 
 const char* const StateNames[] = {
-    "Mapped",
-    "Unmapped",
-    "Mapping",
-    "UnMapping",
-    "Closing",
-
     "Hiding",
     "Invisible",
     "Activating",
@@ -137,27 +131,6 @@ session_t *ps_g = NULL;
 static int
 fade_timeout(session_t *ps) {
   return 10;
-}
-
-/**
- * Set fade callback of a window, and possibly execute the previous
- * callback.
- *
- * @param exec_callback whether the previous callback is to be executed
- */
-static void
-set_fade_callback(session_t *ps, win *w,
-    void (*callback) (session_t *ps, win *w), bool exec_callback) {
-  void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
-
-  w->fade_callback = callback;
-  // Must be the last line as the callback could destroy w!
-  if (exec_callback && old_callback) {
-    old_callback(ps, w);
-    // Although currently no callback function affects window state on
-    // next paint, it could, in the future
-    ps->idling = false;
-  }
 }
 
 /**
@@ -282,48 +255,6 @@ wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
     .type = AnyPropertyType,
     .format = 0
   };
-}
-
-/**
- * Check if a window has rounded corners.
- */
-static void
-win_rounded_corners(session_t *ps, win *w) {
-  w->rounded_corners = false;
-
-  if (!w->bounding_shaped)
-    return;
-
-  // Fetch its bounding region
-  if (!w->border_size)
-    w->border_size = border_size(ps, w, true);
-
-  // Quit if border_size() returns None
-  if (!w->border_size)
-    return;
-
-  // Determine the minimum width/height of a rectangle that could mark
-  // a window as having rounded corners
-  unsigned short minwidth = max_i(w->widthb * (1 - ROUNDED_PERCENT),
-      w->widthb - ROUNDED_PIXELS);
-  unsigned short minheight = max_i(w->heightb * (1 - ROUNDED_PERCENT),
-      w->heightb - ROUNDED_PIXELS);
-
-  // Get the rectangles in the bounding region
-  int nrects = 0, i;
-  XRectangle *rects = XFixesFetchRegion(ps->dpy, w->border_size, &nrects);
-  if (!rects)
-    return;
-
-  // Look for a rectangle large enough for this window be considered
-  // having rounded corners
-  for (i = 0; i < nrects; ++i)
-    if (rects[i].width >= minwidth && rects[i].height >= minheight) {
-      w->rounded_corners = true;
-      break;
-    }
-
-  cxfree(rects);
 }
 
 /**
@@ -512,6 +443,8 @@ static void paint_root(session_t *ps) {
 
     glViewport(0, 0, ps->root_width, ps->root_height);
 
+    glEnable(GL_DEPTH_TEST);
+
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
 	Vector3 pos = {{0, 0, 0.000001}};
@@ -559,36 +492,6 @@ static XserverRegion
 border_size(session_t *ps, win *w, bool use_offset) {
   // Start with the window rectangular region
   XserverRegion fin = win_get_region(ps, w, use_offset);
-
-  // Only request for a bounding region if the window is shaped
-  if (w->bounding_shaped) {
-    /*
-     * if window doesn't exist anymore,  this will generate an error
-     * as well as not generate a region.  Perhaps a better XFixes
-     * architecture would be to have a request that copies instead
-     * of creates, that way you'd just end up with an empty region
-     * instead of an invalid XID.
-     */
-
-    XserverRegion border = XFixesCreateRegionFromWindow(
-      ps->dpy, w->id, WindowRegionBounding);
-
-    if (!border)
-      return fin;
-
-    if (use_offset) {
-      // Translate the region to the correct place
-      XFixesTranslateRegion(ps->dpy, border,
-        w->a.x + w->a.border_width,
-        w->a.y + w->a.border_width);
-    }
-
-    // Intersect the bounding region we got with the window rectangle, to
-    // make sure the bounding region is not bigger than the window
-    // rectangle
-    XFixesIntersectRegion(ps->dpy, fin, fin, border);
-    XFixesDestroyRegion(ps->dpy, border);
-  }
 
   return fin;
 }
@@ -787,7 +690,6 @@ paint_preprocess(session_t *ps, win *list) {
         }
 
         // Avoid setting w->to_paint if w is to be freed
-        /* bool destroyed = (w->opacity_tgt == w->opacity && w->destroyed); */
         bool destroyed = false;
 
         if (to_paint) {
@@ -914,15 +816,6 @@ paint_all(session_t *ps, win *t) {
       win_postdraw(ps, w, z);
       z += .0001;
   }
-
-  // Check if fading is finished on all painted windows
-  {
-    win *pprev = NULL;
-    for (win *w = t; w; w = pprev) {
-      pprev = w->prev_trans;
-      check_fade_fin(ps, w);
-    }
-  }
 }
 
 static void
@@ -1009,9 +902,6 @@ map_win(session_t *ps, Window id) {
   printf_dbgf("(%#010lx): type %s\n", w->id, WINTYPES[w->window_type]);
 #endif
 
-  // Detect if the window is shaped or has rounded corners
-  win_update_shape_raw(ps, w);
-
   // FocusIn/Out may be ignored when the window is unmapped, so we must
   // recheck focus here
   if (ps->o.track_focus)
@@ -1020,8 +910,6 @@ map_win(session_t *ps, Window id) {
   // Update window focus state
   win_update_focused(ps, w);
 
-  // Update opacity and dim state
-  win_update_opacity_prop(ps, w);
   w->flags |= WFLAG_OPCT_CHANGE;
 
   // Many things above could affect shadow
@@ -1030,14 +918,23 @@ map_win(session_t *ps, Window id) {
   // Set fading state
   w->in_openclose = true;
 
-  printf("WHAT %f\n", calc_opacity(ps, w));
+  // recheck focus will set the state of the actually focused window, but
+  // apparently multiple windows can be focused.
+  // @HACK: For now we just let all other focused windows be active as well,
+  // but we really should distinguish between being active and focused.
   if(w->focused) {
-      w->state = STATE_ACTIVATING;
-      win_start_opacity(w, ps->o.active_opacity, ps->o.opacity_fade_time);
+      if(w->state == STATE_INVISIBLE || w->state == STATE_HIDING) {
+          w->state = STATE_ACTIVATING;
+          win_start_opacity(w, ps->o.active_opacity, ps->o.opacity_fade_time);
+      }
   } else {
+      // If we aren't focused, then no one have set out state.
+      assert(w->state == STATE_INVISIBLE || w->state == STATE_HIDING);
       w->state = STATE_DEACTIVATING;
       win_start_opacity(w, ps->o.inactive_opacity, ps->o.opacity_fade_time);
   }
+
+  assert(w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING);
 
   win_determine_blur_background(ps, w);
 
@@ -1107,11 +1004,9 @@ static void unmap_win(session_t *ps, win *w) {
   w->a.map_state = IsUnmapped;
 
   // Fading out
-  w->state = STATE_UNMAPPING;
-  w->flags |= WFLAG_OPCT_CHANGE;
-  set_fade_callback(ps, w, unmap_callback, false);
-
   w->state = STATE_HIDING;
+  w->flags |= WFLAG_OPCT_CHANGE;
+
   win_start_opacity(w, 0, ps->o.opacity_fade_time);
 
   w->in_openclose = true;
@@ -1125,22 +1020,6 @@ static void unmap_win(session_t *ps, win *w) {
     cdbus_ev_win_unmapped(ps, w);
   }
 #endif
-}
-
-static double wid_get_opacity_prop(session_t *ps, Window wid, double def) {
-    double val = def;
-
-    winprop_t prop = wid_get_prop(ps, wid, ps->atom_opacity, 1L,
-            XA_CARDINAL, 32);
-
-    if (prop.nitems) {
-        val = (((uint32_t)*prop.data.p32) / (double)0xFFFFFFFF) * 100.0;
-    }
-
-    free_winprop(&prop);
-    printf("WHATEVER %f\n", val);
-
-    return val;
 }
 
 static void
@@ -1190,11 +1069,7 @@ static double calc_opacity(session_t *ps, win *w) {
         opacity = 0.0;
     } else {
         // Try obeying opacity property and window type opacity firstly
-        if (100.0 == (opacity = w->opacity_prop)
-                && 100.0 == (opacity = w->opacity_prop_client)) {
-            opacity = ps->o.wintype_opacity[w->window_type];
-        } else {
-        }
+        opacity = ps->o.wintype_opacity[w->window_type];
 
         // Respect inactive_opacity in some cases
         if (ps->o.inactive_opacity && false == w->focused
@@ -1260,39 +1135,6 @@ win_determine_fade(session_t *ps, win *w) {
 }
 
 /**
- * Update window-shape.
- */
-static void
-win_update_shape_raw(session_t *ps, win *w) {
-  if (ps->shape_exists) {
-    w->bounding_shaped = wid_bounding_shaped(ps, w->id);
-    if (w->bounding_shaped && ps->o.detect_rounded_corners)
-      win_rounded_corners(ps, w);
-  }
-}
-
-/**
- * Update window-shape related information.
- */
-static void
-win_update_shape(session_t *ps, win *w) {
-  if (ps->shape_exists) {
-    // bool bounding_shaped_old = w->bounding_shaped;
-
-    win_update_shape_raw(ps, w);
-
-    win_on_factor_change(ps, w);
-
-    /*
-    // If clear_shadow state on the window possibly changed, destroy the old
-    // shadow_pict
-    if (ps->o.clear_shadow && w->bounding_shaped != bounding_shaped_old)
-      free_paint(ps, &w->shadow_paint);
-    */
-  }
-}
-
-/**
  * Determine if a window should have shadow, and update things depending
  * on shadow state.
  */
@@ -1303,8 +1145,6 @@ win_determine_shadow(session_t *ps, win *w) {
   if (IsViewable == w->a.map_state)
     shadow_new = (ps->o.wintype_shadow[w->window_type]
         && !win_match(ps, w, ps->o.shadow_blacklist, &w->cache_sblst)
-        && !(ps->o.shadow_ignore_shaped && w->bounding_shaped
-          && !w->rounded_corners)
         && !(ps->o.respect_prop_shadow));
 
   w->shadow = shadow_new;
@@ -1376,15 +1216,6 @@ win_update_opacity_rule(session_t *ps, win *w) {
   void *val = NULL;
   if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val))
     opacity = ((double) (long) val);
-
-  if (opacity == w->opacity_set)
-    return;
-
-  if (100.0 != opacity)
-    wid_set_opacity_prop(ps, w->id, opacity);
-  else if (100.0 != w->opacity_set)
-    wid_rm_opacity_prop(ps, w->id);
-  w->opacity_set = opacity;
 #endif
 }
 
@@ -1572,7 +1403,7 @@ add_win(session_t *ps, Window id, Window prev) {
 
     .id = None,
     .a = { },
-    .state = STATE_UNMAPPED,
+    .state = STATE_INVISIBLE,
 #ifdef CONFIG_XINERAMA
     .xinerama_scr = -1,
 #endif
@@ -1588,8 +1419,6 @@ add_win(session_t *ps, Window id, Window prev) {
     .widthb = 0,
     .heightb = 0,
     .destroyed = false,
-    .bounding_shaped = false,
-    .rounded_corners = false,
     .to_paint = false,
     .in_openclose = false,
 
@@ -1614,12 +1443,8 @@ add_win(session_t *ps, Window id, Window prev) {
     .cache_oparule = NULL,
 
     .opacity = 0.0,
-    .opacity_tgt = 100.0,
 	.fadeTime = 0.0,
 	.fadeDuration = -1.0,
-    .opacity_prop = 100.0,
-    .opacity_prop_client = 100.0,
-    .opacity_set = OPAQUE,
 
     .fade = false,
     .fade_force = UNSET,
@@ -1914,11 +1739,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
           w->has_frame = win_has_frame(w);
 
       calc_win_size(ps, w);
-
-      // Rounded corner detection is affected by window size
-      if (ps->shape_exists && ps->o.shadow_ignore_shaped
-          && ps->o.detect_rounded_corners && w->bounding_shaped)
-        win_update_shape(ps, w);
     }
 
     if (factor_change) {
@@ -1995,13 +1815,10 @@ destroy_win(session_t *ps, Window id) {
   if (w) {
     w->destroyed = true;
 
-    // Set fading callback
-    // @LEAK @PERFORMANCE: We override the unmap callback here, and never call
-    // it.
-	w->state = STATE_DESTROYING;
-    /* set_fade_callback(ps, w, destroy_callback, false); */
+    // You can only destroy a window that is already hiding or invisible
+    assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
 
-    win_start_opacity(w, 0.0, ps->o.opacity_fade_time);
+    w->state = STATE_DESTROYING;
 
 #ifdef CONFIG_DBUS
     // Send D-Bus signal
@@ -2257,7 +2074,6 @@ static void win_set_focused(session_t *ps, win *w, bool focused) {
 
         ps->active_win = w;
 
-        printf("ACTIVATING %s\n", w->name);
         w->state = STATE_ACTIVATING;
         win_start_opacity(w, ps->o.active_opacity, ps->o.opacity_fade_time);
 
@@ -2967,20 +2783,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
       win_upd_wintype(ps, w);
   }
 
-  // If _NET_WM_OPACITY changes
-  if (ev->atom == ps->atom_opacity) {
-    win *w = NULL;
-    if ((w = find_win(ps, ev->window)))
-      w->opacity_prop = wid_get_opacity_prop(ps, w->id, 100.0);
-    else if (ps->o.detect_client_opacity
-        && (w = find_toplevel(ps, ev->window)))
-      w->opacity_prop_client = wid_get_opacity_prop(ps, w->client_win,
-            100.0);
-    if (w) {
-      w->flags |= WFLAG_OPCT_CHANGE;
-    }
-  }
-
   // If frame extents property changes
   if (ev->atom == ps->atom_frame_extents) {
     win *w = find_toplevel(ps, ev->window);
@@ -3065,9 +2867,6 @@ ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     // Mark the new border_size as damaged
     add_damage(ps, copy_region(ps, w->border_size));
   }
-
-  // Redo bounding shape detection and rounded corner detection
-  win_update_shape(ps, w);
 
   update_reg_ignore_expire(ps, w);
 }
@@ -3322,11 +3121,6 @@ usage(int ret) {
     "--no-fading-destroyed-argb\n"
     "  Do not fade destroyed ARGB windows with WM frame. Workaround of bugs\n"
     "  in Openbox, Fluxbox, etc.\n"
-    "\n"
-    "--shadow-ignore-shaped\n"
-    "  Do not paint shadows on shaped windows. (Deprecated, use\n"
-    "  --shadow-exclude \'bounding_shaped\' or\n"
-    "  --shadow-exclude \'bounding_shaped && !rounded_corners\' instead.)\n"
     "\n"
     "--detect-rounded-corners\n"
     "  Try to detect windows with rounded corners and don't consider\n"
@@ -4081,9 +3875,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --mark-ovredir-focused
   lcfg_lookup_bool(&cfg, "mark-ovredir-focused",
       &ps->o.mark_ovredir_focused);
-  // --detect-rounded-corners
-  lcfg_lookup_bool(&cfg, "detect-rounded-corners",
-      &ps->o.detect_rounded_corners);
   // --xinerama-shadow-crop
   lcfg_lookup_bool(&cfg, "xinerama-shadow-crop",
       &ps->o.xinerama_shadow_crop);
@@ -4413,7 +4204,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       P_CASEBOOL(264, mark_ovredir_focused);
       P_CASEBOOL(265, no_fading_openclose);
       P_CASEBOOL(266, shadow_ignore_shaped);
-      P_CASEBOOL(267, detect_rounded_corners);
       P_CASEBOOL(268, detect_client_opacity);
       P_CASELONG(269, refresh_rate);
       case 270:
@@ -4597,7 +4387,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
  */
 static void
 init_atoms(session_t *ps) {
-  ps->atom_opacity = get_atom(ps, "_NET_WM_WINDOW_OPACITY");
   ps->atom_frame_extents = get_atom(ps, "_NET_FRAME_EXTENTS");
   ps->atom_client = get_atom(ps, "WM_STATE");
   ps->atom_name = XA_WM_NAME;
@@ -5397,7 +5186,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .mark_ovredir_focused = false,
       .fork_after_register = false,
       .synchronize = false,
-      .detect_rounded_corners = false,
       .paint_on_overlay = false,
       .blur_level = 0,
       .unredir_if_possible = false,
@@ -5516,7 +5304,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .dbe_exists = false,
     .xrfilter_convolution_exists = false,
 
-    .atom_opacity = None,
     .atom_frame_extents = None,
     .atom_client = None,
     .atom_name = None,
@@ -6106,9 +5893,9 @@ session_run(session_t *ps) {
         }
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
-        struct ProgramZone* rootZone = zone_package(&ZONE_global);
+        struct ZoneEvent* event_stream = zone_package(&ZONE_global);
 #ifdef DEBUG_PROFILE
-        profiler_render(rootZone);
+        profiler_render(event_stream);
 #endif
 
         if (ps->o.vsync) {
