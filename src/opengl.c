@@ -646,7 +646,7 @@ glx_render_(session_t *ps, const struct Texture* ptex,
 
   shader_set_future_uniform_bool(global_type->invert, neg);
   shader_set_future_uniform_bool(global_type->flip, ptex->flipped);
-  shader_set_future_uniform_float(global_type->opacity, opacity);
+  shader_set_future_uniform_float(global_type->opacity, (float)opacity);
   shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
   shader_use(global_program);

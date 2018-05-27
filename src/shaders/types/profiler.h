@@ -3,5 +3,6 @@
 #define SHADER_STRUCT_NAME Profiler
 
 #define UNIFORMS_FOREACH(M) \
-    M(mvp)
-#define UNIFORMS_COUNT 1
+    M(mvp)                  \
+    M(color)
+#define UNIFORMS_COUNT 2

@@ -145,7 +145,7 @@ void win_start_opacity(win* w, double opacity, double duration) {
     size_t nextIndex = (w->opacity_fade.tail + 1) % FADE_KEYFRAMES;
     if(nextIndex == w->opacity_fade.head) {
         printf("Warning: Shoving something off the opacity animation\n");
-        w->opacity_fade.head++;
+        w->opacity_fade.head = (w->opacity_fade.head + 1) % FADE_KEYFRAMES;
     }
 
     struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[nextIndex];
@@ -318,7 +318,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
 
     shader_set_future_uniform_bool(global_type->invert, w->invert_color);
     shader_set_future_uniform_bool(global_type->flip, w->drawable.texture.flipped);
-    shader_set_future_uniform_float(global_type->opacity, w->opacity / 100.0);
+    shader_set_future_uniform_float(global_type->opacity, (float)(w->opacity / 100.0));
     shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
     // Dimming the window if needed
@@ -357,20 +357,70 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
     glx_mark(ps, w->id, false);
 }
 
-static void win_draw_debug(session_t* ps, win* w, float z) {
+static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
     Vector2 scale = {{1, 1}};
 
     glDisable(GL_DEPTH_TEST);
+    Vector2 winPos;
     Vector2 pen;
     {
         Vector2 xPen = {{w->a.x, w->a.y}};
         Vector2 size = {{w->widthb, w->heightb}};
-        pen = X11_rectpos_to_gl(ps, &xPen, &size);
+        winPos = X11_rectpos_to_gl(ps, &xPen, &size);
+        pen = winPos;
     }
 
     {
-        Vector2 op = {{0, w->heightb - 20}};
-        vec2_add(&pen, &op);
+        Vector2 barSize = {{200, 25}};
+        Vector3 fgColor = {{0.0, 0.4, 0.5}};
+        Vector3 bgColor = {{.1, .1, .1}};
+        for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
+            // Increment before the body to skip head and process tail
+            i = (i+1) % FADE_KEYFRAMES;
+
+            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
+
+            double x = keyframe->time / keyframe->duration;
+
+            Vector3 pos3 = vec3_from_vec2(&pen, 1.0);
+            draw_colored_rect(face, &pos3, &barSize, &bgColor);
+            Vector3 filledPos3 = pos3;
+            filledPos3.x += 5;
+            filledPos3.y += 5;
+            Vector2 filledSize = barSize;
+            filledSize.x -= 10;
+            filledSize.y -= 10;
+            filledSize.x *= x;
+            draw_colored_rect(face, &filledPos3, &filledSize, &fgColor);
+
+            pen.y += 10;
+            pen.x += 10;
+
+            char* text;
+            asprintf(&text, "slot %zu Target: %f", i, keyframe->target);
+            text_draw(&debug_font, text, &pen, &scale);
+            free(text);
+
+            pen.x -= 10;
+            pen.y += barSize.y - 10;
+        }
+
+    }
+
+    {
+        char* text;
+        asprintf(&text, "Opacity : %f", w->opacity);
+        text_draw(&debug_font, text, &pen, &scale);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y += size.y;
+        free(text);
+    }
+
+    {
+        pen.x = winPos.x;
+        pen.y = winPos.y + w->heightb - 20;
     }
 
     {
@@ -405,6 +455,7 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         pen.y -= size.y;
         free(text);
     }
+
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -425,7 +476,7 @@ void win_draw(session_t* ps, win* w, float z) {
 
     win_drawcontents(ps, w, z);
 
-    win_draw_debug(ps, w, z);
+    win_draw_debug(ps, face, w, z);
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {

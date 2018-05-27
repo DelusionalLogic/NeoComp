@@ -481,7 +481,7 @@ void shader_set_future_uniform_bool(struct shader_value* uniform, bool value) {
     uniform->set = true;
 }
 
-void shader_set_future_uniform_float(struct shader_value* uniform, double value) {
+void shader_set_future_uniform_float(struct shader_value* uniform, float value) {
     uniform->value.flt = value;
     uniform->set = true;
 }

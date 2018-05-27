@@ -118,10 +118,11 @@ static void draw(const Vector2* pos, const Vector2* size) {
     struct shader_program* profiler_program = assets_load("profiler.shader");
     if(profiler_program->shader_type_info != &profiler_info) {
         printf("Shader was not a profiler shader\n");
-        // @INCOMPLETE: Make sure the config is correct
         return;
     }
-    struct Global* profiler_type = profiler_program->shader_type;
+    struct Profiler* profiler_type = profiler_program->shader_type;
+    Vector3 color = {{.2, .2, .3}};
+    shader_set_future_uniform_vec3(profiler_type->color, &color);
     shader_use(profiler_program);
 
     float bar_height = size->y / (NUM_TRACKS+1);

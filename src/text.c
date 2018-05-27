@@ -82,7 +82,7 @@ static void draw_letter(struct Font* font, struct Character* letter, Vector2* po
     struct Text* text_type = text_program->shader_type;
 
     shader_set_future_uniform_bool(text_type->flip, true);
-    shader_set_future_uniform_float(text_type->opacity, 1.0);
+    shader_set_future_uniform_float(text_type->opacity, (float)1.0);
     shader_set_future_uniform_sampler(text_type->tex_scr, 0);
 
     shader_use(text_program);

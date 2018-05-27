@@ -13,5 +13,7 @@ extern Matrix view;
 
 void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size);
 
+void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector3* color);
+
 void draw_tex(struct face* face, const struct Texture* texture,
         const Vector3* pos, const Vector2* size);

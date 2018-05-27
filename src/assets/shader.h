@@ -65,5 +65,10 @@ void shader_use(const struct shader_program* shader);
 void shader_set_uniform_bool(struct shader_value* location, bool value);
 void shader_set_uniform_float(struct shader_value* location, float value);
 void shader_set_uniform_vec2(struct shader_value* location, const Vector2* value);
-void shader_set_uniform_vec3(struct shader_value* location, const Vector3* value);
 void shader_set_uniform_sampler(struct shader_value* location, int value);
+
+void shader_set_future_uniform_bool(struct shader_value* location, bool value);
+void shader_set_future_uniform_float(struct shader_value* location, float value);
+void shader_set_future_uniform_vec2(struct shader_value* location, const Vector2* value);
+void shader_set_future_uniform_vec3(struct shader_value* location, const Vector3* value);
+void shader_set_future_uniform_sampler(struct shader_value* location, int value);
