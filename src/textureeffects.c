@@ -28,10 +28,11 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
 
     struct Downsample* downscale_type = downscale_program->shader_type;
 
+    shader_set_future_uniform_bool(downscale_type->flip, false);
+    shader_set_future_uniform_sampler(downscale_type->tex_scr, 0);
+
     // Use the shader
     shader_use(downscale_program);
-
-    shader_set_uniform_bool(downscale_type->flip, false);
 
     // Disable the options. We will restore later
     glDisable(GL_STENCIL_TEST);
@@ -133,8 +134,10 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
 
 
     // Use the shader
+    shader_set_future_uniform_bool(upsample_type->flip, false);
+    shader_set_future_uniform_sampler(upsample_type->tex_scr, 0);
+
     shader_use(upsample_program);
-    shader_set_uniform_bool(upsample_type->flip, false);
 
     // Upscale
     for (int i = 0; i < stength; i++) {

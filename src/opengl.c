@@ -642,15 +642,17 @@ glx_render_(session_t *ps, const struct Texture* ptex,
   }
 
   struct Global* global_type = global_program->shader_type;
+
+  shader_set_future_uniform_bool(global_type->invert, neg);
+  shader_set_future_uniform_bool(global_type->flip, ptex->flipped);
+  shader_set_future_uniform_float(global_type->opacity, opacity);
+  shader_set_future_uniform_sampler(global_type->tex_scr, 0);
+
   shader_use(global_program);
 
   // Bind texture
   texture_bind(ptex, GL_TEXTURE0);
 
-  shader_set_uniform_float(global_type->invert, neg);
-  shader_set_uniform_float(global_type->flip, ptex->flipped);
-  shader_set_uniform_float(global_type->opacity, opacity);
-  shader_set_uniform_sampler(global_type->tex_scr, 0);
 
 #ifdef DEBUG_GLX
   printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);

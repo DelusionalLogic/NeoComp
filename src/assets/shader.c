@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "assets.h"
 #include "../shaders/shaderinfo.h"
@@ -123,6 +124,73 @@ static void shader_program_link(struct shader_program* program) {
     }
 }
 
+static int parse_type(char* def, struct shader_value* uniform) {
+    char type[64];
+    char value[64];
+    int matches = sscanf(def, "%63s %63[^\n]", type, value);
+
+    // An EOF from matching means either an error or empty line. We will
+    // just swallow those.
+    if(matches == EOF)
+        return 1;
+
+    if(matches != 2 && matches != 1) {
+        printf("Wrongly formatted variable def \"%s\", ignoring\n", def);
+        return 1;
+    }
+
+    if(strcmp(type, "bool") == 0) {
+        uniform->type = SHADER_VALUE_BOOL;
+
+        uniform->required = true;
+        if(matches == 2) {
+            uniform->required = false;
+
+            if(strcmp(value, "true") == 0) {
+                uniform->stock.boolean = true;
+            } else if(strcmp(value, "false") == 0) {
+                uniform->stock.boolean = false;
+            } else {
+                printf("Unknown value for boolean \"%s\"\n", value);
+                return 1;
+            }
+        }
+    } else if(strcmp(type, "float") == 0) {
+        uniform->type = SHADER_VALUE_FLOAT;
+        uniform->required = true;
+        if(matches == 2) {
+            uniform->required = false;
+
+            uniform->stock.flt = atof(value);
+        }
+    } else if(strcmp(type, "sampler") == 0) {
+        uniform->type = SHADER_VALUE_SAMPLER;
+        uniform->required = true;
+    } else if(strcmp(type, "vec2") == 0) {
+        uniform->type = SHADER_VALUE_VEC2;
+
+        uniform->required = true;
+        if(matches == 2) {
+            uniform->required = false;
+            int matches = sscanf(value, "%f,%f", &uniform->stock.vector.x, &uniform->stock.vector.y);
+
+            if(matches != 2) {
+                printf("Wrongly formatted vector2 def \"%s\", ignoring\n", value);
+                return 1;
+            }
+        }
+        return 0;
+    } else if(strcmp(type, "ignored") == 0) {
+        uniform->type = SHADER_VALUE_IGNORED;
+        uniform->required = false;
+        return 0;
+    } else {
+        printf("Unknown uniform type \"%s\"\n", type);
+        return 1;
+    }
+    return 0;
+}
+
 struct shader_program* shader_program_load_file(const char* path) {
     FILE* file = fopen(path, "r");
     if(file == NULL) {
@@ -137,6 +205,9 @@ struct shader_program* shader_program_load_file(const char* path) {
     program->gl_program = -1;
 
     char* shader_type = NULL;
+
+    size_t uniform_cursor = 0;
+    char names[SHADER_UNIFORMS_MAX][64] = {0};
 
     char* line = NULL;
     size_t line_size = 0;
@@ -220,6 +291,23 @@ struct shader_program* shader_program_load_file(const char* path) {
                 printf("Failed inserting %s into the attribute array, ignoring\n", name);
             }
             *index = key;
+        } else if(strcmp(type, "uniform") == 0) {
+            if(uniform_cursor == SHADER_UNIFORMS_MAX) {
+                printf("Too many uniforms in shader %s\n", path);
+                continue;
+            }
+            char rest[128];
+            int matches = sscanf(value, "%63s %127[^\n]", names[uniform_cursor], rest);
+
+            if(matches != 2) {
+                printf("Couldn't parse the uniform definition \"%s\"\n", value);
+                continue;
+            }
+
+            if(parse_type(rest, &program->uniforms[uniform_cursor]) != 0)
+                continue;
+
+            uniform_cursor++;
         } else {
             printf("Unknown directive \"%s\" in shader file %s, ignoring\n", line, path);
         }
@@ -250,7 +338,6 @@ struct shader_program* shader_program_load_file(const char* path) {
         printf("Type not set in %s\n", path);
         // @LEAK We might be leaking the vertex shader, but the assets manager
         // still has a hold of it
-        free(shader_type);
         free(program);
         return NULL;
     }
@@ -277,12 +364,30 @@ struct shader_program* shader_program_load_file(const char* path) {
         return NULL;
     }
 
+    program->uniforms_num = uniform_cursor;
+
+    // Bind the static shadertype members to the shader_value structs
     for(int i = 0; i < shader_info->member_count; i++) {
         struct shader_uniform_info* uniform_info = &shader_info->members[i];
-        GLint* field = (GLint*)(program->shader_type + uniform_info->offset);
-        *field = glGetUniformLocation(program->gl_program, uniform_info->name);
+        struct shader_value** field = (struct shader_value**)(program->shader_type + uniform_info->offset);
+        *field = NULL;
+        for(int j = 0; j < uniform_cursor; j++) {
+            if(strcmp(names[j], uniform_info->name) == 0) {
+                *field = &program->uniforms[j];
+                break;
+            }
+        }
+        if(*field == NULL) {
+            printf("Uniform \"%s\" is not defined in shader %s\n", uniform_info->name, path);
+            exit(1);
+        }
     }
 
+    // Bind the uniforms to the shader program
+    for(int i = 0; i < uniform_cursor; i++) {
+        struct shader_value* uniform = &program->uniforms[i];
+        uniform->gl_uniform = glGetUniformLocation(program->gl_program, names[i]);
+    }
 
     return program;
 }
@@ -295,22 +400,72 @@ void shader_program_unload_file(struct shader_program* asset) {
     free(asset);
 }
 
+static void set_shader_uniform(const struct shader_value* uniform, const union shader_uniform_value* value) {
+    switch(uniform->type) {
+        case SHADER_VALUE_BOOL:
+            glUniform1i(uniform->gl_uniform, value->boolean);
+            break;
+        case SHADER_VALUE_SAMPLER:
+            glUniform1i(uniform->gl_uniform, value->sampler);
+            break;
+        case SHADER_VALUE_FLOAT:
+            glUniform1f(uniform->gl_uniform, (double)value->flt);
+            break;
+    }
+}
+
 void shader_use(const struct shader_program* shader) {
+    for(size_t i = 0; i < shader->uniforms_num; i++) {
+        const struct shader_value* uniform = &shader->uniforms[i];
+        if(uniform->required && !uniform->set) {
+            printf("WARNING: Required uniform %d not set in %s\n", i, shader->shader_type_info->name);
+        }
+    }
+
     glUseProgram(shader->gl_program);
+
+    for(size_t i = 0; i < shader->uniforms_num; i++) {
+        const struct shader_value* uniform = &shader->uniforms[i];
+        if(uniform->set) {
+            set_shader_uniform(uniform, &uniform->value);
+        } else if(!uniform->required) {
+            set_shader_uniform(uniform, &uniform->stock);
+        }
+    }
 }
 
-void shader_set_uniform_bool(GLint location, bool value) {
-    glUniform1i(location, value);
+void shader_set_uniform_bool(struct shader_value* uniform, bool value) {
+    glUniform1i(uniform->gl_uniform, value);
 }
 
-void shader_set_uniform_float(GLint location, float value) {
-    glUniform1f(location, value);
+void shader_set_uniform_float(struct shader_value* uniform, float value) {
+    glUniform1f(uniform->gl_uniform, value);
 }
 
-void shader_set_uniform_vec2(GLint location, const Vector2* value) {
-    glUniform2f(location, value->x, value->y);
+void shader_set_uniform_vec2(struct shader_value* uniform, const Vector2* value) {
+    glUniform2f(uniform->gl_uniform, value->x, value->y);
 }
 
-void shader_set_uniform_sampler(GLint location, int value) {
-    glUniform1i(location, value);
+void shader_set_uniform_sampler(struct shader_value* uniform, int value) {
+    glUniform1i(uniform->gl_uniform, value);
+}
+
+void shader_set_future_uniform_bool(struct shader_value* uniform, bool value) {
+    uniform->value.boolean = value;
+    uniform->set = true;
+}
+
+void shader_set_future_uniform_float(struct shader_value* uniform, double value) {
+    uniform->value.flt = value;
+    uniform->set = true;
+}
+
+void shader_set_future_uniform_vec2(struct shader_value* uniform, const Vector2* value) {
+    uniform->value.vector = *value;
+    uniform->set = true;
+}
+
+void shader_set_future_uniform_sampler(struct shader_value* uniform, int value) {
+    uniform->value.sampler = value;
+    uniform->set = true;
 }

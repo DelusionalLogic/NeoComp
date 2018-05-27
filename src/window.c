@@ -308,25 +308,24 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
     }
 
     struct Global* global_type = global_program->shader_type;
-    shader_use(global_program);
 
-    // Bind texture
-    texture_bind(&w->drawable.texture, GL_TEXTURE0);
-
-    shader_set_uniform_float(global_type->invert, w->invert_color);
-    shader_set_uniform_float(global_type->flip, w->drawable.texture.flipped);
-    shader_set_uniform_float(global_type->opacity, w->opacity / 100);
-    shader_set_uniform_sampler(global_type->tex_scr, 0);
+    shader_set_future_uniform_bool(global_type->invert, w->invert_color);
+    shader_set_future_uniform_bool(global_type->flip, w->drawable.texture.flipped);
+    shader_set_future_uniform_float(global_type->opacity, w->opacity / 100.0);
+    shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
     // Dimming the window if needed
     if (w->dim) {
         double dim_opacity = ps->o.inactive_dim;
         if (!ps->o.inactive_dim_fixed)
             dim_opacity *= w->opacity / 100.0;
-        shader_set_uniform_float(global_type->dim, dim_opacity);
-    } else {
-        shader_set_uniform_float(global_type->dim, 0.0);
+        shader_set_future_uniform_float(global_type->dim, dim_opacity);
     }
+
+    shader_use(global_program);
+
+    // Bind texture
+    texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
 #ifdef DEBUG_GLX
     printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);

@@ -110,14 +110,12 @@ void win_calc_shadow(session_t* ps, win* w) {
         view = old_view;
         return;
     }
-
     struct Global* global_type = global_program->shader_type;
-    shader_use(global_program);
 
-    shader_set_uniform_float(global_type->invert, false);
-    shader_set_uniform_float(global_type->flip, true);
-    shader_set_uniform_float(global_type->opacity, 1.0);
-    shader_set_uniform_sampler(global_type->tex_scr, 0);
+    shader_set_future_uniform_bool(global_type->flip, true);
+    shader_set_future_uniform_sampler(global_type->tex_scr, 0);
+
+    shader_use(global_program);
 
     {
 

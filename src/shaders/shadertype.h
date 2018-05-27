@@ -5,7 +5,7 @@
 #define TO_STR(A) #A
 
 #define WRITE_MEMBER(name) \
-    GLint name;
+    struct shader_value* name;
 
 #define WRITE_MEMBER_INFO(name)    \
     {TO_STR(name), offsetof(struct SHADER_STRUCT_NAME, name)},
@@ -36,7 +36,7 @@ struct SHADER_STRUCT_NAME {
     UNIFORMS_FOREACH(WRITE_MEMBER)
 };
 
-#define MEMBER_COUNT (sizeof(struct SHADER_STRUCT_NAME) / sizeof(GLint))
+#define MEMBER_COUNT (sizeof(struct SHADER_STRUCT_NAME) / sizeof(struct shader_value*))
 
 #define EVAL2(name) TO_STR(name)
 #define EVAL() EVAL2(SHADER_NAME)

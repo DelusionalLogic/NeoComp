@@ -7,7 +7,7 @@
 
 Matrix view;
 
-void draw_rect(struct face* face, GLuint mvp, Vector3 pos, Vector2 size) {
+void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size) {
     Matrix root = view;
     {
         Matrix op = {{
@@ -19,7 +19,7 @@ void draw_rect(struct face* face, GLuint mvp, Vector3 pos, Vector2 size) {
         root = mat4_multiply(&root, &op);
     }
 
-    glUniformMatrix4fv(mvp, 1, GL_FALSE, root.m);
+    glUniformMatrix4fv(mvp->gl_uniform, 1, GL_FALSE, root.m);
 
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
@@ -41,10 +41,11 @@ void draw_tex(struct face* face, const struct Texture* texture,
         return;
     }
     struct Passthough* passthough_type = passthough_program->shader_type;
-    shader_use(passthough_program);
+    shader_set_future_uniform_bool(passthough_type->flip, texture->flipped);
+    shader_set_future_uniform_float(passthough_type->opacity, 1.0);
+    shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
 
-    shader_set_uniform_bool(passthough_type->flip, texture->flipped);
-    shader_set_uniform_float(passthough_type->opacity, 1.0);
+    shader_use(passthough_program);
 
     texture_bind(texture, GL_TEXTURE0);
 
