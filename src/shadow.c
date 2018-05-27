@@ -104,25 +104,20 @@ void win_calc_shadow(session_t* ps, win* w) {
     texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
     struct shader_program* global_program = assets_load("shadow.shader");
-    if(global_program->shader_type_info != &global_info) {
-        printf_errf("Shader was not a global shader\n");
+    if(global_program->shader_type_info != &shadow_info) {
+        printf_errf("Shader was not a shadow shader\n");
         framebuffer_delete(&framebuffer);
         view = old_view;
         return;
     }
     struct Global* global_type = global_program->shader_type;
 
-    shader_set_future_uniform_bool(global_type->flip, true);
+    shader_set_future_uniform_bool(global_type->flip, w->drawable.texture.flipped);
     shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
     shader_use(global_program);
 
     {
-
-#ifdef DEBUG_GLX
-        printf_dbgf("SHADOW %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
-#endif
-
         {
             Vector3 pos = vec3_from_vec2(&w->shadow_cache.border, 0.0);
             draw_rect(face, global_type->mvp, pos, size);

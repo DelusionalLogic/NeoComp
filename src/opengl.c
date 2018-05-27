@@ -285,6 +285,7 @@ glx_init(session_t *ps, bool need_render) {
   add_shader_type(&passthough_info);
   add_shader_type(&profiler_info);
   add_shader_type(&text_info);
+  add_shader_type(&shadow_info);
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);

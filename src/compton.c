@@ -884,6 +884,10 @@ map_win(session_t *ps, Window id) {
   printf_dbgf("(%#010lx): type %s\n", w->id, WINTYPES[w->window_type]);
 #endif
 
+  // @HACK: We need to save the old state here before recheck focus might
+  // change it. It kinda sucks, but such is life.
+  enum WindowState oldstate = w->state;
+
   // FocusIn/Out may be ignored when the window is unmapped, so we must
   // recheck focus here
   if (ps->o.track_focus)
@@ -896,6 +900,25 @@ map_win(session_t *ps, Window id) {
 
   // Many things above could affect shadow
   win_determine_shadow(ps, w);
+
+  win_determine_blur_background(ps, w);
+
+  w->damaged = false;
+
+  // If the window was invisible we need to bind it again, since it was
+  // unbound.
+  if(ps->redirected && oldstate == STATE_INVISIBLE) {
+      // configure_win might rebind, so we need to bind before
+      if(!wd_bind(&w->drawable)) {
+          printf_errf("Failed binding window drawable %s", w->name);
+          return;
+      }
+
+      if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
+          printf_errf("Failed resizing window blur %s", w->name);
+          return;
+      }
+  }
 
   // Set fading state
   w->in_openclose = true;
@@ -917,23 +940,6 @@ map_win(session_t *ps, Window id) {
   }
 
   assert(w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING);
-
-  win_determine_blur_background(ps, w);
-
-  w->damaged = false;
-
-  if(ps->redirected) {
-      // configure_win might rebind, so we need to bind before
-      if(!wd_bind(&w->drawable)) {
-          printf_errf("Failed binding window drawable %s", w->name);
-          return;
-      }
-
-      if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
-          printf_errf("Failed resizing window blur %s", w->name);
-          return;
-      }
-  }
 
   /* if any configure events happened while
      the window was unmapped, then configure
@@ -1050,8 +1056,16 @@ static double calc_opacity(session_t *ps, win *w) {
     if (w->destroyed || IsViewable != w->a.map_state) {
         opacity = 0.0;
     } else {
-        // Try obeying opacity property and window type opacity firstly
+        // Try obeying window type opacity firstly
         opacity = ps->o.wintype_opacity[w->window_type];
+        if(opacity != 100.0)
+            return opacity;
+
+        long val;
+        if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
+            printf("It matches\n");
+            return (double)val;
+        }
 
         // Respect inactive_opacity in some cases
         if (ps->o.inactive_opacity && false == w->focused
@@ -3741,8 +3755,7 @@ parse_cfg_condlst_opct(session_t *ps, const config_t *pcfg, const char *name) {
     if (config_setting_is_array(setting)) {
       int i = config_setting_length(setting);
       while (i--)
-        if (!parse_rule_opacity(ps, config_setting_get_string_elem(setting,
-                i)))
+        if (!parse_rule_opacity(ps, config_setting_get_string_elem(setting, i)))
           exit(1);
     }
     // Treat it as a single pattern if it's a string

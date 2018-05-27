@@ -202,9 +202,19 @@ void win_update(session_t* ps, win* w, double dt) {
     zone_enter(&ZONE_update_window);
     if(!fade_done(&w->opacity_fade)) {
         zone_enter(&ZONE_update_fade);
+
+        // If we aren't redirected we just want to skip animations
+        if(!ps->redirected) {
+            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[w->opacity_fade.tail];
+            // We're done, clean out the time and set this as the head
+            keyframe->time = 0.0;
+            w->opacity_fade.head = w->opacity_fade.tail;
+            w->opacity_fade.value = keyframe->target;
+        }
+
         // @CLEANUP: Maybe a while loop?
         for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
-            // +1 to skip the head
+            // Increment before the body to skip head and process tail
             i = (i+1) % 4;
 
             struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
@@ -232,9 +242,6 @@ void win_update(session_t* ps, win* w, double dt) {
 
         // If the fade isn't done, then damage the blur of everyone above
         for (win *t = w->prev_trans; t; t = t->prev_trans) {
-            // @CLEANUP: Ideally we should just recalculate the blur right now. We need
-            // to render the windows behind this though, and that takes time. For now we
-            // just do it indirectly
             if(win_overlap(w, t))
                 t->glx_blur_cache.damaged = true;
         }
@@ -418,7 +425,7 @@ void win_draw(session_t* ps, win* w, float z) {
 
     win_drawcontents(ps, w, z);
 
-    /* win_draw_debug(ps, w, z); */
+    win_draw_debug(ps, w, z);
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {

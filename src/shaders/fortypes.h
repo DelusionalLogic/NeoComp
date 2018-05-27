@@ -21,3 +21,7 @@
 #define THIS "types/text.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/shadow.h"
+#include HEADER
+#undef THIS
