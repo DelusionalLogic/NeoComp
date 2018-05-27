@@ -14,6 +14,9 @@
 #define MS_PER_SEC 1000
 
 struct Block {
+    size_t enter_event;
+    size_t leave_event;
+
     struct timespec* start_time;
     struct ProgramZone* zone;
     double millis;
@@ -74,6 +77,7 @@ static void process(struct ZoneEventStream* stream) {
             assert(depth < NUM_TRACKS);
             struct Block* block = getNextBlock(depth);
 
+            block->enter_event = i;
             block->start_time = &cursor->time;
 
             float offset = timespec_ilerp(&stream->start, &stream->end, &cursor->time);
@@ -87,6 +91,8 @@ static void process(struct ZoneEventStream* stream) {
             struct Block* block = getCurrentBlock(depth);
 
             assert(block->zone == cursor->zone);
+
+            block->leave_event = i;
 
             struct timespec duration = {0};
             timespec_subtract(&duration, &cursor->time, block->start_time);

@@ -3,7 +3,7 @@
 #include <time.h>
 #include <stdbool.h>
 
-#define ZONE_STREAM_LENGTH 1024
+#define ZONE_STREAM_LENGTH 2048
 
 struct ProgramZone {
     int id;
@@ -13,7 +13,6 @@ struct ProgramZone {
 enum ZoneEventType {
     ZE_ENTER,
     ZE_LEAVE,
-    ZE_END,
 };
 
 struct ZoneEvent {
@@ -21,6 +20,8 @@ struct ZoneEvent {
 
     struct timespec time;
     enum ZoneEventType type;
+
+    char* location;
 };
 
 struct ZoneEventStream {
@@ -39,9 +40,14 @@ struct ZoneEventStream {
         .name = #nme,                       \
     }
 
-void zone_enter(struct ProgramZone* zone);
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
 
-void zone_leave(struct ProgramZone* zone);
+#define zone_enter(zone) zone_enter_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
+#define zone_leave(zone) zone_leave_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
+
+void zone_enter_raw(struct ProgramZone* zone, char* location);
+void zone_leave_raw(struct ProgramZone* zone, char* location);
 
 void zone_start(struct ProgramZone* zone);
 struct ZoneEventStream* zone_package(struct ProgramZone* zone);

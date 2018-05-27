@@ -16,16 +16,21 @@ static void zone_event(struct ProgramZone* zone, enum ZoneEventType type, struct
     }
 }
 
-void zone_enter(struct ProgramZone* zone) {
-    struct ZoneEvent* event = &stream.events[event_cursor];
-    zone_event(zone, ZE_ENTER, event);
-    event_cursor++;
+static struct ZoneEvent* reserve() {
+    assert(event_cursor < ZONE_STREAM_LENGTH);
+    return &stream.events[event_cursor++];
 }
 
-void zone_leave(struct ProgramZone* zone) {
-    struct ZoneEvent* event = &stream.events[event_cursor];
+void zone_enter_raw(struct ProgramZone* zone, char* location) {
+    struct ZoneEvent* event = reserve();
+    event->location = location;
+    zone_event(zone, ZE_ENTER, event);
+}
+
+void zone_leave_raw(struct ProgramZone* zone, char* location) {
+    struct ZoneEvent* event = reserve();
+    event->location = location;
     zone_event(zone, ZE_LEAVE, event);
-    event_cursor++;
 }
 
 void zone_start(struct ProgramZone* zone) {
