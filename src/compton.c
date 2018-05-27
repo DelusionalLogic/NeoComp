@@ -905,18 +905,28 @@ map_win(session_t *ps, Window id) {
 
   w->damaged = false;
 
-  // If the window was invisible we need to bind it again, since it was
-  // unbound.
-  if(ps->redirected && oldstate == STATE_INVISIBLE) {
-      // configure_win might rebind, so we need to bind before
-      if(!wd_bind(&w->drawable)) {
-          printf_errf("Failed binding window drawable %s", w->name);
-          return;
-      }
+  if(ps->redirected) {
+      // If the window was invisible we need to bind it again, since it was
+      // unbound.
+      if(oldstate == STATE_INVISIBLE) {
+          // configure_win might rebind, so we need to bind before
+          if(!wd_bind(&w->drawable)) {
+              printf_errf("Failed binding window drawable %s", w->name);
+              return;
+          }
 
-      if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
-          printf_errf("Failed resizing window blur %s", w->name);
-          return;
+          if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
+              printf_errf("Failed resizing window blur %s", w->name);
+              return;
+          }
+      } else if(oldstate == STATE_HIDING){
+          // If we were in the process of unmapping before we need to rebind
+          if(!wd_unbind(&w->drawable)) {
+              printf_errf("Failed unbinding window on resize");
+          }
+          if(!wd_bind(&w->drawable)) {
+              printf_errf("Failed rebinding window on resize");
+          }
       }
   }
 
