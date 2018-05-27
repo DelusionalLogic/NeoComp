@@ -22,6 +22,7 @@ enum shader_value_type {
     SHADER_VALUE_BOOL,
     SHADER_VALUE_FLOAT,
     SHADER_VALUE_VEC2,
+    SHADER_VALUE_VEC3,
     SHADER_VALUE_SAMPLER,
     SHADER_VALUE_IGNORED,
 };
@@ -30,6 +31,7 @@ union shader_uniform_value {
     bool boolean;
     double flt;
     Vector2 vector;
+    Vector3 vec3;
     GLint sampler;
 };
 
@@ -63,4 +65,5 @@ void shader_use(const struct shader_program* shader);
 void shader_set_uniform_bool(struct shader_value* location, bool value);
 void shader_set_uniform_float(struct shader_value* location, float value);
 void shader_set_uniform_vec2(struct shader_value* location, const Vector2* value);
+void shader_set_uniform_vec3(struct shader_value* location, const Vector3* value);
 void shader_set_uniform_sampler(struct shader_value* location, int value);

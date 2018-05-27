@@ -180,6 +180,26 @@ static int parse_type(char* def, struct shader_value* uniform) {
             }
         }
         return 0;
+    } else if(strcmp(type, "vec3") == 0) {
+        uniform->type = SHADER_VALUE_VEC3;
+
+        uniform->required = true;
+        if(matches == 2) {
+            uniform->required = false;
+            int matches = sscanf(
+                value,
+                "%f,%f,%f",
+                &uniform->stock.vec3.x,
+                &uniform->stock.vec3.y,
+                &uniform->stock.vec3.z
+            );
+
+            if(matches != 2) {
+                printf("Wrongly formatted vec3 def \"%s\", ignoring\n", value);
+                return 1;
+            }
+        }
+        return 0;
     } else if(strcmp(type, "ignored") == 0) {
         uniform->type = SHADER_VALUE_IGNORED;
         uniform->required = false;
@@ -207,7 +227,7 @@ struct shader_program* shader_program_load_file(const char* path) {
     char* shader_type = NULL;
 
     size_t uniform_cursor = 0;
-    char names[SHADER_UNIFORMS_MAX][64] = {0};
+    char names[SHADER_UNIFORMS_MAX][64] = {{0}};
 
     char* line = NULL;
     size_t line_size = 0;
@@ -405,11 +425,17 @@ static void set_shader_uniform(const struct shader_value* uniform, const union s
         case SHADER_VALUE_BOOL:
             glUniform1i(uniform->gl_uniform, value->boolean);
             break;
-        case SHADER_VALUE_SAMPLER:
-            glUniform1i(uniform->gl_uniform, value->sampler);
-            break;
         case SHADER_VALUE_FLOAT:
             glUniform1f(uniform->gl_uniform, (double)value->flt);
+            break;
+        case SHADER_VALUE_VEC2:
+            glUniform2f(uniform->gl_uniform, value->vector.x, value->vector.y);
+            break;
+        case SHADER_VALUE_VEC3:
+            glUniform3f(uniform->gl_uniform, value->vec3.x, value->vec3.y, value->vec3.z);
+            break;
+        case SHADER_VALUE_SAMPLER:
+            glUniform1i(uniform->gl_uniform, value->sampler);
             break;
     }
 }
@@ -418,7 +444,7 @@ void shader_use(const struct shader_program* shader) {
     for(size_t i = 0; i < shader->uniforms_num; i++) {
         const struct shader_value* uniform = &shader->uniforms[i];
         if(uniform->required && !uniform->set) {
-            printf("WARNING: Required uniform %d not set in %s\n", i, shader->shader_type_info->name);
+            printf("WARNING: Required uniform %zu not set in %s\n", i, shader->shader_type_info->name);
         }
     }
 
@@ -462,6 +488,11 @@ void shader_set_future_uniform_float(struct shader_value* uniform, double value)
 
 void shader_set_future_uniform_vec2(struct shader_value* uniform, const Vector2* value) {
     uniform->value.vector = *value;
+    uniform->set = true;
+}
+
+void shader_set_future_uniform_vec3(struct shader_value* uniform, const Vector3* value) {
+    uniform->value.vec3 = *value;
     uniform->set = true;
 }
 

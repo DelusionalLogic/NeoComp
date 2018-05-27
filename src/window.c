@@ -142,7 +142,7 @@ void win_start_opacity(win* w, double opacity, double duration) {
         w->opacity_fade.keyframes[0].duration = -1;
     }
 
-    size_t nextIndex = (w->opacity_fade.tail + 1) % 4;
+    size_t nextIndex = (w->opacity_fade.tail + 1) % FADE_KEYFRAMES;
     if(nextIndex == w->opacity_fade.head) {
         printf("Warning: Shoving something off the opacity animation\n");
         w->opacity_fade.head++;
@@ -215,7 +215,7 @@ void win_update(session_t* ps, win* w, double dt) {
         // @CLEANUP: Maybe a while loop?
         for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
             // Increment before the body to skip head and process tail
-            i = (i+1) % 4;
+            i = (i+1) % FADE_KEYFRAMES;
 
             struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
             if(keyframe->ignore == false){

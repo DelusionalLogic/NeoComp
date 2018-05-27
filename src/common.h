@@ -190,6 +190,8 @@ struct glx_shadow_cache {
     Vector2 border;
 };
 
+#define FADE_KEYFRAMES 10
+
 struct FadeKeyframe {
     double target;
 
@@ -202,7 +204,7 @@ struct FadeKeyframe {
     bool ignore;
 };
 struct Fading {
-    struct FadeKeyframe keyframes[4];
+    struct FadeKeyframe keyframes[FADE_KEYFRAMES];
     size_t head; // The current "active" keyframe
     size_t tail; // The last fading keyframe
 
