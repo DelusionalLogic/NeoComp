@@ -218,7 +218,7 @@ void win_update(session_t* ps, win* w, double dt) {
             i = (i+1) % FADE_KEYFRAMES;
 
             struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
-            if(keyframe->ignore == false){
+            if(!keyframe->ignore){
                 keyframe->time += dt;
             } else {
                 keyframe->ignore = false;
@@ -228,6 +228,7 @@ void win_update(session_t* ps, win* w, double dt) {
             if(x >= 1.0) {
                 // We're done, clean out the time and set this as the head
                 keyframe->time = 0.0;
+                keyframe->duration = -1;
                 w->opacity_fade.head = i;
 
                 // Force the value. We are still going to blend it with stuff

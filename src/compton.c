@@ -1805,11 +1805,6 @@ finish_destroy_win(session_t *ps, Window id) {
   }
 }
 
-void
-destroy_callback(session_t *ps, win *w) {
-  finish_destroy_win(ps, w->id);
-}
-
 static void
 destroy_win(session_t *ps, Window id) {
   win *w = find_win(ps, id);
@@ -5838,6 +5833,16 @@ session_run(session_t *ps) {
 
     // Main loop
     while (!ps->reset) {
+
+        zone_start(&ZONE_global);
+
+        zone_enter(&ZONE_input);
+
+        while (mainloop(ps));
+
+        zone_leave(&ZONE_input);
+
+        // Placed after mainloop to avoid counting input time
         timestamp currentTime;
         if(!getTime(&currentTime)) {
             printf_errf("Failed getting time");
@@ -5847,14 +5852,6 @@ session_run(session_t *ps) {
 
         double delta = timeDiff(&lastTime, &currentTime);
 
-        zone_start(&ZONE_global);
-
-        zone_enter(&ZONE_input);
-
-        while (mainloop(ps))
-            continue;
-
-        zone_leave(&ZONE_input);
 
         ps->skip_poll = false;
 
@@ -5891,8 +5888,8 @@ session_run(session_t *ps) {
 
         zone_leave(&ZONE_update);
 
-        for (win *w = t; w != NULL;) {
-            win* next = w->prev_trans;
+        for (win *w = ps->list; w != NULL;) {
+            win* next = w->next;
             if(w->state == STATE_DESTROYED) {
                 finish_destroy_win(ps, w->id);
             }
