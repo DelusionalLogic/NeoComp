@@ -2023,7 +2023,7 @@ static void win_update_focused(session_t *ps, win *w) {
     if(ps->o.mark_wmwin_focused && w->wmwin)
         w->focused = true;
 
-    if(ps->o.mark_ovredir_focused 
+    if(ps->o.mark_ovredir_focused
             && w->id == w->client_win && !w->wmwin) {
         w->focused = true;
     }
