@@ -664,24 +664,6 @@ win_set_leader(session_t *ps, win *w, Window leader);
 static void
 win_update_focused(session_t *ps, win *w);
 
-/**
- * Run win_update_focused() on all windows with the same leader window.
- *
- * @param leader leader window ID
- */
-static inline void
-group_update_focused(session_t *ps, Window leader) {
-  if (!leader)
-    return;
-
-  for (win *w = ps->list; w; w = w->next) {
-    if (win_get_leader(ps, w) == leader && !w->destroyed)
-      win_update_focused(ps, w);
-  }
-
-  return;
-}
-
 static inline void
 win_set_focused(session_t *ps, win *w, bool focused);
 

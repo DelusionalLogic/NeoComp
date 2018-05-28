@@ -1295,8 +1295,9 @@ win_upd_wintype(session_t *ps, win *w) {
       w->window_type = WINTYPE_DIALOG;
   }
 
-  if (w->window_type != wtype_old)
-    win_on_wtype_change(ps, w);
+  if (w->window_type != wtype_old) {
+      win_on_wtype_change(ps, w);
+  }
 }
 
 /**
@@ -2061,7 +2062,12 @@ static void win_set_focused(session_t *ps, win *w, bool focused) {
             Window leader = win_get_leader(ps, old_active);
             if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader && !group_is_focused(ps, leader)) {
                 ps->active_leader = None;
-                group_update_focused(ps, leader);
+
+                //Update the focused state of all other windows lead by leader
+                for (win *t = ps->list; t; t = t->next) {
+                    if (win_get_leader(ps, t) == leader)
+                        win_update_focused(ps, t);
+                }
             }
 
             win_update_focused(ps, old_active);
@@ -2084,6 +2090,8 @@ static void win_set_focused(session_t *ps, win *w, bool focused) {
         double opacity = calc_opacity(ps, w);
         w->state = STATE_DEACTIVATING;
         win_start_opacity(w, opacity, ps->o.opacity_fade_time);
+    } else {
+        assert(false);
     }
 
     assert(win_is_focused_real(ps, w) == focused);
@@ -2100,10 +2108,27 @@ static void win_set_focused(session_t *ps, win *w, bool focused) {
 
             ps->active_leader = leader;
 
-            group_update_focused(ps, active_leader_old);
-            group_update_focused(ps, leader);
+            //Update the focused state of all other windows lead by old leader
+            for (win *t = ps->list; t; t = t->next) {
+                if (win_get_leader(ps, t) == active_leader_old)
+                    win_update_focused(ps, t);
+            }
+
+            //Update the focused state of all other windows lead by leader
+            for (win *t = ps->list; t; t = t->next) {
+                if (win_get_leader(ps, t) == leader)
+                    win_update_focused(ps, t);
+            }
+        } else if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader
+                && !group_is_focused(ps, leader)) {
+            ps->active_leader = None;
+
+            //Update the focused state of all other windows lead by leader
+            for (win *t = ps->list; t; t = t->next) {
+                if (win_get_leader(ps, t) == leader)
+                    win_update_focused(ps, t);
+            }
         }
-        // If the group get unfocused, remove it from active_leader
     }
 
     // Update everything related to conditions
@@ -2162,8 +2187,17 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
     if (win_is_focused_real(ps, w) && cache_leader_old != cache_leader) {
       ps->active_leader = cache_leader;
 
-      group_update_focused(ps, cache_leader_old);
-      group_update_focused(ps, cache_leader);
+      //Update the focused state of all other windows lead by leader
+      for (win *t = ps->list; t; t = t->next) {
+          if (win_get_leader(ps, t) == cache_leader_old)
+              win_update_focused(ps, t);
+      }
+
+      //Update the focused state of all other windows lead by leader
+      for (win *t = ps->list; t; t = t->next) {
+          if (win_get_leader(ps, t) == cache_leader)
+              win_update_focused(ps, t);
+      }
     }
     // Otherwise, at most the window itself is affected
     else {

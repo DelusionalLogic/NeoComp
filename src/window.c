@@ -411,11 +411,13 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
     {
         char* text;
         asprintf(&text, "Opacity : %f", w->opacity);
-        text_draw(&debug_font, text, &pen, &scale);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
-        pen.y += size.y;
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
         free(text);
     }
 
@@ -427,33 +429,52 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
     {
         char* text;
         asprintf(&text, "State: %s", StateNames[w->state]);
-        text_draw(&debug_font, text, &pen, &scale);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
         pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
         free(text);
     }
 
     {
         char* text;
         asprintf(&text, "blur-background: %d", w->blur_background);
-        text_draw(&debug_font, text, &pen, &scale);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
         pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
         free(text);
     }
 
     {
         char* text;
         asprintf(&text, "fade-status: %d", fade_done(&w->opacity_fade));
-        text_draw(&debug_font, text, &pen, &scale);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
         pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "leader: %#010lx", w->leader);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
         free(text);
     }
 
