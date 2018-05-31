@@ -50,8 +50,16 @@ bool vec##n##_eq(const Vector##n * a, const Vector##n * b);                   \
     Vector##n vec##n##_from_vec##k (const Vector##k * const v, ...);
 // }}}
 
+typedef union Vector3 {
+    float m[3];
+    struct {
+        float x, y, z;
+    };
+} Vector3;
+
 typedef union Vector4 {
     float m[4];
+    Vector3 rgb;
     struct {
         float x, y, z, w;
     };
@@ -72,13 +80,6 @@ DEFINE_VEC_OPS(4)
 Vector4 mat4_vec4_mul(const Matrix* m, const Vector4* v);
 
 Matrix lookAt(Vector4 pos, Vector4 dir);
-
-typedef union Vector3 {
-    float m[3];
-    struct {
-        float x, y, z;
-    };
-} Vector3;
 
 static const Vector3 VEC3_ZERO = {{0, 0, 0}};
 static const Vector3 VEC3_UNIT = {{1, 1, 1}};

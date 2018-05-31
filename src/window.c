@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "window.h"
 
 #include "vmath.h"
@@ -160,41 +161,7 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
-static void finish_destroy_win(session_t *ps, Window id) {
-    win **prev = NULL, *w = NULL;
-
-#ifdef DEBUG_EVENTS
-    printf_dbgf("(%#010lx): Starting...\n", id);
-#endif
-
-    for (prev = &ps->list; (w = *prev); prev = &w->next) {
-        if (w->id == id && w->destroyed) {
-#ifdef DEBUG_EVENTS
-            printf_dbgf("(%#010lx \"%s\"): %p\n", id, w->name, w);
-#endif
-
-            *prev = w->next;
-
-            // Clear active_win if it's pointing to the destroyed window
-            if (w == ps->active_win)
-                ps->active_win = NULL;
-
-            // Drop w from all prev_trans to avoid accessing freed memory in
-            for (win *w2 = ps->list; w2; w2 = w2->next) {
-                if (w == w2->prev_trans)
-                    w2->prev_trans = NULL;
-                if (w == w2->next_trans)
-                    w2->next_trans = NULL;
-            }
-
-            free(w);
-            break;
-        }
-    }
-}
-
 void win_update(session_t* ps, win* w, double dt) {
-    Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
 
     w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
@@ -373,8 +340,8 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
 
     {
         Vector2 barSize = {{200, 25}};
-        Vector3 fgColor = {{0.0, 0.4, 0.5}};
-        Vector3 bgColor = {{.1, .1, .1}};
+        Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
+        Vector4 bgColor = {{.1, .1, .1, .4}};
         for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
             // Increment before the body to skip head and process tail
             i = (i+1) % FADE_KEYFRAMES;
@@ -414,7 +381,7 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
-        pen.y -= size.y;
+        pen.y += size.y;
 
         text_draw(&debug_font, text, &pen, &scale);
 

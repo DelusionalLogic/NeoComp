@@ -7,7 +7,7 @@ DECLARE_ZONE(paint_window);
 #include "window.h"
 
 void windowlist_draw(session_t* ps, win* head, float* z) {
-    glx_mark(ps, head, true);
+    glx_mark(ps, head->id, true);
     (*z) = 1;
     glEnable(GL_DEPTH_TEST);
     for (win *w = head; w; w = w->next_trans) {
@@ -24,11 +24,11 @@ void windowlist_draw(session_t* ps, win* head, float* z) {
         // for more than 1k windows
         (*z) -= .0001;
     }
-    glx_mark(ps, head, false);
+    glx_mark(ps, head->id, false);
 }
 
 void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
-    glx_mark(ps, head, true);
+    glx_mark(ps, head->id, true);
     (*z) = 1;
     glEnable(GL_DEPTH_TEST);
     for (win *w = head; w; w = w->next_trans) {
@@ -45,5 +45,5 @@ void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
         // for more than 1k windows
         (*z) -= .0001;
     }
-    glx_mark(ps, head, false);
+    glx_mark(ps, head->id, false);
 }

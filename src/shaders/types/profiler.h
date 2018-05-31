@@ -4,5 +4,6 @@
 
 #define UNIFORMS_FOREACH(M) \
     M(mvp)                  \
+    M(opacity)              \
     M(color)
-#define UNIFORMS_COUNT 2
+#define UNIFORMS_COUNT 3

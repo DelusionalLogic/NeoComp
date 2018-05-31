@@ -443,7 +443,6 @@ enum {
 
 typedef struct _glx_texture glx_texture_t;
 
-#ifdef DEBUG_GLX_DEBUG_CONTEXT
 typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
     GLXFBConfig config, GLXContext share_context, Bool direct,
     const int *attrib_list);
@@ -451,7 +450,6 @@ typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
 /*     GLuint id, GLenum severity, GLsizei length, const GLchar* message, */
 /*     GLvoid* userParam); */
 typedef void (*f_DebugMessageCallback) (GLDEBUGPROC, void *userParam);
-#endif
 
 typedef int (*f_WaitVideoSync) (int, int, unsigned *);
 typedef int (*f_GetVideoSync) (unsigned *);

@@ -32,7 +32,7 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
     glDisableVertexAttribArray(0);
 }
 
-void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector3* color) {
+void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector4* color) {
     struct shader_program* profiler_program = assets_load("profiler.shader");
     if(profiler_program->shader_type_info != &profiler_info) {
         printf("Shader was not a profiler shader\n");
@@ -40,7 +40,8 @@ void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector3* 
         return;
     }
     struct Profiler* profiler_type = profiler_program->shader_type;
-    shader_set_future_uniform_vec3(profiler_type->color, color);
+    shader_set_future_uniform_vec3(profiler_type->color, &color->rgb);
+	shader_set_future_uniform_float(profiler_type->opacity, color->w);
     shader_use(profiler_program);
 
     draw_rect(face, profiler_type->mvp, *pos, *size);
