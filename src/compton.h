@@ -665,7 +665,7 @@ static void
 win_update_focused(session_t *ps, win *w);
 
 static inline void
-win_set_focused(session_t *ps, win *w, bool focused);
+win_set_focused(session_t *ps, win *w);
 
 static void
 win_on_focus_change(session_t *ps, win *w);

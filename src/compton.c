@@ -79,6 +79,7 @@ const char * const BACKEND_STRS[NUM_BKEND + 1] = {
 const char* const StateNames[] = {
     "Hiding",
     "Invisible",
+    "Waiting",
     "Activating",
     "Active",
     "Deactivating",
@@ -373,7 +374,7 @@ recheck_focus(session_t *ps) {
 
   // And we set the focus state here
   if (w) {
-    win_set_focused(ps, w, true);
+    win_set_focused(ps, w);
     return w;
   }
 
@@ -896,8 +897,6 @@ map_win(session_t *ps, Window id) {
   // Update window focus state
   win_update_focused(ps, w);
 
-  w->flags |= WFLAG_OPCT_CHANGE;
-
   // Many things above could affect shadow
   win_determine_shadow(ps, w);
 
@@ -933,23 +932,8 @@ map_win(session_t *ps, Window id) {
   // Set fading state
   w->in_openclose = true;
 
-  // recheck focus will set the state of the actually focused window, but
-  // apparently multiple windows can be focused.
-  // @HACK: For now we just let all other focused windows be active as well,
-  // but we really should distinguish between being active and focused.
-  if(w->focused) {
-      if(w->state == STATE_INVISIBLE || w->state == STATE_HIDING) {
-          w->state = STATE_ACTIVATING;
-          win_start_opacity(w, ps->o.active_opacity, ps->o.opacity_fade_time);
-      }
-  } else {
-      // If we aren't focused, then no one have set out state.
-      assert(w->state == STATE_INVISIBLE || w->state == STATE_HIDING);
-      w->state = STATE_DEACTIVATING;
-      win_start_opacity(w, ps->o.inactive_opacity, ps->o.opacity_fade_time);
-  }
-
-  assert(w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING);
+  w->state = STATE_WAITING;
+  w->focus_changed = true;
 
   /* if any configure events happened while
      the window was unmapped, then configure
@@ -992,31 +976,32 @@ unmap_callback(session_t *ps, win *w) {
 }
 
 static void unmap_win(session_t *ps, win *w) {
-  if (!w || IsUnmapped == w->a.map_state) return;
+    if (!w || IsUnmapped == w->a.map_state) return;
 
-  free_fence(ps, &w->fence);
+    free_fence(ps, &w->fence);
 
-  // Set focus out
-  win_set_focused(ps, w, false);
+    // Set focus out
+    if(ps->active_win == w)
+        ps->active_win = NULL;
 
-  w->a.map_state = IsUnmapped;
+    w->a.map_state = IsUnmapped;
 
-  // Fading out
-  w->state = STATE_HIDING;
-  w->flags |= WFLAG_OPCT_CHANGE;
+    // Fading out
+    w->state = STATE_HIDING;
+    w->flags |= WFLAG_OPCT_CHANGE;
 
-  win_start_opacity(w, 0, ps->o.opacity_fade_time);
+    win_start_opacity(w, 0, ps->o.opacity_fade_time);
 
-  w->in_openclose = true;
+    w->in_openclose = true;
 
-  // don't care about properties anymore
-  win_ev_stop(ps, w);
+    // don't care about properties anymore
+    win_ev_stop(ps, w);
 
 #ifdef CONFIG_DBUS
-  // Send D-Bus signal
-  if (ps->o.dbus) {
-    cdbus_ev_win_unmapped(ps, w);
-  }
+    // Send D-Bus signal
+    if (ps->o.dbus) {
+        cdbus_ev_win_unmapped(ps, w);
+    }
 #endif
 }
 
@@ -1040,56 +1025,6 @@ win_determine_mode(session_t *ps, win *w) {
   }
 
   w->mode = mode;
-}
-
-/**
- * Calculate and set the opacity of a window.
- *
- * If window is inactive and inactive_opacity_override is set, the
- * priority is: (Simulates the old behavior)
- *
- * inactive_opacity > _NET_WM_WINDOW_OPACITY (if not opaque)
- * > window type default opacity
- *
- * Otherwise:
- *
- * _NET_WM_WINDOW_OPACITY (if not opaque)
- * > window type default opacity (if not opaque)
- * > inactive_opacity
- *
- * @param ps current session
- * @param w struct _win object representing the window
- */
-static double calc_opacity(session_t *ps, win *w) {
-    double opacity = 100.0;
-
-    if (w->destroyed || IsViewable != w->a.map_state) {
-        opacity = 0.0;
-    } else {
-        // Try obeying window type opacity firstly
-        opacity = ps->o.wintype_opacity[w->window_type];
-        if(opacity != 100.0)
-            return opacity;
-
-        long val;
-        if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
-            printf("It matches\n");
-            return (double)val;
-        }
-
-        // Respect inactive_opacity in some cases
-        if (ps->o.inactive_opacity && false == w->focused
-                && (100.0 == opacity || ps->o.inactive_opacity_override)) {
-            opacity = ps->o.inactive_opacity;
-        }
-
-        // Respect active_opacity only when the window is physically focused
-        if (100.0 == opacity && ps->o.active_opacity && win_is_focused_real(ps, w)) {
-            opacity = ps->o.active_opacity;
-        }
-    }
-
-    return opacity;
 }
 
 /**
@@ -2005,9 +1940,15 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
  * Update focused state of a window.
  */
 static void win_update_focused(session_t *ps, win *w) {
+    bool oldFocused = w->focused;
+
     // If the window has forced focus we don't need any further calculation
     if (UNSET != w->focused_force) {
         w->focused = w->focused_force;
+
+        if(w->focused != oldFocused)
+            w->focus_changed = true;
+
         return;
     }
 
@@ -2015,86 +1956,60 @@ static void win_update_focused(session_t *ps, win *w) {
 
     if(ps->o.wintype_focus[w->window_type])
         w->focused = true;
-
-    if(ps->o.mark_wmwin_focused && w->wmwin)
+    else if(ps->o.mark_wmwin_focused && w->wmwin)
         w->focused = true;
-
-    if(ps->o.mark_ovredir_focused
+    else if(ps->active_win == w)
+        w->focused = true;
+    else if(ps->o.mark_ovredir_focused
             && w->id == w->client_win && !w->wmwin) {
         w->focused = true;
-    }
-
-    if(IsViewable == w->a.map_state
+    } else if(IsViewable == w->a.map_state
             && win_match(ps, w, ps->o.focus_blacklist, &w->cache_fcblst)) {
         w->focused = true;
-    }
-
-    // If window grouping detection is enabled, mark the window active if its
-    // group is
-    if (ps->o.track_leader && ps->active_leader
+    } else if (ps->o.track_leader && ps->active_leader
             && win_get_leader(ps, w) == ps->active_leader) {
+        // If window grouping detection is enabled, mark the window active if
+        // its group is
         w->focused = true;
     }
 
-    // Always recalculate the window target opacity, since some opacity-related
-    // options depend on the output value of win_is_focused_real() instead of
-    // w->focused
-    w->flags |= WFLAG_OPCT_CHANGE;
+    if(w->focused != oldFocused)
+        w->focus_changed = true;
 }
 
 /**
  * Set real focused state of a window.
  */
-static void win_set_focused(session_t *ps, win *w, bool focused) {
+static void win_set_focused(session_t *ps, win *w) {
     // Unmapped windows will have their focused state reset on map
     if (IsUnmapped == w->a.map_state)
         return;
 
-    if (win_is_focused_real(ps, w) == focused) return;
+    if (win_is_focused_real(ps, w) == true) return;
 
-    if (focused) {
-        if (ps->active_win) {
-            assert(ps->active_win->a.map_state != IsUnmapped);
+    if (ps->active_win) {
+        assert(ps->active_win->a.map_state != IsUnmapped);
 
-            win* old_active = ps->active_win;
-            ps->active_win = NULL;
-
-            Window leader = win_get_leader(ps, old_active);
-            if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader && !group_is_focused(ps, leader)) {
-                ps->active_leader = None;
-
-                //Update the focused state of all other windows lead by leader
-                for (win *t = ps->list; t; t = t->next) {
-                    if (win_get_leader(ps, t) == leader)
-                        win_update_focused(ps, t);
-                }
-            }
-
-            win_update_focused(ps, old_active);
-
-            double opacity = calc_opacity(ps, old_active);
-            old_active->state = STATE_DEACTIVATING;
-            win_start_opacity(old_active, opacity, ps->o.opacity_fade_time);
-            /* win_set_focused(ps, ps->active_win, false); */
-
-        }
-
-        ps->active_win = w;
-
-        w->state = STATE_ACTIVATING;
-        win_start_opacity(w, ps->o.active_opacity, ps->o.opacity_fade_time);
-
-    } else if (w == ps->active_win) {
+        win* old_active = ps->active_win;
         ps->active_win = NULL;
 
-        double opacity = calc_opacity(ps, w);
-        w->state = STATE_DEACTIVATING;
-        win_start_opacity(w, opacity, ps->o.opacity_fade_time);
-    } else {
-        assert(false);
+        Window leader = win_get_leader(ps, old_active);
+        if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader && !group_is_focused(ps, leader)) {
+            ps->active_leader = None;
+
+            //Update the focused state of all other windows lead by leader
+            for (win *t = ps->list; t; t = t->next) {
+                if (win_get_leader(ps, t) == leader)
+                    win_update_focused(ps, t);
+            }
+        }
+
+        win_update_focused(ps, old_active);
     }
 
-    assert(win_is_focused_real(ps, w) == focused);
+    ps->active_win = w;
+
+    assert(win_is_focused_real(ps, w) == true);
 
     win_update_focused(ps, w);
 
@@ -2758,7 +2673,7 @@ update_ewmh_active_win(session_t *ps) {
   win *w = find_win_all(ps, wid);
 
   // Mark the window focused. No need to unfocus the previous one.
-  if (w) win_set_focused(ps, w, true);
+  if (w) win_set_focused(ps, w);
 }
 
 inline static void

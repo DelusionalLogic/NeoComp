@@ -161,12 +161,51 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
+static double calc_opacity(session_t *ps, win *w) {
+    double opacity = 100.0;
+
+    // Try obeying window type opacity firstly
+    opacity = ps->o.wintype_opacity[w->window_type];
+    if(opacity != 100.0)
+        return opacity;
+
+    long val;
+    if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
+        return (double)val;
+    }
+
+    // Respect inactive_opacity in some cases
+    if (ps->o.inactive_opacity && false == w->focused
+            && (100.0 == opacity || ps->o.inactive_opacity_override)) {
+        opacity = ps->o.inactive_opacity;
+    }
+
+    // Respect active_opacity only when the window is physically focused
+    if (100.0 == opacity && ps->o.active_opacity && win_is_focused_real(ps, w)) {
+        opacity = ps->o.active_opacity;
+    }
+    return opacity;
+}
+
 void win_update(session_t* ps, win* w, double dt) {
     Vector2 size = {{w->widthb, w->heightb}};
 
-    w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
+    if(w->focus_changed) {
+        if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE) {
+            if(w->focused) {
+                w->state = STATE_ACTIVATING;
+            } else {
+                w->state = STATE_DEACTIVATING;
+            }
+            double opacity = calc_opacity(ps, w);
+            win_start_opacity(w, opacity, ps->o.opacity_fade_time);
+        }
+        w->focus_changed = false;
+    }
 
     zone_enter(&ZONE_update_window);
+    w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
+
     if(!fade_done(&w->opacity_fade)) {
         zone_enter(&ZONE_update_fade);
 
@@ -435,6 +474,19 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
     {
         char* text;
         asprintf(&text, "leader: %#010lx", w->leader);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "focused: %d", w->focused);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);

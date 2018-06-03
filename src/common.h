@@ -1110,6 +1110,7 @@ extern const char* const StateNames[];
 enum WindowState {
     STATE_HIDING,
     STATE_INVISIBLE,
+    STATE_WAITING, // Waiting for focus assignment
     STATE_ACTIVATING,
     STATE_ACTIVE,
     STATE_DEACTIVATING,
@@ -1203,6 +1204,7 @@ typedef struct _win {
   // Focus-related members
   /// Whether the window is to be considered focused.
   bool focused;
+  bool focus_changed;
   /// Override value of window focus state. Set by D-Bus method calls.
   switch_t focused_force;
 
