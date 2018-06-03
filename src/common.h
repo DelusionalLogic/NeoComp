@@ -123,6 +123,7 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
+#include "vector.h"
 #include "bezier.h"
 #include "texture.h"
 #include "framebuffer.h"
@@ -957,6 +958,8 @@ typedef struct _session_t {
   int n_expose;
 
   // === Window related ===
+  // Vector of windows
+  Vector win_list;
   /// Linked list of all windows.
   struct _win *list;
   /// Pointer to <code>win</code> of current active window. Used by

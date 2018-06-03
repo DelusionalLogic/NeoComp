@@ -169,9 +169,11 @@ static double calc_opacity(session_t *ps, win *w) {
     if(opacity != 100.0)
         return opacity;
 
-    long val;
-    if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
-        return (double)val;
+    if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING) {
+        long val;
+        if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
+            return (double)val;
+        }
     }
 
     // Respect inactive_opacity in some cases
@@ -191,7 +193,8 @@ void win_update(session_t* ps, win* w, double dt) {
     Vector2 size = {{w->widthb, w->heightb}};
 
     if(w->focus_changed) {
-        if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE) {
+        if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE
+                && w->state != STATE_DESTROYING && w->state != STATE_DESTROYED) {
             if(w->focused) {
                 w->state = STATE_ACTIVATING;
             } else {

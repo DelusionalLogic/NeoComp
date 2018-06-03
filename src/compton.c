@@ -1410,7 +1410,8 @@ add_win(session_t *ps, Window id, Window prev) {
   }
 
   // Allocate and initialize the new win structure
-  win *new = malloc(sizeof(win));
+  vector_putBack(&ps->win_list, &win_def);
+  win* new = vector_get(&ps->win_list, ps->win_list.size-1);
 
 #ifdef DEBUG_EVENTS
   printf_dbgf("(%#010lx): %p\n", id, new);
@@ -1421,7 +1422,7 @@ add_win(session_t *ps, Window id, Window prev) {
     return false;
   }
 
-  memcpy(new, &win_def, sizeof(win));
+  /* memcpy(new, &win_def, sizeof(win)); */
 
   // Find window insertion point
   win **p = NULL;
@@ -2028,15 +2029,6 @@ static void win_set_focused(session_t *ps, win *w) {
                 if (win_get_leader(ps, t) == active_leader_old)
                     win_update_focused(ps, t);
             }
-
-            //Update the focused state of all other windows lead by leader
-            for (win *t = ps->list; t; t = t->next) {
-                if (win_get_leader(ps, t) == leader)
-                    win_update_focused(ps, t);
-            }
-        } else if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader
-                && !group_is_focused(ps, leader)) {
-            ps->active_leader = None;
 
             //Update the focused state of all other windows lead by leader
             for (win *t = ps->list; t; t = t->next) {
@@ -5214,6 +5206,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .size_expose = 0,
     .n_expose = 0,
 
+    .win_list = {0},
     .list = NULL,
     .active_win = NULL,
     .active_leader = None,
@@ -5286,6 +5279,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   // First pass
   get_cfg(ps, argc, argv, true);
+
+  // Initialize window list
+  vector_init(&ps->win_list, sizeof(struct _win), 1024);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
