@@ -3,21 +3,27 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
-#include <setjmp.h>
+#include <stdint.h>
 
 typedef struct {
-	size_t maxSize;
-	size_t size;
-	size_t elementSize;
-	char* data;
+    size_t maxSize;
+    size_t size;
+    size_t elementSize;
+
+    size_t firstFree;
+
+    uint8_t* freelist;
+    uint8_t* data;
 } Vector;
 
 void vector_init(Vector* vector, size_t elementsize, size_t initialsize);
 void vector_kill(Vector* vector);
-char* vector_detach(Vector* vector);
+void* vector_detach(Vector* vector);
 
-void vector_putBack(Vector* vector, const void* element);
+void vector_putBack(Vector* vector, const void* element, size_t* index);
 void vector_putListBack(Vector* vector, const void* list, const size_t count);
+
+size_t vector_indexOfPointer(Vector* vector, void* data);
 
 void* vector_get(Vector* vector, const size_t count);
 

@@ -494,10 +494,13 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 /**
  * Clear leader cache of all windows.
  */
-static void
-clear_cache_win_leaders(session_t *ps) {
-  for (win *w = ps->list; w; w = w->next)
-    w->cache_leader = None;
+static void clear_cache_win_leaders(session_t *ps) {
+    size_t index;
+    win *w = vector_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
+        w->cache_leader = None;
+        w = vector_getNext(&ps->win_list, &index);
+    }
 }
 
 static win *
@@ -541,10 +544,13 @@ group_is_focused(session_t *ps, Window leader) {
   if (!leader)
     return false;
 
-  for (win *w = ps->list; w; w = w->next) {
-    if (win_get_leader(ps, w) == leader && !w->destroyed
-        && win_is_focused_real(ps, w))
-      return true;
+  size_t index;
+  win *w = vector_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (win_get_leader(ps, w) == leader && !w->destroyed
+              && win_is_focused_real(ps, w))
+          return true;
+      w = vector_getNext(&ps->win_list, &index);
   }
 
   return false;
@@ -630,24 +636,10 @@ static void
 map_win(session_t *ps, Window id);
 
 static void
-finish_map_win(session_t *ps, win *w);
-
-static void
-finish_unmap_win(session_t *ps, win *w);
-
-static void
-unmap_callback(session_t *ps, win *w);
-
-static void
 unmap_win(session_t *ps, win *w);
-
-static double
-get_opacity_percent(win *w);
 
 static void
 win_determine_mode(session_t *ps, win *w);
-
-static double calc_opacity(session_t *ps, win *w);
 
 static void
 calc_dim(session_t *ps, win *w);
@@ -666,9 +658,6 @@ win_update_focused(session_t *ps, win *w);
 
 static inline void
 win_set_focused(session_t *ps, win *w);
-
-static void
-win_on_focus_change(session_t *ps, win *w);
 
 static void
 win_determine_fade(session_t *ps, win *w);
@@ -723,9 +712,6 @@ circulate_win(session_t *ps, XCirculateEvent *ce);
 
 static void
 finish_destroy_win(session_t *ps, Window id);
-
-static void
-destroy_callback(session_t *ps, win *w);
 
 static void
 destroy_win(session_t *ps, Window id);
@@ -1077,9 +1063,6 @@ vsync_opengl_mswc_deinit(session_t *ps);
 
 static void
 vsync_wait(session_t *ps);
-
-static void
-init_alpha_picts(session_t *ps);
 
 static bool
 init_dbe(session_t *ps);

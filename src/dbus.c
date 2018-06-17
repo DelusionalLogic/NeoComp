@@ -685,7 +685,8 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
 
   // next
   if (!strcmp("next", target)) {
-    cdbus_reply_wid(ps, msg, (w->next ? w->next->id: 0));
+      struct _win* next = vector_get(&ps->win_list, w->next);
+    cdbus_reply_wid(ps, msg, (w->next ? next->id: 0));
     return true;
   }
 
@@ -928,7 +929,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(shadow_red, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_green, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_blue, cdbus_reply_double);
-  cdbus_m_opts_get_do(shadow_radius, cdbus_reply_int32);
   cdbus_m_opts_get_do(shadow_offset_x, cdbus_reply_int32);
   cdbus_m_opts_get_do(shadow_offset_y, cdbus_reply_int32);
   cdbus_m_opts_get_do(shadow_opacity, cdbus_reply_double);

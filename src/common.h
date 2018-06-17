@@ -708,7 +708,6 @@ typedef struct _options_t {
   bool wintype_shadow[NUM_WINTYPES];
   /// Red, green and blue tone of the shadow.
   double shadow_red, shadow_green, shadow_blue;
-  int shadow_radius;
   int shadow_offset_x, shadow_offset_y;
   double shadow_opacity;
   bool clear_shadow;
@@ -961,7 +960,7 @@ typedef struct _session_t {
   // Vector of windows
   Vector win_list;
   /// Linked list of all windows.
-  struct _win *list;
+  size_t list;
   /// Pointer to <code>win</code> of current active window. Used by
   /// EWMH <code>_NET_ACTIVE_WINDOW</code> focus detection. In theory,
   /// it's more reliable to store the window ID directly here, just in
@@ -1125,7 +1124,7 @@ enum WindowState {
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
   /// Pointer to the next structure in the linked list.
-  struct _win *next;
+  size_t next;
   /// Pointer to the next higher window to paint.
   struct _win *prev_trans;
   /// Pointer to the next lower window to paint.
@@ -1921,14 +1920,15 @@ find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  win *w;
-
-  for (w = ps->list; w; w = w->next) {
-    if (w->id == id && !w->destroyed)
-      return w;
+  size_t index;
+  win *w = vector_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (w->id == id && !w->destroyed)
+          return w;
+      w = vector_getNext(&ps->win_list, &index);
   }
 
-  return 0;
+  return NULL;
 }
 
 /**
@@ -1942,9 +1942,12 @@ find_toplevel(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  for (win *w = ps->list; w; w = w->next) {
-    if (w->client_win == id && !w->destroyed)
-      return w;
+  size_t index;
+  win *w = vector_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (w->client_win == id && !w->destroyed)
+          return w;
+      w = vector_getNext(&ps->win_list, &index);
   }
 
   return NULL;
