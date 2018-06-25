@@ -1439,27 +1439,22 @@ add_win(session_t *ps, Window id, Window prev) {
   }
 
   // Find window insertion point
-  size_t index = 0;
-  size_t* ins = NULL;
+  size_t* next_ptr = &ps->list;
   if (prev) {
-      win* p = vector_getFirst(&ps->win_list, &index);
-      while(p != NULL) {
-          if (p->id == prev && !p->destroyed) {
-              ins = &p->next;
+      while(*next_ptr != -1) {
+          struct _win* next = vector_get(&ps->win_list, *next_ptr);
+          if (next->id == prev && !next->destroyed) {
               break;
           }
-          p = vector_getNext(&ps->win_list, &index);
+          next_ptr = &next->next;
       }
-      if(ins == NULL)
-          ins = &p->next;
-      assert(p != NULL);
   } else {
-      ins = &ps->list;
+      next_ptr = &ps->list;
   }
 
 
-  new->next = *ins;
-  *ins = slot;
+  new->next = *next_ptr;
+  *next_ptr = slot;
 
 #ifdef CONFIG_DBUS
   // Send D-Bus signal
