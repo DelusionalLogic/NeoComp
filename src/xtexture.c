@@ -26,8 +26,7 @@ bool xtexture_bind(struct XTexture* tex, GLXFBConfig* fbconfig, Pixmap pixmap) {
     //If the context says textures pixmaps are inverted, then we need to tell
     //the texture
     int value;
-    glXGetFBConfigAttrib(tex->context->display, *fbconfig,
-            GLX_Y_INVERTED_EXT, &value);
+    glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_Y_INVERTED_EXT, &value);
     tex->texture.flipped = value;
 
     tex->pixmap = pixmap;
@@ -65,7 +64,7 @@ bool xtexture_bind(struct XTexture* tex, GLXFBConfig* fbconfig, Pixmap pixmap) {
     // @CLEANUP: This should probably be extracted out of here
     if (Success == glXGetFBConfigAttrib(tex->context->display, *fbconfig, GLX_BIND_TO_TEXTURE_RGB_EXT, &value)) {
         if(value == true) { // We can bind to RGB
-            // If we can only bind to RGBA, then just do that
+            // If we can only bind to RGB, then just do that
             if(texFmt == 0) {
                 texFmt = GLX_TEXTURE_FORMAT_RGB_EXT;
             } else {

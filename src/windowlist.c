@@ -1,10 +1,20 @@
 #include "windowlist.h"
 
 #include "profiler/zone.h"
+#include "assets/shader.h"
+#include "assets/assets.h"
+#include "shaders/shaderinfo.h"
+
+#include "window.h"
 
 DECLARE_ZONE(paint_window);
 
-#include "window.h"
+static bool win_viewable(win* w) {
+    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
+        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
+        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
+}
+
 
 void windowlist_draw(session_t* ps, win* head, float* z) {
     glx_mark(ps, head->id, true);
@@ -46,4 +56,89 @@ void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
         (*z) -= .0001;
     }
     glx_mark(ps, head->id, false);
+}
+
+void windowlist_updateStencil(session_t* ps, win* back) {
+    struct face* face = assets_load("window.face");
+
+    glEnable(GL_STENCIL_TEST);
+    glDisable(GL_DEPTH_TEST);
+
+    glDepthMask(GL_FALSE);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glStencilFunc(GL_NEVER, 1, 0xFF);
+    glStencilOp(GL_REPLACE, GL_KEEP, GL_KEEP);
+
+    struct shader_program* program = assets_load("stencil.shader");
+    if(program->shader_type_info != &stencil_info) {
+        printf_errf("Shader was not a stencil shader\n");
+        return;
+    }
+    struct Stencil* type = program->shader_type;
+    shader_set_future_uniform_sampler(type->tex_scr, 0);
+
+    shader_use(program);
+
+
+    for (win *w = back; w; w = w->prev_trans) {
+        if(win_viewable(w) && ps->redirected) {
+            Vector2 size = {{w->widthb, w->heightb}};
+
+            if (w->stencil_damaged) {
+                Vector3 dglPos = {{0, 0, 0}};
+
+                framebuffer_resetTarget(&ps->psglx->stencil_fbo);
+                framebuffer_targetRenderBuffer_stencil(&ps->psglx->stencil_fbo, &w->stencil);
+                if(framebuffer_bind(&ps->psglx->stencil_fbo) != 0) {
+                    printf("Failed binding framebuffer for stencil\n");
+                    return;
+                }
+
+                glClear(GL_STENCIL_BUFFER_BIT);
+
+                assert(w->drawable.bound);
+                texture_bind(&w->drawable.texture, GL_TEXTURE0);
+
+                draw_rect(face, type->mvp, dglPos, size);
+                w->stencil_damaged = false;
+            }
+        }
+    }
+
+    glDisable(GL_STENCIL_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
+void windowlist_updateShadow(session_t* ps, win* back) {
+    struct face* face = assets_load("window.face");
+
+    for (win *w = back; w; w = w->prev_trans) {
+        if(win_viewable(w) && ps->redirected) {
+            Vector2 size = {{w->widthb, w->heightb}};
+
+            if(!vec2_eq(&size, &w->shadow_cache.wSize)) {
+                win_calc_shadow(ps, w);
+            }
+        }
+    }
+}
+
+void windowlist_updateBlur(session_t* ps, win* back) {
+    struct face* face = assets_load("window.face");
+
+    for (win *w = back; w; w = w->prev_trans) {
+        if(win_viewable(w) && ps->redirected) {
+            Vector2 size = {{w->widthb, w->heightb}};
+
+            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
+                if(w->glx_blur_cache.damaged == true) {
+                    win_calculate_blur(&ps->psglx->blur, ps, w);
+                    w->glx_blur_cache.damaged = false;
+                }
+            }
+        }
+    }
 }

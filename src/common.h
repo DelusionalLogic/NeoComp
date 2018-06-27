@@ -366,13 +366,6 @@ typedef struct {
 // Or use cmemzero().
 #define MARGIN_INIT { 0, 0, 0, 0 }
 
-/// Enumeration type of window painting mode.
-typedef enum {
-  WMODE_TRANS,
-  WMODE_SOLID,
-  WMODE_ARGB
-} winmode_t;
-
 /// Structure representing needed window updates.
 typedef struct {
   bool shadow       : 1;
@@ -858,6 +851,10 @@ typedef struct {
   glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
 
   struct X11Context xcontext;
+
+  // @MEMORY @PERFORMANCE: We don't need a dedicated FBO for just stencil, but
+  // for right now I don't want to bother with that
+  struct Framebuffer stencil_fbo;
 } glx_session_t;
 
 #define CGLX_SESSION_INIT { .context = NULL }
@@ -1121,6 +1118,8 @@ enum WindowState {
     STATE_DESTROYED,
 };
 
+typedef uint64_t win_id;
+
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
   /// Pointer to the next structure in the linked list.
@@ -1144,8 +1143,6 @@ typedef struct _win {
 #endif
   /// Window visual pict format;
   XRenderPictFormat *pictfmt;
-  /// Window painting mode.
-  winmode_t mode;
   /// Whether the window has been damaged at least once.
   bool damaged;
 #ifdef CONFIG_XSYNC
@@ -1272,6 +1269,9 @@ typedef struct _win {
   bool blur_background;
   /// Background state on last paint.
   bool blur_background_last;
+
+  bool stencil_damaged;
+  struct RenderBuffer stencil;
 
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;

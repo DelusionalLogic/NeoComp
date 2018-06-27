@@ -408,7 +408,7 @@ wid_bounding_shaped(const session_t *ps, Window wid) {
  */
 static inline void
 update_reg_ignore_expire(session_t *ps, const win *w) {
-  if (w->to_paint && WMODE_SOLID == w->mode)
+  if (w->to_paint && w->solid)
     ps->reg_ignore_expire = true;
 }
 
@@ -633,7 +633,7 @@ static wintype_t
 wid_get_prop_wintype(session_t *ps, Window w);
 
 static void
-map_win(session_t *ps, Window id);
+map_win(session_t *ps, win_id wid);
 
 static void
 unmap_win(session_t *ps, win *w);
@@ -711,10 +711,10 @@ static void
 circulate_win(session_t *ps, XCirculateEvent *ce);
 
 static void
-finish_destroy_win(session_t *ps, Window id);
+finish_destroy_win(session_t *ps, win_id w);
 
 static void
-destroy_win(session_t *ps, Window id);
+destroy_win(session_t *ps, struct _win* w);
 
 static void
 damage_win(session_t *ps, XDamageNotifyEvent *de);

@@ -60,9 +60,6 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
     if(selected == NULL)
         return NULL;
 
-    // Save if the y is inverted compared to GL
-    /* glXGetFBConfigAttrib(context->display, context->selected_config, */
-    /*         GLX_Y_INVERTED_EXT, &value); */
     return selected;
 }
 

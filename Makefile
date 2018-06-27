@@ -134,6 +134,7 @@ else
   # OBJS += backtrace-symbols.o
   LIBS += -lbfd
   CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
+  # CFLAGS += -fsanitize=address -fsanitize=leak -fsanitize=null
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif
 
