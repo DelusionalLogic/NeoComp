@@ -59,8 +59,6 @@ void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
 }
 
 void windowlist_updateStencil(session_t* ps, win* back) {
-    struct face* face = assets_load("window.face");
-
     glEnable(GL_STENCIL_TEST);
     glDisable(GL_DEPTH_TEST);
 
@@ -96,13 +94,14 @@ void windowlist_updateStencil(session_t* ps, win* back) {
                     printf("Failed binding framebuffer for stencil\n");
                     return;
                 }
+                shader_set_uniform_bool(type->flip, w->drawable.texture.flipped);
 
                 glClear(GL_STENCIL_BUFFER_BIT);
 
                 assert(w->drawable.bound);
                 texture_bind(&w->drawable.texture, GL_TEXTURE0);
 
-                draw_rect(face, type->mvp, dglPos, size);
+                draw_rect(w->face, type->mvp, dglPos, size);
                 w->stencil_damaged = false;
             }
         }
@@ -113,13 +112,14 @@ void windowlist_updateStencil(session_t* ps, win* back) {
 }
 
 void windowlist_updateShadow(session_t* ps, win* back) {
-    struct face* face = assets_load("window.face");
-
     for (win *w = back; w; w = w->prev_trans) {
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
-            if(!vec2_eq(&size, &w->shadow_cache.wSize)) {
+            // @HACK: For legacy reasons we assume the shadow is damaged if the
+            // size of the window has changed. we should move over to manually
+            // damaging it when we change size
+            if(w->shadow_damaged || !vec2_eq(&size, &w->shadow_cache.wSize)) {
                 win_calc_shadow(ps, w);
             }
         }
@@ -127,8 +127,6 @@ void windowlist_updateShadow(session_t* ps, win* back) {
 }
 
 void windowlist_updateBlur(session_t* ps, win* back) {
-    struct face* face = assets_load("window.face");
-
     for (win *w = back; w; w = w->prev_trans) {
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};

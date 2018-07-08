@@ -1,6 +1,7 @@
 #include "face.h"
 
 #include <string.h>
+#include <assert.h>
 
 struct face* face_load_file(const char* path) {
     FILE* file = fopen(path, "r");

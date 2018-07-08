@@ -137,7 +137,6 @@
 // FUCK
 // FUCK
 struct blur {
-    struct face* face;
     struct Framebuffer fbo;
     GLuint array;
 };
@@ -146,6 +145,7 @@ struct XTexture {
     struct X11Context* context;
 
     bool bound;
+    int depth;
     Pixmap pixmap;
     GLXDrawable glxPixmap;
     struct Texture texture;
@@ -886,13 +886,6 @@ typedef struct _session_t {
 
   /// A region of the size of the screen.
   XserverRegion screen_reg;
-  /// Picture of root window. Destination of painting in no-DBE painting
-  /// mode.
-  Picture root_picture;
-  /// A Picture acting as the painting target.
-  Picture tgt_picture;
-  /// Temporary buffer to paint to before sending to display.
-  paint_t tgt_buffer;
 #ifdef CONFIG_XSYNC
   XSyncFence tgt_buffer_fence;
 #endif
@@ -975,8 +968,6 @@ typedef struct _session_t {
   Picture cshadow_picture;
   /// 1x1 white Picture.
   Picture white_picture;
-  /// Gaussian map of shadow.
-  conv *gaussian_map;
   // for shadow precomputation
   /// Shadow depth on one side.
   int cgsize;
@@ -1023,7 +1014,7 @@ typedef struct _session_t {
   /// Whether X Composite NameWindowPixmap is available. Aka if X
   /// Composite version >= 0.2.
   bool has_name_pixmap;
-  /// Whether X Shape extension exists.
+  /// Whether X Shape extension exists. @CLEANUP: Should be in xorg.h
   bool shape_exists;
   /// Event base number for X Shape extension.
   int shape_event;
@@ -1135,6 +1126,8 @@ typedef struct _win {
   /// Window attributes.
   XWindowAttributes a;
 
+  struct face* face;
+
   enum WindowState state;
 
 #ifdef CONFIG_XINERAMA
@@ -1183,6 +1176,7 @@ typedef struct _win {
   bool fullscreen;
   /// Is solid;
   bool solid;
+
   /// Has frame
   bool has_frame;
 
@@ -1276,6 +1270,7 @@ typedef struct _win {
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;
 
+  bool shadow_damaged;
   struct glx_shadow_cache shadow_cache;
 
   struct WindowDrawable drawable;

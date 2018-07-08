@@ -42,6 +42,7 @@ bool xtexture_bind(struct XTexture* tex, GLXFBConfig* fbconfig, Pixmap pixmap) {
         // @INCOMPLETE: free
         return false;
     }
+    tex->depth = depth;
 
     Vector2 size = {{width, height}};
 

@@ -263,6 +263,124 @@ wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
   };
 }
 
+static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
+    if(w->face != NULL)
+        face_unload_file(w->face);
+
+    Vector2 extents = {{w->a.width, w->a.height}};
+
+    XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, w->id, ShapeBounding);
+
+    int count;
+    XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &count);
+
+    XFixesDestroyRegion(ps->dpy, window_region);
+
+    struct face* face = malloc(sizeof(struct face));
+    // We want 3 floats (x, y, z) for every vertex of which there are
+    // 6 (top-left bot-left top-right top-right bot-left bot-right) per rect
+    face->vertex_buffer_data = malloc(sizeof(float) * 3 * 6 * count);
+    face->uv_buffer_data = malloc(sizeof(float) * 2 * 6 * count);
+    face->vertex_buffer_size = count * 6;
+    face->uv_buffer_size = count * 6;
+
+    for(int i = 0; i < count; i++) {
+        // A single rect line in the vertex buffer is 3 * 6
+        float* vertex_rect = &face->vertex_buffer_data[i * 3 * 6];
+        // A single rect line in the uv buffer is 2 * 6
+        float* uv_rect = &face->uv_buffer_data[i * 2 * 6];
+
+        Vector2 rect_coord = {{rects[i].x, w->a.height - rects[i].y}};
+        vec2_div(&rect_coord, &extents);
+        Vector2 rect_size = {{rects[i].width, rects[i].height}};
+        vec2_div(&rect_size, &extents);
+
+        int vec_cnt = 0;
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+    }
+
+    glGenBuffers(1, &face->vertex);
+    glGenBuffers(1, &face->uv);
+
+    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->vertex_buffer_size * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->uv_buffer_size * 2, face->uv_buffer_data, GL_STATIC_DRAW);
+
+    w->face = face;
+}
+
 /**
  * Add a pattern to a condition linked list.
  */
@@ -453,7 +571,7 @@ static void paint_root(session_t *ps) {
 
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
-	Vector3 pos = {{0, 0, 0.000001}};
+    Vector3 pos = {{0, 0, 0.000001}};
     draw_tex(face, &ps->root_texture.texture, &pos, &rootSize);
 }
 
@@ -720,23 +838,6 @@ paint_all(session_t *ps, win *t) {
   glx_paint_pre(ps);
 
 #ifdef MONITOR_REPAINT
-  // Note: MONITOR_REPAINT cannot work with DBE right now.
-  // Picture old_tgt_buffer = ps->tgt_buffer.pict;
-  ps->tgt_buffer.pict = ps->tgt_picture;
-#else
-  if (!paint_isvalid(ps, &ps->tgt_buffer)) {
-    // No-DBE painting mode: Paint to an intermediate Picture then paint
-    // the Picture to root window
-  if (!ps->tgt_buffer.pixmap) {
-    free_paint(ps, &ps->tgt_buffer);
-    ps->tgt_buffer.pixmap = XCreatePixmap(ps->dpy, ps->root,
-        ps->root_width, ps->root_height, ps->depth);
-  }
-
-  }
-#endif
-
-#ifdef MONITOR_REPAINT
   glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -824,11 +925,6 @@ static void map_win(session_t *ps, win_id wid) {
   // Call XSelectInput() before reading properties so that no property
   // changes are lost
   XSelectInput(ps->dpy, w->id, determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
-
-  // Notify compton when the shape of a window changes
-  if (ps->shape_exists) {
-    XShapeSelectInput(ps->dpy, w->id, ShapeNotifyMask);
-  }
 
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
@@ -1271,6 +1367,7 @@ add_win(session_t *ps, Window id, Window prev) {
 
     .id = None,
     .a = { },
+    .face = NULL,
     .state = STATE_INVISIBLE,
 #ifdef CONFIG_XINERAMA
     .xinerama_scr = -1,
@@ -1351,19 +1448,25 @@ add_win(session_t *ps, Window id, Window prev) {
     return false;
   }
 
-  /* memcpy(new, &win_def, sizeof(win)); */
-
   // Fill structure
   new->id = id;
 
   set_ignore_next(ps);
   if (!XGetWindowAttributes(ps->dpy, id, &new->a)
       || IsUnviewable == new->a.map_state) {
-    // Failed to get window attributes probably means the window is gone
-    // already. IsUnviewable means the window is already reparented
-    // elsewhere.
-    free(new);
+      // Failed to get window attributes probably means the window is gone
+      // already. IsUnviewable means the window is already reparented
+      // elsewhere.
+      vector_remove(&ps->win_list, slot);
     return false;
+  }
+
+  fetch_shaped_window_face(ps, new);
+
+  // Notify compton when the shape of a window changes
+  if (ps->shape_exists) {
+      // It will stop when the window is destroyed
+      XShapeSelectInput(ps->dpy, new->id, ShapeNotifyMask);
   }
 
   // Delay window mapping
@@ -1550,7 +1653,6 @@ static void
 configure_win(session_t *ps, XConfigureEvent *ce) {
   // On root window changes
   if (ce->window == ps->root) {
-    free_paint(ps, &ps->tgt_buffer);
 
     ps->root_width = ce->width;
     ps->root_height = ce->height;
@@ -2767,28 +2869,33 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
   ps->skip_poll = true;
 }
 
-inline static void
-ev_shape_notify(session_t *ps, XShapeEvent *ev) {
-  win *w = find_win(ps, ev->window);
-  if (!w || IsUnmapped == w->a.map_state) return;
+static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
+    win *w = find_win(ps, ev->window);
 
-  /*
-   * Empty border_size may indicated an
-   * unmapped/destroyed window, in which case
-   * seemingly BadRegion errors would be triggered
-   * if we attempt to rebuild border_size
-   */
-  if (w->border_size) {
-    // Mark the old border_size as damaged
-    add_damage(ps, w->border_size);
+    /*
+     * Empty border_size may indicated an
+     * unmapped/destroyed window, in which case
+     * seemingly BadRegion errors would be triggered
+     * if we attempt to rebuild border_size
+     */
+    if (w->border_size) {
+        // Mark the old border_size as damaged
+        add_damage(ps, w->border_size);
 
-    w->border_size = border_size(ps, w, true);
+        w->border_size = border_size(ps, w, true);
 
-    // Mark the new border_size as damaged
-    add_damage(ps, copy_region(ps, w->border_size));
-  }
+        // Mark the new border_size as damaged
+        add_damage(ps, copy_region(ps, w->border_size));
+    }
 
-  update_reg_ignore_expire(ps, w);
+    fetch_shaped_window_face(ps, w);
+    // We need to mark some damage
+    // The blur isn't damaged, because it will be cut out by the new geometry
+    w->stencil_damaged = true;
+    //The shadow is damaged because the outline (and therefore the inner clip) has changed.
+    w->shadow_damaged = true;
+
+    update_reg_ignore_expire(ps, w);
 }
 
 /**
@@ -5089,8 +5196,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     // .root_damage = None,
     .overlay = None,
     .screen_reg = None,
-    .tgt_picture = None,
-    .tgt_buffer = PAINT_INIT,
     .root_dbe = None,
     .reg_win = None,
     .o = {
@@ -5189,7 +5294,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
     .black_picture = None,
     .white_picture = None,
-    .gaussian_map = NULL,
     .cgsize = 0,
 
     .refresh_rate = 0,
@@ -5479,18 +5583,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   {
     XRenderPictureAttributes pa;
     pa.subwindow_mode = IncludeInferiors;
-
-    ps->root_picture = XRenderCreatePicture(ps->dpy, ps->root,
-        XRenderFindVisualFormat(ps->dpy, ps->vis),
-        CPSubwindowMode, &pa);
-    if (ps->o.paint_on_overlay) {
-      ps->tgt_picture = XRenderCreatePicture(ps->dpy, ps->overlay,
-          XRenderFindVisualFormat(ps->dpy, ps->vis),
-          CPSubwindowMode, &pa);
-    }
-    else {
-      ps->tgt_picture = ps->root_picture;
-    }
   }
 
   // Initialize filters, must be preceded by OpenGL context creation
@@ -5648,23 +5740,9 @@ session_destroy(session_t *ps) {
   free_picture(ps, &ps->black_picture);
   free_picture(ps, &ps->white_picture);
 
-  // Free tgt_{buffer,picture} and root_picture
-  if (ps->tgt_buffer.pict == ps->tgt_picture)
-    ps->tgt_buffer.pict = None;
-
-  if (ps->tgt_picture == ps->root_picture)
-    ps->tgt_picture = None;
-  else
-    free_picture(ps, &ps->tgt_picture);
-  free_fence(ps, &ps->tgt_buffer_fence);
-
-  free_picture(ps, &ps->root_picture);
-  free_paint(ps, &ps->tgt_buffer);
-
   // Free other X resources
   free_region(ps, &ps->screen_reg);
   free(ps->expose_rects);
-  free(ps->gaussian_map);
 
   xtexture_delete(&ps->root_texture);
 

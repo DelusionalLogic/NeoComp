@@ -356,8 +356,8 @@ win_ev_stop(session_t *ps, win *w) {
   }
 
   if (ps->shape_exists) {
-    set_ignore_next(ps);
-    XShapeSelectInput(ps->dpy, w->id, 0);
+    /* set_ignore_next(ps); */
+    /* XShapeSelectInput(ps->dpy, w->id, 0); */
   }
 }
 

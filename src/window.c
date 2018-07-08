@@ -81,7 +81,7 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
 
     glDepthMask(GL_TRUE);
 
-    glClearColor(0.0, 1.0, 1.0, 0.0);
+    glClearColor(1.0, 0.0, 1.0, 0.0);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -104,8 +104,8 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
         printf_errf("Shader was not a passthough shader\n");
         return false;
     }
-    struct face* face = assets_load("window.face");
 
+    struct face* face = assets_load("window.face");
     draw_tex(face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
 
     view = old_view;
@@ -137,6 +137,7 @@ bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
     view = mat4_orthogonal(0, w->glx_blur_cache.texture[0].size.x, 0, w->glx_blur_cache.texture[0].size.y, -1, 1);
     glViewport(0, 0, w->glx_blur_cache.texture[0].size.x, w->glx_blur_cache.texture[0].size.y);
 
+    glEnable(GL_BLEND);
     glClearColor(0.0, 0.0, 0.0, 0.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -359,8 +360,6 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
     printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
 #endif
 
-    struct face* face = assets_load("window.face");
-
     // Painting
     {
         Vector2 rectPos = {{w->a.x, w->a.y}};
@@ -372,13 +371,16 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
         printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
 #endif
 
-        draw_rect(face, global_type->mvp, winpos, rectSize);
+        /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
+        /* draw_colored_rect(w->face, &winpos, &rectSize, &color); */
+        draw_rect(w->face, global_type->mvp, winpos, rectSize);
     }
 
     glx_mark(ps, w->id, false);
 }
 
-static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
+static void win_draw_debug(session_t* ps, win* w, float z) {
+    struct face* face = assets_load("window.face");
     Vector2 scale = {{1, 1}};
 
     glDisable(GL_DEPTH_TEST);
@@ -511,12 +513,36 @@ static void win_draw_debug(session_t* ps, struct face* face, win* w, float z) {
         free(text);
     }
 
+    {
+        char* text;
+        asprintf(&text, "depth: %d", w->drawable.xtexture.depth);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
+    {
+        char* text;
+        asprintf(&text, "verts: %zu", w->face->vertex_buffer_size);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
     glEnable(GL_DEPTH_TEST);
 }
 
 void win_draw(session_t* ps, win* w, float z) {
-    struct face* face = assets_load("window.face");
-
     Vector2 pos = {{w->a.x, w->a.y}};
     Vector2 size = {{w->widthb, w->heightb}};
     Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
@@ -528,12 +554,12 @@ void win_draw(session_t* ps, win* w, float z) {
 
         glEnable(GL_BLEND);
         glDepthMask(GL_FALSE);
-        draw_tex(face, &w->glx_blur_cache.texture[0], &dglPos, &size);
+        draw_tex(w->face, &w->glx_blur_cache.texture[0], &dglPos, &size);
     }
 
     win_drawcontents(ps, w, z);
 
-    /* win_draw_debug(ps, face, w, z); */
+    win_draw_debug(ps, w, z);
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
