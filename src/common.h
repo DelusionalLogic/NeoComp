@@ -167,19 +167,19 @@ struct WindowDrawable {
 };
 
 typedef struct {
-  /// Framebuffer used for blurring.
-  struct Framebuffer fbo;
-  /// Textures used for blurring.
-  struct Texture texture[2];
-  struct RenderBuffer stencil;
-  Vector2 size;
-  /// Width of the textures.
-  int width;
-  /// Height of the textures.
-  int height;
+    /// Framebuffer used for blurring.
+    struct Framebuffer fbo;
+    /// Textures used for blurring.
+    struct Texture texture[2];
+    struct RenderBuffer stencil;
+    Vector2 size;
+    /// Width of the textures.
+    int width;
+    /// Height of the textures.
+    int height;
 
-  /// Has the blur been damaged
-  bool damaged;
+    /// Has the blur been damaged
+    bool damaged;
 } glx_blur_cache_t;
 
 struct glx_shadow_cache {
