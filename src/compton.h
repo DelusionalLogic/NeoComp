@@ -695,7 +695,7 @@ static void
 win_recheck_client(session_t *ps, win *w);
 
 static bool
-add_win(session_t *ps, Window id, Window prev);
+add_win(session_t *ps, Window id);
 
 static void
 restack_win(session_t *ps, win *w, Window new_above);

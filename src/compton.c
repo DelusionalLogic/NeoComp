@@ -1321,7 +1321,7 @@ win_recheck_client(session_t *ps, win *w) {
 }
 
 static bool
-add_win(session_t *ps, Window id, Window prev) {
+add_win(session_t *ps, Window id) {
   const static win win_def = {
     .next = -1,
     .prev_trans = NULL,
@@ -1486,23 +1486,8 @@ add_win(session_t *ps, Window id, Window prev) {
       return false;
   }
 
-  // Find window insertion point
-  size_t* next_ptr = &ps->list;
-  if (prev) {
-      while(*next_ptr != -1) {
-          struct _win* next = swiss_get(&ps->win_list, *next_ptr);
-          if (next->id == prev && !next->destroyed) {
-              break;
-          }
-          next_ptr = &next->next;
-      }
-  } else {
-      next_ptr = &ps->list;
-  }
-
-
-  new->next = *next_ptr;
-  *next_ptr = slot;
+  new->next = ps->list;
+  ps->list = slot;
 
 #ifdef CONFIG_DBUS
   // Send D-Bus signal
@@ -2584,7 +2569,7 @@ ev_focus_out(session_t *ps, XFocusChangeEvent *ev) {
 inline static void
 ev_create_notify(session_t *ps, XCreateWindowEvent *ev) {
   assert(ev->parent == ps->root);
-  add_win(ps, ev->window, 0);
+  add_win(ps, ev->window);
 }
 
 inline static void
@@ -2626,7 +2611,7 @@ ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 #endif
 
   if (ev->parent == ps->root) {
-    add_win(ps, ev->window, 0);
+    add_win(ps, ev->window);
   } else {
     win *w = find_win(ps, ev->window);
     destroy_win(ps, w);
@@ -5570,7 +5555,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
       &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-      add_win(ps, children[i], 0);
+      add_win(ps, children[i]);
     }
 
     cxfree(children);
