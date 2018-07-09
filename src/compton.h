@@ -492,10 +492,10 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
  */
 static void clear_cache_win_leaders(session_t *ps) {
     size_t index;
-    win *w = vector_getFirst(&ps->win_list, &index);
+    win *w = swiss_getFirst(&ps->win_list, &index);
     while(w != NULL) {
         w->cache_leader = None;
-        w = vector_getNext(&ps->win_list, &index);
+        w = swiss_getNext(&ps->win_list, &index);
     }
 }
 
@@ -541,12 +541,12 @@ group_is_focused(session_t *ps, Window leader) {
     return false;
 
   size_t index;
-  win *w = vector_getFirst(&ps->win_list, &index);
+  win *w = swiss_getFirst(&ps->win_list, &index);
   while(w != NULL) {
       if (win_get_leader(ps, w) == leader && !w->destroyed
               && win_is_focused_real(ps, w))
           return true;
-      w = vector_getNext(&ps->win_list, &index);
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
   return false;

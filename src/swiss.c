@@ -1,16 +1,16 @@
-#include "vector.h"
+#include "swiss.h"
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
 
-#define VECTOR_FREELIST_ELEM_SIZE 8
+#define SWISS_FREELIST_ELEM_SIZE 8
 
 static size_t freelist_getByteSize(size_t bits) {
-    return bits / VECTOR_FREELIST_ELEM_SIZE + (bits % VECTOR_FREELIST_ELEM_SIZE != 0);
+    return bits / SWISS_FREELIST_ELEM_SIZE + (bits % SWISS_FREELIST_ELEM_SIZE != 0);
 }
 
-static void resize_real(Vector* vector, size_t newSize) {
+static void resize_real(Swiss* vector, size_t newSize) {
     assert(newSize != 0);
 
     void* newMem = realloc(vector->data, newSize * vector->elementSize);
@@ -51,13 +51,13 @@ static size_t findFirstSet(uint8_t value) {
 // positioning. If start is a mid-byte value, it will be rounded DOWN to the
 // byte it intersects, and we will start the search from there. It's just an
 // optimization after all.
-static size_t findNextFree(Vector* vector, size_t start) {
-#if VECTOR_FREELIST_ELEM_SIZE != 8
+static size_t findNextFree(Swiss* vector, size_t start) {
+#if SWISS_FREELIST_ELEM_SIZE != 8
 #error "findNextFree has to be made aware of the new size"
 #endif
     size_t freeSize = freelist_getByteSize(vector->maxSize);
 
-    for(int i = start / VECTOR_FREELIST_ELEM_SIZE; i < freeSize; i++) {
+    for(int i = start / SWISS_FREELIST_ELEM_SIZE; i < freeSize; i++) {
         uint8_t freeByte = vector->freelist[i];
 
         if(freeByte == 0)
@@ -71,14 +71,14 @@ static size_t findNextFree(Vector* vector, size_t start) {
     return -1;
 }
 
-static size_t findNextUsed(Vector* vector, size_t start) {
-#if VECTOR_FREELIST_ELEM_SIZE != 8
+static size_t findNextUsed(Swiss* vector, size_t start) {
+#if SWISS_FREELIST_ELEM_SIZE != 8
 #error "findNextUsed has to be made aware of the new size"
 #endif
     size_t freeSize = freelist_getByteSize(vector->maxSize);
-    size_t firstByte = start / VECTOR_FREELIST_ELEM_SIZE;
+    size_t firstByte = start / SWISS_FREELIST_ELEM_SIZE;
 
-    uint8_t mask = 0xFF00 >> (start % VECTOR_FREELIST_ELEM_SIZE);
+    uint8_t mask = 0xFF00 >> (start % SWISS_FREELIST_ELEM_SIZE);
     uint8_t value = vector->freelist[firstByte] | mask;
     if(value != 0xFF) {
         size_t index = findFirstSet(~value) + firstByte * 8;
@@ -101,9 +101,9 @@ static size_t findNextUsed(Vector* vector, size_t start) {
     return -1;
 }
 
-static void setFreeStatus(Vector* vector, size_t index, bool isFree) {
-    size_t byte = index / VECTOR_FREELIST_ELEM_SIZE;
-    size_t offset = index % VECTOR_FREELIST_ELEM_SIZE;
+static void setFreeStatus(Swiss* vector, size_t index, bool isFree) {
+    size_t byte = index / SWISS_FREELIST_ELEM_SIZE;
+    size_t offset = index % SWISS_FREELIST_ELEM_SIZE;
 
     if(!isFree)
         vector->freelist[byte] &= ~(0x80 >> offset);
@@ -111,14 +111,14 @@ static void setFreeStatus(Vector* vector, size_t index, bool isFree) {
         vector->freelist[byte] |= (0x80 >> offset);
 }
 
-static bool getFreeStatus(Vector* vector, size_t index) {
-    size_t byte = index / VECTOR_FREELIST_ELEM_SIZE;
-    size_t offset = index % VECTOR_FREELIST_ELEM_SIZE;
+static bool getFreeStatus(Swiss* vector, size_t index) {
+    size_t byte = index / SWISS_FREELIST_ELEM_SIZE;
+    size_t offset = index % SWISS_FREELIST_ELEM_SIZE;
 
     return vector->freelist[byte] & (0x80 >> offset);
 }
 
-static size_t allocateNextFree(Vector* vector) {
+static size_t allocateNextFree(Swiss* vector) {
 
     if(vector->firstFree == -1) {
         // Allocate space at the end of the array
@@ -142,7 +142,7 @@ static size_t allocateNextFree(Vector* vector) {
     return free;
 }
 
-void vector_init(Vector* vector, size_t elementsize, size_t initialsize)
+void swiss_init(Swiss* vector, size_t elementsize, size_t initialsize)
 {
     vector->elementSize = elementsize;
     vector->maxSize = 0;
@@ -160,7 +160,7 @@ void vector_init(Vector* vector, size_t elementsize, size_t initialsize)
     assert(vector->maxSize != 0);
 }
 
-void vector_kill(Vector* vector)
+void swiss_kill(Swiss* vector)
 {
     assert(vector->elementSize != 0);
     free(vector->data);
@@ -169,7 +169,7 @@ void vector_kill(Vector* vector)
     vector->freelist=(void*)0x72727272;
 }
 
-void* vector_detach(Vector* vector)
+void* swiss_detach(Swiss* vector)
 {
     vector->maxSize = 0;
     vector->elementSize = 0;
@@ -179,7 +179,7 @@ void* vector_detach(Vector* vector)
     return oldDat;
 }
 
-void vector_putBack(Vector* vector, const void* element, size_t* index)
+void swiss_putBack(Swiss* vector, const void* element, size_t* index)
 {
     assert(vector->elementSize != 0);
 
@@ -194,21 +194,21 @@ void vector_putBack(Vector* vector, const void* element, size_t* index)
     vector->size++;
 }
 
-size_t vector_indexOfPointer(Vector* vector, void* data) {
+size_t swiss_indexOfPointer(Swiss* vector, void* data) {
     assert(data >= vector->data);
     assert(data <= vector->data + (vector->elementSize * vector->maxSize));
 
     return (data - (void*)vector->data) / vector->elementSize;
 }
 
-void* vector_get(Vector* vector, const size_t count)
+void* swiss_get(Swiss* vector, const size_t count)
 {
     assert(vector->elementSize != 0);
     assert(getFreeStatus(vector, count) == false);
     return vector->data + vector->elementSize * count;
 }
 
-void vector_remove(Vector* vector, const size_t index) {
+void swiss_remove(Swiss* vector, const size_t index) {
     assert(vector->elementSize != 0);
     assert(getFreeStatus(vector, index) == false);
 
@@ -218,7 +218,7 @@ void vector_remove(Vector* vector, const size_t index) {
     vector->size--;
 }
 
-void vector_clear(Vector* vector)
+void swiss_clear(Swiss* vector)
 {
     assert(vector->elementSize != 0);
     vector->size = 0;
@@ -229,22 +229,22 @@ void vector_clear(Vector* vector)
     vector->firstFree = 0;
 }
 
-void* vector_getFirst(Vector* vector, size_t* index) {
+void* swiss_getFirst(Swiss* vector, size_t* index) {
     *index = 0;
-    if(*index >= vector_size(vector))
+    if(*index >= swiss_size(vector))
         return NULL;
-    return vector_get(vector, *index);
+    return swiss_get(vector, *index);
 }
 
-void* vector_getNext(Vector* vector, size_t* index) {
+void* swiss_getNext(Swiss* vector, size_t* index) {
     *index = findNextUsed(vector, (*index)+1);
     if(*index == -1) {
         return NULL;
     }
-    return vector_get(vector, *index);
+    return swiss_get(vector, *index);
 }
 
-int vector_size(Vector* vector)
+int swiss_size(Swiss* vector)
 {
     assert(vector->elementSize != 0);
     return vector->size;

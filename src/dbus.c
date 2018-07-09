@@ -685,7 +685,7 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
 
   // next
   if (!strcmp("next", target)) {
-      struct _win* next = vector_get(&ps->win_list, w->next);
+      struct _win* next = swiss_get(&ps->win_list, w->next);
     cdbus_reply_wid(ps, msg, (w->next ? next->id: 0));
     return true;
   }

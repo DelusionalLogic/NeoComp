@@ -745,7 +745,7 @@ paint_preprocess(session_t *ps, win *list) {
 
         if(w->next == -1)
             break;
-        next = vector_get(&ps->win_list, w->next);
+        next = swiss_get(&ps->win_list, w->next);
     }
 
 
@@ -864,7 +864,7 @@ wid_get_prop_wintype(session_t *ps, Window wid) {
 }
 
 static void map_win(session_t *ps, win_id wid) {
-  struct _win* w = vector_get(&ps->win_list, wid);
+  struct _win* w = swiss_get(&ps->win_list, wid);
   assert(w != NULL);
   // Unmap overlay window if it got mapped but we are currently not
   // in redirected state.
@@ -1398,8 +1398,8 @@ add_win(session_t *ps, Window id, Window prev) {
 
   // Allocate and initialize the new win structure
   size_t slot;
-  vector_putBack(&ps->win_list, &win_def, &slot);
-  win* new = vector_get(&ps->win_list, slot);
+  swiss_putBack(&ps->win_list, &win_def, &slot);
+  win* new = swiss_get(&ps->win_list, slot);
 
 #ifdef DEBUG_EVENTS
   printf_dbgf("(%#010lx): %p\n", id, new);
@@ -1419,7 +1419,7 @@ add_win(session_t *ps, Window id, Window prev) {
       // Failed to get window attributes probably means the window is gone
       // already. IsUnviewable means the window is already reparented
       // elsewhere.
-      vector_remove(&ps->win_list, slot);
+      swiss_remove(&ps->win_list, slot);
     return false;
   }
 
@@ -1490,7 +1490,7 @@ add_win(session_t *ps, Window id, Window prev) {
   size_t* next_ptr = &ps->list;
   if (prev) {
       while(*next_ptr != -1) {
-          struct _win* next = vector_get(&ps->win_list, *next_ptr);
+          struct _win* next = swiss_get(&ps->win_list, *next_ptr);
           if (next->id == prev && !next->destroyed) {
               break;
           }
@@ -1512,7 +1512,7 @@ add_win(session_t *ps, Window id, Window prev) {
 #endif
 
   if (IsViewable == map_state) {
-      map_win(ps, vector_indexOfPointer(&ps->win_list, new));
+      map_win(ps, swiss_indexOfPointer(&ps->win_list, new));
   }
 
   return true;
@@ -1526,14 +1526,14 @@ restack_win(session_t *ps, win *w, Window new_above) {
     update_reg_ignore_expire(ps, w);
 
     if (w->next) {
-        struct _win* next = vector_get(&ps->win_list, w->next);
+        struct _win* next = swiss_get(&ps->win_list, w->next);
         old_above = next->id;
     } else {
         old_above = None;
     }
 
     if (old_above != new_above) {
-        size_t w_id = vector_indexOfPointer(&ps->win_list, w);
+        size_t w_id = swiss_indexOfPointer(&ps->win_list, w);
         size_t *new_before = NULL;
         size_t *old_before = NULL;
 
@@ -1542,7 +1542,7 @@ restack_win(session_t *ps, win *w, Window new_above) {
         // unhook
         size_t* index = &ps->list;
         while(*index != -1) {
-            struct _win* win = vector_get(&ps->win_list, *index);
+            struct _win* win = swiss_get(&ps->win_list, *index);
 
             if(*index == w_id) {
                 old_before = index;
@@ -1585,7 +1585,7 @@ restack_win(session_t *ps, win *w, Window new_above) {
                     "Window stack modified. Current stack:\n", w->id, new_above);
 
             for (; c != -1;) {
-                struct _win* win = vector_get(&ps->win_list, c);
+                struct _win* win = swiss_get(&ps->win_list, c);
                 window_name = "(Failed to get title)";
 
                 to_free = ev_window_name(ps, win->id, &window_name);
@@ -1728,7 +1728,7 @@ circulate_win(session_t *ps, XCirculateEvent *ce) {
     if (!w) return;
 
     if (ce->place == PlaceOnTop) {
-        struct _win* top = vector_get(&ps->win_list, ps->list);
+        struct _win* top = swiss_get(&ps->win_list, ps->list);
         new_above = top->id;
     } else {
         new_above = None;
@@ -1738,7 +1738,7 @@ circulate_win(session_t *ps, XCirculateEvent *ce) {
 }
 
 static void finish_destroy_win(session_t *ps, win_id wid) {
-    struct _win* w = vector_get(&ps->win_list, wid);
+    struct _win* w = swiss_get(&ps->win_list, wid);
     if (w == ps->active_win)
         ps->active_win = NULL;
 
@@ -1749,13 +1749,13 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
 
     // Unhook the window from the legacy linked list
     size_t index = 0;
-    struct _win* p = vector_getFirst(&ps->win_list, &index);
+    struct _win* p = swiss_getFirst(&ps->win_list, &index);
     while(p != NULL) {
         if (p->next == wid) {
             p->next = w->next;
             break;
         }
-        p = vector_getNext(&ps->win_list, &index);
+        p = swiss_getNext(&ps->win_list, &index);
     }
 
     // If it's the first element we also want to remove it from there
@@ -1763,7 +1763,7 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
         ps->list = w->next;
     }
 
-    vector_remove(&ps->win_list, wid);
+    swiss_remove(&ps->win_list, wid);
 }
 
 static void destroy_win(session_t *ps, struct _win* w) {
@@ -2019,11 +2019,11 @@ static void win_set_focused(session_t *ps, win *w) {
 
             //Update the focused state of all other windows lead by leader
             size_t index = 0;
-            win* t = vector_getFirst(&ps->win_list, &index);
+            win* t = swiss_getFirst(&ps->win_list, &index);
             while(t != NULL) {
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
-                t = vector_getNext(&ps->win_list, &index);
+                t = swiss_getNext(&ps->win_list, &index);
             }
         }
 
@@ -2048,7 +2048,7 @@ static void win_set_focused(session_t *ps, win *w) {
 
             //Update the focused state of all other windows lead by old leader
             size_t index = 0;
-            win* t = vector_getFirst(&ps->win_list, &index);
+            win* t = swiss_getFirst(&ps->win_list, &index);
             while(t != NULL) {
 
                 if (win_get_leader(ps, t) == active_leader_old)
@@ -2057,7 +2057,7 @@ static void win_set_focused(session_t *ps, win *w) {
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
 
-                t = vector_getNext(&ps->win_list, &index);
+                t = swiss_getNext(&ps->win_list, &index);
             }
         }
     }
@@ -2120,7 +2120,7 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
 
       //Update the focused state of all other windows lead by leader
       size_t prev_index = 0;
-      win* t = vector_getFirst(&ps->win_list, &prev_index);
+      win* t = swiss_getFirst(&ps->win_list, &prev_index);
       while(t != NULL) {
 
           if (win_get_leader(ps, t) == cache_leader_old)
@@ -2129,7 +2129,7 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
           if (win_get_leader(ps, t) == cache_leader)
               win_update_focused(ps, t);
 
-          t = vector_getNext(&ps->win_list, &prev_index);
+          t = swiss_getNext(&ps->win_list, &prev_index);
       }
     }
     // Otherwise, at most the window itself is affected
@@ -2389,14 +2389,14 @@ opts_init_track_focus(session_t *ps) {
     if (!ps->o.use_ewmh_active_win) {
         // Start listening to FocusChange events
         size_t index = 0;
-        win* w = vector_getFirst(&ps->win_list, &index);
+        win* w = swiss_getFirst(&ps->win_list, &index);
         while(w != NULL) {
 
             if (IsViewable == w->a.map_state)
                 XSelectInput(ps->dpy, w->id,
                         determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
 
-            w = vector_getNext(&ps->win_list, &index);
+            w = swiss_getNext(&ps->win_list, &index);
         }
 
         // Recheck focus
@@ -2413,11 +2413,11 @@ opts_set_no_fading_openclose(session_t *ps, bool newval) {
         ps->o.no_fading_openclose = newval;
 
         size_t index = 0;
-        win* w = vector_getFirst(&ps->win_list, &index);
+        win* w = swiss_getFirst(&ps->win_list, &index);
         while(w != NULL) {
             win_determine_fade(ps, w);
 
-            w = vector_getNext(&ps->win_list, &index);
+            w = swiss_getNext(&ps->win_list, &index);
         }
 
         ps->skip_poll = true;
@@ -2606,7 +2606,7 @@ static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
 static void ev_map_notify(session_t *ps, XMapEvent *ev) {
     win *w = find_win(ps, ev->window);
     if(w != NULL) {
-        map_win(ps, vector_indexOfPointer(&ps->win_list, w));
+        map_win(ps, swiss_indexOfPointer(&ps->win_list, w));
     }
 }
 
@@ -4810,7 +4810,7 @@ redir_start(session_t *ps) {
     XSync(ps->dpy, False);
 
     size_t index = 0;
-    win* w = vector_getFirst(&ps->win_list, &index);
+    win* w = swiss_getFirst(&ps->win_list, &index);
     while(w != NULL) {
         // If the window was mapped, then we need to do the mapping again
         if(w->a.map_state == IsViewable) {
@@ -4825,7 +4825,7 @@ redir_start(session_t *ps) {
             }
         }
 
-        w = vector_getNext(&ps->win_list, &index);
+        w = swiss_getNext(&ps->win_list, &index);
     }
 
     ps->redirected = true;
@@ -4993,13 +4993,13 @@ redir_stop(session_t *ps) {
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
     size_t index = 0;
-    win* w = vector_getFirst(&ps->win_list, &index);
+    win* w = swiss_getFirst(&ps->win_list, &index);
     while(w != NULL) {
         if(w->a.map_state == IsViewable) {
             wd_unbind(&w->drawable);
         }
 
-        w = vector_getNext(&ps->win_list, &index);
+        w = swiss_getNext(&ps->win_list, &index);
     }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
@@ -5321,22 +5321,22 @@ session_init(session_t *ps_old, int argc, char **argv) {
   get_cfg(ps, argc, argv, true);
 
   // Initialize window list
-  vector_init(&ps->win_list, sizeof(struct _win), 512);
+  swiss_init(&ps->win_list, sizeof(struct _win), 512);
 
-  Vector test;
-  vector_init(&test, sizeof(int), 10);
+  Swiss test;
+  swiss_init(&test, sizeof(int), 10);
   int telem = 0;
   for(int i = 0; i < 4; i++) {
       size_t index = 0;
-      vector_putBack(&test, &telem, &index);
+      swiss_putBack(&test, &telem, &index);
   }
-  vector_remove(&test, 1);
-  vector_remove(&test, 2);
+  swiss_remove(&test, 1);
+  swiss_remove(&test, 2);
   for(int i = 0; i < 1; i++) {
       size_t index = 0;
-      vector_putBack(&test, &telem, &index);
+      swiss_putBack(&test, &telem, &index);
   }
-  vector_clear(&test);
+  swiss_clear(&test);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
@@ -5644,14 +5644,14 @@ session_destroy(session_t *ps) {
   // Free window linked list
   {
     size_t index = 0;
-    win* w = vector_getFirst(&ps->win_list, &index);
+    win* w = swiss_getFirst(&ps->win_list, &index);
     while(w != NULL) {
         if (IsViewable == w->a.map_state && !w->destroyed)
             win_ev_stop(ps, w);
 
         wd_delete(&w->drawable);
 
-        w = vector_getNext(&ps->win_list, &index);
+        w = swiss_getNext(&ps->win_list, &index);
     }
 
     ps->list = -1;
@@ -5783,7 +5783,7 @@ session_run(session_t *ps) {
 
     ps->reg_ignore_expire = true;
 
-    t = paint_preprocess(ps, vector_get(&ps->win_list, ps->list));
+    t = paint_preprocess(ps, swiss_get(&ps->win_list, ps->list));
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -5842,7 +5842,7 @@ session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        t = paint_preprocess(ps, vector_get(&ps->win_list, ps->list));
+        t = paint_preprocess(ps, swiss_get(&ps->win_list, ps->list));
         ps->tmout_unredir_hit = false;
 
         zone_leave(&ZONE_preprocess);
@@ -5856,12 +5856,12 @@ session_run(session_t *ps) {
         zone_leave(&ZONE_update);
 
         size_t index = 0;
-        struct _win* w = vector_getFirst(&ps->win_list, &index);
+        struct _win* w = swiss_getFirst(&ps->win_list, &index);
         while(w != NULL) {
             if(w->state == STATE_DESTROYED) {
-                finish_destroy_win(ps, vector_indexOfPointer(&ps->win_list, w));
+                finish_destroy_win(ps, swiss_indexOfPointer(&ps->win_list, w));
             }
-            w = vector_getNext(&ps->win_list, &index);
+            w = swiss_getNext(&ps->win_list, &index);
         }
 
         windowlist_updateStencil(ps, t);

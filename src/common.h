@@ -123,7 +123,7 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
-#include "vector.h"
+#include "swiss.h"
 #include "bezier.h"
 #include "texture.h"
 #include "framebuffer.h"
@@ -947,8 +947,8 @@ typedef struct _session_t {
   int n_expose;
 
   // === Window related ===
-  // Vector of windows
-  Vector win_list;
+  // Swiss of windows
+  Swiss win_list;
   /// Linked list of all windows.
   size_t list;
   /// Pointer to <code>win</code> of current active window. Used by
@@ -1906,11 +1906,11 @@ find_win(session_t *ps, Window id) {
     return NULL;
 
   size_t index;
-  win *w = vector_getFirst(&ps->win_list, &index);
+  win *w = swiss_getFirst(&ps->win_list, &index);
   while(w != NULL) {
       if (w->id == id && !w->destroyed)
           return w;
-      w = vector_getNext(&ps->win_list, &index);
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
   return NULL;
@@ -1928,11 +1928,11 @@ find_toplevel(session_t *ps, Window id) {
     return NULL;
 
   size_t index;
-  win *w = vector_getFirst(&ps->win_list, &index);
+  win *w = swiss_getFirst(&ps->win_list, &index);
   while(w != NULL) {
       if (w->client_win == id && !w->destroyed)
           return w;
-      w = vector_getNext(&ps->win_list, &index);
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
   return NULL;
