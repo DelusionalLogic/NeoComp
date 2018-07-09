@@ -5570,7 +5570,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
       &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-      add_win(ps, children[i], i ? children[i-1] : None);
+      add_win(ps, children[i], 0);
     }
 
     cxfree(children);
