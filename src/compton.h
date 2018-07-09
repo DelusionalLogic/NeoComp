@@ -337,10 +337,6 @@ wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
   return true;
 }
 
-static Picture
-solid_picture(session_t *ps, bool argb, double a,
-              double r, double g, double b);
-
 /**
  * Stop listening for events on a particular window.
  */

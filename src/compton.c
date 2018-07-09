@@ -139,44 +139,6 @@ fade_timeout(session_t *ps) {
   return 10;
 }
 
-/**
- * Generate a 1x1 <code>Picture</code> of a particular color.
- */
-static Picture
-solid_picture(session_t *ps, bool argb, double a,
-              double r, double g, double b) {
-  Pixmap pixmap;
-  Picture picture;
-  XRenderPictureAttributes pa;
-  XRenderColor c;
-
-  pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, argb ? 32 : 8);
-
-  if (!pixmap) return None;
-
-  pa.repeat = True;
-  picture = XRenderCreatePicture(ps->dpy, pixmap,
-    XRenderFindStandardFormat(ps->dpy, argb
-      ? PictStandardARGB32 : PictStandardA8),
-    CPRepeat,
-    &pa);
-
-  if (!picture) {
-    XFreePixmap(ps->dpy, pixmap);
-    return None;
-  }
-
-  c.alpha = a * 0xffff;
-  c.red =   r * 0xffff;
-  c.green = g * 0xffff;
-  c.blue =  b * 0xffff;
-
-  XRenderFillRectangle(ps->dpy, PictOpSrc, picture, &c, 0, 0, 1, 1);
-  XFreePixmap(ps->dpy, pixmap);
-
-  return picture;
-}
-
 // === Error handling ===
 
 static void
@@ -5292,8 +5254,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .active_win = NULL,
     .active_leader = None,
 
-    .black_picture = None,
-    .white_picture = None,
     .cgsize = 0,
 
     .refresh_rate = 0,
@@ -5589,9 +5549,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   if (!init_filters(ps))
     exit(1);
 
-  ps->black_picture = solid_picture(ps, true, 1, 0, 0, 0);
-  ps->white_picture = solid_picture(ps, true, 1, 1, 1, 1);
-
   fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
   ps->tmout_unredir = timeout_insert(ps, ps->o.unredir_if_possible_delay,
       tmout_unredir_callback, NULL);
@@ -5736,9 +5693,6 @@ session_destroy(session_t *ps) {
     ps->ignore_head = NULL;
     ps->ignore_tail = &ps->ignore_head;
   }
-
-  free_picture(ps, &ps->black_picture);
-  free_picture(ps, &ps->white_picture);
 
   // Free other X resources
   free_region(ps, &ps->screen_reg);

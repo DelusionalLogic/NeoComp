@@ -962,19 +962,9 @@ typedef struct _session_t {
   Window active_leader;
 
   // === Shadow/dimming related ===
-  /// 1x1 black Picture.
-  Picture black_picture;
-  /// 1x1 Picture of the shadow color.
-  Picture cshadow_picture;
-  /// 1x1 white Picture.
-  Picture white_picture;
   // for shadow precomputation
   /// Shadow depth on one side.
   int cgsize;
-  /// Pre-computed color table for corners of shadow.
-  unsigned char *shadow_corner;
-  /// Pre-computed color table for a side of shadow.
-  unsigned char *shadow_top;
   /// A region in which shadow is not painted on.
   XserverRegion shadow_exclude_reg;
 
