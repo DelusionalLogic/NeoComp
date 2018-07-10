@@ -23,7 +23,7 @@ LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
 OBJS += vmath.o bezier.o
-OBJS += timer.o swiss.o
+OBJS += timer.o swiss.o vector.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o shadow.o texture.o include.o
 OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer.o
 OBJS += window.o windowlist.o

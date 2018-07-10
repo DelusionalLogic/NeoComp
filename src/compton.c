@@ -1397,7 +1397,7 @@ add_win(session_t *ps, Window id) {
   }
 
   // Allocate and initialize the new win structure
-  size_t slot;
+  win_id slot;
   swiss_putBack(&ps->win_list, &win_def, &slot);
   win* new = swiss_get(&ps->win_list, slot);
 
@@ -1489,6 +1489,8 @@ add_win(session_t *ps, Window id) {
   new->next = ps->list;
   ps->list = slot;
 
+  vector_putBack(&ps->order, &slot);
+
 #ifdef CONFIG_DBUS
   // Send D-Bus signal
   if (ps->o.dbus) {
@@ -1506,7 +1508,6 @@ add_win(session_t *ps, Window id) {
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
     Window old_above;
-    assert(w->next != 0);
 
     update_reg_ignore_expire(ps, w);
 
@@ -1518,7 +1519,31 @@ restack_win(session_t *ps, win *w, Window new_above) {
     }
 
     if (old_above != new_above) {
-        size_t w_id = swiss_indexOfPointer(&ps->win_list, w);
+
+        win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
+
+        {
+            struct _win* w_above = find_win(ps, new_above);
+            assert(w_above != NULL);
+            win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
+
+            size_t w_loc;
+            size_t above_loc;
+
+            size_t index;
+            win_id* t = vector_getFirst(&ps->order, &index);
+            while(t != NULL) {
+                if(*t == w_id)
+                    w_loc = index;
+
+                if(*t == above_id)
+                    above_loc = index;
+                t = vector_getNext(&ps->order, &index);
+            }
+
+            vector_circulate(&ps->order, w_loc, above_loc);
+        }
+
         size_t *new_before = NULL;
         size_t *old_before = NULL;
 
@@ -1731,6 +1756,9 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
         w->prev_trans->next_trans = w->next_trans;
     if(w->next_trans != NULL)
         w->next_trans->prev_trans = w->prev_trans;
+
+    size_t order_index = vector_find_uint64(&ps->order, wid);
+    vector_remove(&ps->order, order_index);
 
     // Unhook the window from the legacy linked list
     size_t index = 0;
@@ -5305,23 +5333,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
   // First pass
   get_cfg(ps, argc, argv, true);
 
-  // Initialize window list
   swiss_init(&ps->win_list, sizeof(struct _win), 512);
 
-  Swiss test;
-  swiss_init(&test, sizeof(int), 10);
-  int telem = 0;
-  for(int i = 0; i < 4; i++) {
-      size_t index = 0;
-      swiss_putBack(&test, &telem, &index);
-  }
-  swiss_remove(&test, 1);
-  swiss_remove(&test, 2);
-  for(int i = 0; i < 1; i++) {
-      size_t index = 0;
-      swiss_putBack(&test, &telem, &index);
-  }
-  swiss_clear(&test);
+  vector_init(&ps->order, sizeof(win_id), 16);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)

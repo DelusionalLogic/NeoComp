@@ -124,6 +124,7 @@
 
 #include "vmath.h"
 #include "swiss.h"
+#include "vector.h"
 #include "bezier.h"
 #include "texture.h"
 #include "framebuffer.h"
@@ -215,6 +216,8 @@ struct Fading {
 // FUCK
 // FUCK
 // FUCK
+
+typedef uint64_t win_id;
 
 
 // Workarounds for missing definitions in some broken GL drivers, thanks to
@@ -949,6 +952,9 @@ typedef struct _session_t {
   // === Window related ===
   // Swiss of windows
   Swiss win_list;
+  // Window order vector. Since most activity involves the topmost window, the
+  // vector will be ordered with the topmost window last
+  Vector order;
   /// Linked list of all windows.
   size_t list;
   /// Pointer to <code>win</code> of current active window. Used by
