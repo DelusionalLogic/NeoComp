@@ -5182,7 +5182,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .n_expose = 0,
 
     .win_list = {0},
-    .list = -1,
     .active_win = NULL,
     .active_leader = None,
 

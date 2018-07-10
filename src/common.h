@@ -955,8 +955,6 @@ typedef struct _session_t {
   // Window order vector. Since most activity involves the topmost window, the
   // vector will be ordered with the topmost window last
   Vector order;
-  /// Linked list of all windows.
-  size_t list;
   /// Pointer to <code>win</code> of current active window. Used by
   /// EWMH <code>_NET_ACTIVE_WINDOW</code> focus detection. In theory,
   /// it's more reliable to store the window ID directly here, just in
