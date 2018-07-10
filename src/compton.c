@@ -615,8 +615,9 @@ get_frame_extents(session_t *ps, win *w, Window client) {
 }
 
 static win *
-paint_preprocess(session_t *ps, win *list) {
+paint_preprocess(session_t *ps) {
     win *t = NULL, *next = NULL;
+	struct _win* list = swiss_get(&ps->win_list, ps->list);
 
     bool unredir_possible = false;
     // Trace whether it's the highest window to paint
@@ -5782,7 +5783,7 @@ session_run(session_t *ps) {
 
     ps->reg_ignore_expire = true;
 
-    t = paint_preprocess(ps, swiss_get(&ps->win_list, ps->list));
+    t = paint_preprocess(ps);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -5841,7 +5842,7 @@ session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        t = paint_preprocess(ps, swiss_get(&ps->win_list, ps->list));
+        t = paint_preprocess(ps);
         ps->tmout_unredir_hit = false;
 
         zone_leave(&ZONE_preprocess);
