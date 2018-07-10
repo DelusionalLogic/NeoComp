@@ -615,7 +615,7 @@ get_frame_extents(session_t *ps, win *w, Window client) {
 }
 
 static win *
-paint_preprocess(session_t *ps) {
+paint_preprocess(session_t *ps, Vector* paints) {
     win *t = NULL;
 
     bool unredir_possible = false;
@@ -728,6 +728,7 @@ paint_preprocess(session_t *ps) {
             if(t != NULL)
                 t->next_trans = w;
             t = w;
+            vector_putBack(paints, w_id);
         } else {
             assert(w->fade_callback == NULL);
         }
@@ -1485,9 +1486,6 @@ add_win(session_t *ps, Window id) {
       return false;
   }
 
-  new->next = ps->list;
-  ps->list = slot;
-
   vector_putBack(&ps->order, &slot);
 
 #ifdef CONFIG_DBUS
@@ -1506,115 +1504,39 @@ add_win(session_t *ps, Window id) {
 
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
-    Window old_above;
 
     update_reg_ignore_expire(ps, w);
 
-    if (w->next) {
-        struct _win* next = swiss_get(&ps->win_list, w->next);
-        old_above = next->id;
-    } else {
-        old_above = None;
+    win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
+
+    struct _win* w_above = find_win(ps, new_above);
+    assert(w_above != NULL);
+    win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
+
+    size_t w_loc;
+    size_t above_loc;
+
+    size_t index;
+    win_id* t = vector_getFirst(&ps->order, &index);
+    while(t != NULL) {
+        if(*t == w_id)
+            w_loc = index;
+
+        if(*t == above_id)
+            above_loc = index;
+        t = vector_getNext(&ps->order, &index);
     }
 
-    if (old_above != new_above) {
-
-        win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
-
-        {
-            struct _win* w_above = find_win(ps, new_above);
-            assert(w_above != NULL);
-            win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
-
-            size_t w_loc;
-            size_t above_loc;
-
-            size_t index;
-            win_id* t = vector_getFirst(&ps->order, &index);
-            while(t != NULL) {
-                if(*t == w_id)
-                    w_loc = index;
-
-                if(*t == above_id)
-                    above_loc = index;
-                t = vector_getNext(&ps->order, &index);
-            }
-
-            vector_circulate(&ps->order, w_loc, above_loc);
-        }
-
-        size_t *new_before = NULL;
-        size_t *old_before = NULL;
-
-        bool found = false;
-
-        // unhook
-        size_t* index = &ps->list;
-        while(*index != -1) {
-            struct _win* win = swiss_get(&ps->win_list, *index);
-
-            if(*index == w_id) {
-                old_before = index;
-            }
-
-            if (win->id == new_above && !win->destroyed) {
-                new_before = index;
-                found = true;
-            }
-
-            index = &win->next;
-        }
-
-        if(old_before == NULL) {
-            old_before = index;
-        }
-
-
-        if (new_above && !found) {
-            printf_errf("(%#010lx, %#010lx): "
-                    "Failed to found new above window.", w->id, new_above);
-            return;
-        } else if(!found) {
-            new_before = index;
-        }
-
-        *old_before = w->next;
-
-        w->next = *new_before;
-        *new_before = w_id;
-
-#ifdef DEBUG_RESTACK
-        {
-            const char *desc;
-            char *window_name = NULL;
-            bool to_free;
-            size_t c = ps->list;
-
-            printf_dbgf("(%#010lx, %#010lx): "
-                    "Window stack modified. Current stack:\n", w->id, new_above);
-
-            for (; c != -1;) {
-                struct _win* win = swiss_get(&ps->win_list, c);
-                window_name = "(Failed to get title)";
-
-                to_free = ev_window_name(ps, win->id, &window_name);
-
-                desc = "";
-                if (win->destroyed) desc = "(D) ";
-                printf("%#010lx \"%s\" %s", win->id, window_name, desc);
-                if (win->next)
-                    printf("-> ");
-
-                if (to_free) {
-                    cxfree(window_name);
-                    window_name = NULL;
-                }
-                c = win->next;
-            }
-            fputs("\n", stdout);
-        }
-#endif
+    // Circulate moves the windows between the src and target, so we
+    // have to move one after the target when we are moving backwards
+    if(above_loc < w_loc) {
+        above_loc++;
     }
+
+    if(w_loc == above_loc)
+        return;
+
+    vector_circulate(&ps->order, w_loc, above_loc);
 }
 
 static bool
@@ -1732,18 +1654,21 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 static void
 circulate_win(session_t *ps, XCirculateEvent *ce) {
     win *w = find_win(ps, ce->window);
-    Window new_above;
 
     if (!w) return;
 
+    size_t w_loc = vector_find_uint64(&ps->order, swiss_indexOfPointer(&ps->win_list, w));
+    size_t new_loc;
     if (ce->place == PlaceOnTop) {
-        struct _win* top = swiss_get(&ps->win_list, ps->list);
-        new_above = top->id;
+        new_loc = vector_size(&ps->order) - 1;
     } else {
-        new_above = None;
+        new_loc = 0;
     }
 
-    restack_win(ps, w, new_above);
+    if(w_loc == new_loc)
+        return;
+
+    vector_circulate(&ps->order, w_loc, new_loc);
 }
 
 static void finish_destroy_win(session_t *ps, win_id wid) {
@@ -1768,11 +1693,6 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
             break;
         }
         p = swiss_getNext(&ps->win_list, &index);
-    }
-
-    // If it's the first element we also want to remove it from there
-    if(ps->list == wid) {
-        ps->list = w->next;
     }
 
     swiss_remove(&ps->win_list, wid);
@@ -5651,8 +5571,6 @@ session_destroy(session_t *ps) {
 
         w = swiss_getNext(&ps->win_list, &index);
     }
-
-    ps->list = -1;
   }
 
 #ifdef CONFIG_C2
@@ -5776,12 +5694,15 @@ static void
 session_run(session_t *ps) {
     win *t;
 
+    Vector paints;
+    vector_init(&paints, sizeof(win_id), ps->win_list.maxSize);
+
     if (ps->o.sw_opti)
         ps->paint_tm_offset = get_time_timeval().tv_usec;
 
     ps->reg_ignore_expire = true;
 
-    t = paint_preprocess(ps);
+    t = paint_preprocess(ps, &paints);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -5840,20 +5761,28 @@ session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        t = paint_preprocess(ps);
+        vector_clear(&paints);
+        t = paint_preprocess(ps, &paints);
         ps->tmout_unredir_hit = false;
 
         zone_leave(&ZONE_preprocess);
 
         zone_enter(&ZONE_update);
 
-        for (win *w = t; w != NULL; w = w->prev_trans) {
-            win_update(ps, w, delta);
+        size_t index;
+        win_id* w_id = vector_getLast(&paints, &index);
+        while(w_id != NULL) {
+            win_update(ps, swiss_get(&ps->win_list, *w_id), delta);
+            w_id = vector_getPrev(&paints, &index);
         }
 
         zone_leave(&ZONE_update);
 
-        size_t index = 0;
+        windowlist_updateStencil(ps, &paints);
+
+        windowlist_updateShadow(ps, &paints);
+        windowlist_updateBlur(ps, t);
+
         struct _win* w = swiss_getFirst(&ps->win_list, &index);
         while(w != NULL) {
             if(w->state == STATE_DESTROYED) {
@@ -5862,10 +5791,6 @@ session_run(session_t *ps) {
             w = swiss_getNext(&ps->win_list, &index);
         }
 
-        windowlist_updateStencil(ps, t);
-
-        windowlist_updateShadow(ps, t);
-        windowlist_updateBlur(ps, t);
 
         zone_enter(&ZONE_paint);
 

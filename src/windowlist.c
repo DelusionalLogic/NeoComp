@@ -58,7 +58,7 @@ void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
     glx_mark(ps, head->id, false);
 }
 
-void windowlist_updateStencil(session_t* ps, win* back) {
+void windowlist_updateStencil(session_t* ps, Vector* paints) {
     glEnable(GL_STENCIL_TEST);
     glDisable(GL_DEPTH_TEST);
 
@@ -80,8 +80,10 @@ void windowlist_updateStencil(session_t* ps, win* back) {
 
     shader_use(program);
 
-
-    for (win *w = back; w; w = w->prev_trans) {
+    size_t index;
+    win_id* w_id = vector_getLast(paints, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
@@ -105,14 +107,18 @@ void windowlist_updateStencil(session_t* ps, win* back) {
                 w->stencil_damaged = false;
             }
         }
+        w_id = vector_getPrev(paints, &index);
     }
 
     glDisable(GL_STENCIL_TEST);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
-void windowlist_updateShadow(session_t* ps, win* back) {
-    for (win *w = back; w; w = w->prev_trans) {
+void windowlist_updateShadow(session_t* ps, Vector* paints) {
+    size_t index;
+    win_id* w_id = vector_getLast(paints, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
@@ -123,6 +129,7 @@ void windowlist_updateShadow(session_t* ps, win* back) {
                 win_calc_shadow(ps, w);
             }
         }
+        w_id = vector_getPrev(paints, &index);
     }
 }
 

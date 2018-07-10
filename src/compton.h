@@ -576,7 +576,7 @@ static void
 get_frame_extents(session_t *ps, win *w, Window client);
 
 static win *
-paint_preprocess(session_t *ps);
+paint_preprocess(session_t *ps, Vector* paints);
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,

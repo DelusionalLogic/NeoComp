@@ -335,10 +335,14 @@ glx_destroy(session_t *ps) {
     return;
 
   // Free all GLX resources of windows
-  for (win *w = ps->list; w; w = w->next) {
-    blur_cache_delete(&w->glx_blur_cache);
-    shadow_cache_delete(&w->shadow_cache);
+  size_t index = 0;
+  struct _win* w = swiss_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      blur_cache_delete(&w->glx_blur_cache);
+      shadow_cache_delete(&w->shadow_cache);
+      w = swiss_getNext(&ps->win_list, &index);
   }
+
 
   blur_destroy(&ps->psglx->blur);
 

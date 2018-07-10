@@ -343,15 +343,9 @@ cdbus_apdarg_string(session_t *ps, DBusMessage *msg, const void *data) {
  */
 static bool
 cdbus_apdarg_wids(session_t *ps, DBusMessage *msg, const void *data) {
-  // Get the number of wids we are to include
-  unsigned count = 0;
-  for (win *w = ps->list; w; w = w->next) {
-    if (!w->destroyed)
-      ++count;
-  }
 
   // Allocate memory for an array of window IDs
-  cdbus_window_t *arr = malloc(sizeof(cdbus_window_t) * count);
+  cdbus_window_t *arr = malloc(sizeof(cdbus_window_t) * swiss_size(&ps->win_list));
   if (!arr) {
     printf_errf("(): Failed to allocate memory for window ID array.");
     return false;
@@ -360,19 +354,22 @@ cdbus_apdarg_wids(session_t *ps, DBusMessage *msg, const void *data) {
   // Build the array
   {
     cdbus_window_t *pcur = arr;
-    for (win *w = ps->list; w; w = w->next) {
+    size_t index = 0;
+    struct _win* w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
       if (!w->destroyed) {
         *pcur = w->id;
         ++pcur;
-        assert(pcur <= arr + count);
+        assert(pcur <= arr + swiss_size(&ps->win_list));
       }
+      w = swiss_getNext(&ps->win_list, &index);
     }
-    assert(pcur == arr + count);
+    assert(pcur == arr + swiss_size(&ps->win_list));
   }
 
   // Append arguments
   if (!dbus_message_append_args(msg, DBUS_TYPE_ARRAY, CDBUS_TYPE_WINDOW,
-        &arr, count, DBUS_TYPE_INVALID)) {
+        &arr, swiss_size(&ps->win_list), DBUS_TYPE_INVALID)) {
     printf_errf("(): Failed to append argument.");
     free(arr);
     return false;
