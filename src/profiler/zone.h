@@ -22,6 +22,7 @@ struct ZoneEvent {
     enum ZoneEventType type;
 
     char* location;
+    char userdata[64];
 };
 
 struct ZoneEventStream {
@@ -44,9 +45,11 @@ struct ZoneEventStream {
 #define STRINGIFY(X) STRINGIFY2(X)
 
 #define zone_enter(zone) zone_enter_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
+#define zone_enter_extra(zone, format, ...) zone_enter_extra_raw(zone, __FILE__ ": " STRINGIFY(__LINE__), format, __VA_ARGS__)
 #define zone_leave(zone) zone_leave_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
 
 void zone_enter_raw(struct ProgramZone* zone, char* location);
+void zone_enter_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);
 void zone_leave_raw(struct ProgramZone* zone, char* location);
 
 void zone_start(struct ProgramZone* zone);

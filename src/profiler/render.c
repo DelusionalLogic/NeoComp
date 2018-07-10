@@ -22,6 +22,8 @@ struct Block {
     double millis;
     float start;
     float end;
+
+    char* userdata;
 };
 
 #define NUM_TRACKS 4
@@ -88,6 +90,8 @@ static void process(struct ZoneEventStream* stream) {
             block->start = offset;
             block->zone = cursor->zone;
 
+            block->userdata = cursor->userdata;
+
             depth++;
         } else if(cursor->type == ZE_LEAVE) {
             assert(depth >= 0);
@@ -130,7 +134,7 @@ static void draw(const Vector2* pos, const Vector2* size) {
         return;
     }
     struct Profiler* profiler_type = profiler_program->shader_type;
-    Vector3 color = {{.2, .2, .3}};
+    Vector3 color = {{.45, .2, .3}};
     shader_set_future_uniform_vec3(profiler_type->color, &color);
     shader_use(profiler_program);
 
@@ -219,6 +223,13 @@ static void draw(const Vector2* pos, const Vector2* size) {
 
                 text_draw(&debug_font, text, &pen, &textscale);
                 free(text);
+            }
+
+            {
+                text_size(&debug_font, block->userdata, &textscale, &scale);
+                pen.y -= scale.y;
+
+                text_draw(&debug_font, block->userdata, &pen, &textscale);
             }
         }
     }

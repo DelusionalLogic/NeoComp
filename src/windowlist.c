@@ -22,7 +22,7 @@ void windowlist_draw(session_t* ps, win* head, float* z) {
     glEnable(GL_DEPTH_TEST);
     for (win *w = head; w; w = w->next_trans) {
 
-        zone_enter(&ZONE_paint_window);
+        zone_enter_extra(&ZONE_paint_window, "%s", w->name);
         if(w->state == STATE_DESTROYING || w->state == STATE_HIDING
                 || w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING
                 || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE) {
