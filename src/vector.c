@@ -115,6 +115,21 @@ void* vector_getNext(Vector* vector, size_t* index) {
     return vector_get(vector, *index);
 }
 
+void* vector_getLast(Vector* vector, size_t* index) {
+    *index = vector_size(vector);
+    if(*index == 0)
+        return NULL;
+    (*index)--;
+    return vector_get(vector, *index);
+}
+
+void* vector_getPrev(Vector* vector, size_t* index) {
+    if(*index == 0)
+        return NULL;
+    --(*index);
+    return vector_get(vector, *index);
+}
+
 int vector_size(Vector* vector)
 {
     assert(vector->elementSize != 0);

@@ -616,13 +616,16 @@ get_frame_extents(session_t *ps, win *w, Window client) {
 
 static win *
 paint_preprocess(session_t *ps) {
-    win *t = NULL, *next = NULL;
-	struct _win* list = swiss_get(&ps->win_list, ps->list);
+    win *t = NULL;
 
     bool unredir_possible = false;
     // Trace whether it's the highest window to paint
     bool is_highest = true;
-    for (win *w = list; w; w = next) {
+
+    size_t index;
+    win_id* w_id = vector_getLast(&ps->order, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
         zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
         const bool mode_old = w->solid;
@@ -633,12 +636,9 @@ paint_preprocess(session_t *ps) {
         // @CLEANUP: This should probably be somewhere else
         w->fullscreen = win_is_fullscreen(ps, w);
 
-        // Data expiration
-        {
-            // Destroy reg_ignore on all windows if they should expire
-            if (ps->reg_ignore_expire)
-                free_region(ps, &w->reg_ignore);
-        }
+        // Destroy reg_ignore on all windows if they should expire
+        if (ps->reg_ignore_expire)
+            free_region(ps, &w->reg_ignore);
 
         // Restore flags from last paint if the window is being faded out
         if (IsUnmapped == w->a.map_state) {
@@ -744,9 +744,7 @@ paint_preprocess(session_t *ps) {
         }
         zone_leave(&ZONE_preprocess_window);
 
-        if(w->next == -1)
-            break;
-        next = swiss_get(&ps->win_list, w->next);
+        w_id = vector_getPrev(&ps->order, &index);
     }
 
 
