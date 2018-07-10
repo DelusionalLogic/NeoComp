@@ -133,8 +133,11 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     }
 }
 
-void windowlist_updateBlur(session_t* ps, win* back) {
-    for (win *w = back; w; w = w->prev_trans) {
+void windowlist_updateBlur(session_t* ps, Vector* paints) {
+    size_t index;
+    win_id* w_id = vector_getLast(paints, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
@@ -145,5 +148,6 @@ void windowlist_updateBlur(session_t* ps, win* back) {
                 }
             }
         }
+        w_id = vector_getPrev(paints, &index);
     }
 }

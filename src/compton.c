@@ -39,6 +39,7 @@ DECLARE_ZONE(preprocess);
 DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
+DECLARE_ZONE(effect_textures);
 
 /// Name strings for window types.
 const char * const WINTYPES[NUM_WINTYPES] = {
@@ -5777,10 +5778,15 @@ session_run(session_t *ps) {
 
         zone_leave(&ZONE_update);
 
+        zone_enter(&ZONE_effect_textures);
+
         windowlist_updateStencil(ps, &paints);
 
         windowlist_updateShadow(ps, &paints);
-        windowlist_updateBlur(ps, t);
+
+        windowlist_updateBlur(ps, &paints);
+
+        zone_leave(&ZONE_effect_textures);
 
         struct _win* w = swiss_getFirst(&ps->win_list, &index);
         while(w != NULL) {
