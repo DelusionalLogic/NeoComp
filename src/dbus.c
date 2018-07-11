@@ -908,7 +908,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(synchronize, cdbus_reply_bool);
 
   cdbus_m_opts_get_do(refresh_rate, cdbus_reply_int32);
-  cdbus_m_opts_get_do(sw_opti, cdbus_reply_bool);
   if (!strcmp("vsync", target)) {
     assert(ps->o.vsync < sizeof(VSYNC_STRS) / sizeof(VSYNC_STRS[0]));
     cdbus_reply_string(ps, msg, VSYNC_STRS[ps->o.vsync]);

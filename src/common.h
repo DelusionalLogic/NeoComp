@@ -286,7 +286,6 @@ typedef uint64_t win_id;
 
 #define TIME_MS_MAX LONG_MAX
 #define FADE_DELTA_TOLERANCE 0.2
-#define SWOPTI_TOLERANCE 3000
 #define TIMEOUT_RUN_TOLERANCE 0.05
 #define WIN_GET_LEADER_MAX_RECURSION 20
 
@@ -686,8 +685,6 @@ typedef struct _options_t {
   // === VSync & software optimization ===
   /// User-specified refresh rate.
   int refresh_rate;
-  /// Whether to enable refresh-rate-based software optimization.
-  bool sw_opti;
   /// VSync method to use;
   vsync_t vsync;
   /// Whether to enable double buffer.
@@ -1939,23 +1936,6 @@ find_toplevel(session_t *ps, Window id) {
   }
 
   return NULL;
-}
-
-
-/**
- * Check if current backend uses XRender for rendering.
- */
-static inline bool
-bkend_use_xrender(session_t *ps) {
-  return false;
-}
-
-/**
- * Check if current backend uses GLX.
- */
-static inline bool
-bkend_use_glx(session_t *ps) {
-  return true;
 }
 
 /**

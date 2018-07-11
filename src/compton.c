@@ -1554,7 +1554,7 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     // Reinitialize GLX on root change
     if (ps->o.glx_reinit_on_root_change && ps->psglx) {
-        if (!glx_reinit(ps, bkend_use_glx(ps)))
+        if (!glx_reinit(ps, true))
             printf_errf("(): Failed to reinitialize GLX, troubles ahead.");
         if (BKEND_GLX == ps->o.backend && !init_filters(ps))
             printf_errf("(): Failed to initialize filters.");
@@ -2789,20 +2789,9 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
 /**
  * Handle ScreenChangeNotify events from X RandR extension.
  */
-static void
-ev_screen_change_notify(session_t *ps,
-    XRRScreenChangeNotifyEvent __attribute__((unused)) *ev) {
-  if (ps->o.xinerama_shadow_crop)
-    cxinerama_upd_scrs(ps);
-
-  if (ps->o.sw_opti && !ps->o.refresh_rate) {
-    update_refresh_rate(ps);
-    if (!ps->refresh_rate) {
-      fprintf(stderr, "ev_screen_change_notify(): Refresh rate detection "
-          "failed, --sw-opti disabled.");
-      ps->o.sw_opti = false;
-    }
-  }
+static void ev_screen_change_notify(session_t *ps, XRRScreenChangeNotifyEvent __attribute__((unused)) *ev) {
+    if (ps->o.xinerama_shadow_crop)
+        cxinerama_upd_scrs(ps);
 }
 
 #if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
@@ -3804,8 +3793,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   lcfg_lookup_bool(&cfg, "dbe", &ps->o.dbe);
   // --paint-on-overlay
   lcfg_lookup_bool(&cfg, "paint-on-overlay", &ps->o.paint_on_overlay);
-  // --sw-opti
-  lcfg_lookup_bool(&cfg, "sw-opti", &ps->o.sw_opti);
   // --use-ewmh-active-win
   lcfg_lookup_bool(&cfg, "use-ewmh-active-win",
       &ps->o.use_ewmh_active_win);
@@ -4124,7 +4111,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       P_CASEBOOL(272, dbe);
       P_CASEBOOL(273, paint_on_overlay);
-      P_CASEBOOL(274, sw_opti);
       P_CASEBOOL(275, vsync_aggressive);
       P_CASEBOOL(276, use_ewmh_active_win);
       P_CASEBOOL(277, respect_prop_shadow);
@@ -4357,64 +4343,6 @@ update_refresh_rate(session_t *ps) {
 }
 
 /**
- * Initialize refresh-rated based software optimization.
- *
- * @return true for success, false otherwise
- */
-static bool
-swopti_init(session_t *ps) {
-  // Prepare refresh rate
-  // Check if user provides one
-  ps->refresh_rate = ps->o.refresh_rate;
-  if (ps->refresh_rate)
-    ps->refresh_intv = US_PER_SEC / ps->refresh_rate;
-
-  // Auto-detect refresh rate otherwise
-  if (!ps->refresh_rate && ps->randr_exists) {
-    update_refresh_rate(ps);
-  }
-
-  // Turn off vsync_sw if we can't get the refresh rate
-  if (!ps->refresh_rate)
-    return false;
-
-  return true;
-}
-
-/**
- * Modify a struct timeval timeout value to render at a fixed pace.
- *
- * @param ps current session
- * @param[in,out] ptv pointer to the timeout
- */
-static void
-swopti_handle_timeout(session_t *ps, struct timeval *ptv) {
-  if (!ptv)
-    return;
-
-  // Get the microsecond offset of the time when the we reach the timeout
-  // I don't think a 32-bit long could overflow here.
-  long offset = (ptv->tv_usec + get_time_timeval().tv_usec - ps->paint_tm_offset) % ps->refresh_intv;
-  if (offset < 0)
-    offset += ps->refresh_intv;
-
-  assert(offset >= 0 && offset < ps->refresh_intv);
-
-  // If the target time is sufficiently close to a refresh time, don't add
-  // an offset, to avoid certain blocking conditions.
-  if (offset < SWOPTI_TOLERANCE
-      || offset > ps->refresh_intv - SWOPTI_TOLERANCE)
-    return;
-
-  // Add an offset so we wait until the next refresh after timeout
-  ptv->tv_usec += ps->refresh_intv - offset;
-  if (ptv->tv_usec > US_PER_SEC) {
-    ptv->tv_usec -= US_PER_SEC;
-    ++ptv->tv_sec;
-  }
-}
-
-/**
  * Initialize DRM VSync.
  *
  * @return true for success, false otherwise
@@ -4519,11 +4447,6 @@ vsync_opengl_swc_init(session_t *ps) {
   if (!ensure_glx_context(ps))
     return false;
 
-  if (!bkend_use_glx(ps)) {
-    printf_errf("(): I'm afraid glXSwapIntervalSGI wouldn't help if you are "
-        "not using GLX backend. You could try, nonetheless.");
-  }
-
   // Get video sync functions
   if (!ps->psglx->glXSwapIntervalProc)
     ps->psglx->glXSwapIntervalProc = (f_SwapIntervalSGI)
@@ -4541,11 +4464,6 @@ static bool
 vsync_opengl_mswc_init(session_t *ps) {
   if (!ensure_glx_context(ps))
     return false;
-
-  if (!bkend_use_glx(ps)) {
-    printf_errf("(): I'm afraid glXSwapIntervalMESA wouldn't help if you are "
-        "not using GLX backend. You could try, nonetheless.");
-  }
 
   // Get video sync functions
   if (!ps->psglx->glXSwapIntervalMESAProc)
@@ -4996,11 +4914,6 @@ mainloop(session_t *ps) {
       *ptv = ms_to_tv(fade_timeout(ps));
     }
 
-    // Software optimization is to be applied on timeouts that require
-    // immediate painting only
-    if (ptv && ps->o.sw_opti)
-      swopti_handle_timeout(ps, ptv);
-
     // Don't continue looping for 0 timeout
     if (ptv && timeval_isempty(ptv)) {
       free(ptv);
@@ -5110,7 +5023,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .logpath = NULL,
 
       .refresh_rate = 0,
-      .sw_opti = false,
       .vsync = VSYNC_NONE,
       .dbe = false,
       .vsync_aggressive = false,
@@ -5368,7 +5280,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
   }
 
   // Query X RandR
-  if ((ps->o.sw_opti && !ps->o.refresh_rate) || ps->o.xinerama_shadow_crop) {
+  if (ps->o.xinerama_shadow_crop) {
     if (XRRQueryExtension(ps->dpy, &ps->randr_event, &ps->randr_error))
       ps->randr_exists = true;
     else
@@ -5414,9 +5326,12 @@ session_init(session_t *ps_old, int argc, char **argv) {
     exit(1);
 
   // Initialize OpenGL as early as possible
-  if (bkend_use_glx(ps)) {
-    if (!glx_init(ps, true))
-      exit(1);
+  if (!glx_init(ps, true))
+    exit(1);
+
+  if(!xorgContext_init(&ps->psglx->xcontext, ps->dpy, ps->scr)) {
+    printf_errf("Failed initializing the xorg context");
+    exit(1);
   }
 
   // Initialize window GL shader
@@ -5425,14 +5340,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
       exit(1);
   }
 
-  // Initialize software optimization
-  if (ps->o.sw_opti)
-    ps->o.sw_opti = swopti_init(ps);
-
   // Monitor screen changes if vsync_sw is enabled and we are using
   // an auto-detected refresh rate, or when Xinerama features are enabled
-  if (ps->randr_exists && ((ps->o.sw_opti && !ps->o.refresh_rate)
-        || ps->o.xinerama_shadow_crop))
+  if (ps->randr_exists || ps->o.xinerama_shadow_crop)
     XRRSelectInput(ps->dpy, ps->root, RRScreenChangeNotifyMask);
 
   // Initialize VSync
@@ -5624,6 +5534,8 @@ session_destroy(session_t *ps) {
   free(ps->o.glx_fshader_win_str);
   free_xinerama_info(ps);
 
+  xorgContext_delete(&ps->psglx->xcontext);
+
   glx_destroy(ps);
 
   // Free double buffer
@@ -5679,9 +5591,6 @@ session_run(session_t *ps) {
 
     Vector paints;
     vector_init(&paints, sizeof(win_id), ps->win_list.maxSize);
-
-    if (ps->o.sw_opti)
-        ps->paint_tm_offset = get_time_timeval().tv_usec;
 
     ps->reg_ignore_expire = true;
 

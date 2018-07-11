@@ -1007,12 +1007,6 @@ init_atoms(session_t *ps);
 static void
 update_refresh_rate(session_t *ps);
 
-static bool
-swopti_init(session_t *ps);
-
-static void
-swopti_handle_timeout(session_t *ps, struct timeval *ptv);
-
 /**
  * Ensure we have a GLX context.
  */

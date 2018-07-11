@@ -130,11 +130,6 @@ glx_init(session_t *ps, bool need_render) {
 
   glx_session_t *psglx = ps->psglx;
 
-  if(!xorgContext_init(&psglx->xcontext, ps->dpy, ps->scr)) {
-      printf_errf("Failed initializing the xorg context");
-      goto glx_init_end;
-  }
-
   if (!psglx->context) {
     // Get GLX context
     {
