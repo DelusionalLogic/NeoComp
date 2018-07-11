@@ -39,6 +39,7 @@ DECLARE_ZONE(preprocess);
 DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
+DECLARE_ZONE(effect_textures);
 
 /// Name strings for window types.
 const char * const WINTYPES[NUM_WINTYPES] = {
@@ -139,44 +140,6 @@ fade_timeout(session_t *ps) {
   return 10;
 }
 
-/**
- * Generate a 1x1 <code>Picture</code> of a particular color.
- */
-static Picture
-solid_picture(session_t *ps, bool argb, double a,
-              double r, double g, double b) {
-  Pixmap pixmap;
-  Picture picture;
-  XRenderPictureAttributes pa;
-  XRenderColor c;
-
-  pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, argb ? 32 : 8);
-
-  if (!pixmap) return None;
-
-  pa.repeat = True;
-  picture = XRenderCreatePicture(ps->dpy, pixmap,
-    XRenderFindStandardFormat(ps->dpy, argb
-      ? PictStandardARGB32 : PictStandardA8),
-    CPRepeat,
-    &pa);
-
-  if (!picture) {
-    XFreePixmap(ps->dpy, pixmap);
-    return None;
-  }
-
-  c.alpha = a * 0xffff;
-  c.red =   r * 0xffff;
-  c.green = g * 0xffff;
-  c.blue =  b * 0xffff;
-
-  XRenderFillRectangle(ps->dpy, PictOpSrc, picture, &c, 0, 0, 1, 1);
-  XFreePixmap(ps->dpy, pixmap);
-
-  return picture;
-}
-
 // === Error handling ===
 
 static void
@@ -261,6 +224,124 @@ wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
     .type = AnyPropertyType,
     .format = 0
   };
+}
+
+static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
+    if(w->face != NULL)
+        face_unload_file(w->face);
+
+    Vector2 extents = {{w->a.width, w->a.height}};
+
+    XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, w->id, ShapeBounding);
+
+    int count;
+    XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &count);
+
+    XFixesDestroyRegion(ps->dpy, window_region);
+
+    struct face* face = malloc(sizeof(struct face));
+    // We want 3 floats (x, y, z) for every vertex of which there are
+    // 6 (top-left bot-left top-right top-right bot-left bot-right) per rect
+    face->vertex_buffer_data = malloc(sizeof(float) * 3 * 6 * count);
+    face->uv_buffer_data = malloc(sizeof(float) * 2 * 6 * count);
+    face->vertex_buffer_size = count * 6;
+    face->uv_buffer_size = count * 6;
+
+    for(int i = 0; i < count; i++) {
+        // A single rect line in the vertex buffer is 3 * 6
+        float* vertex_rect = &face->vertex_buffer_data[i * 3 * 6];
+        // A single rect line in the uv buffer is 2 * 6
+        float* uv_rect = &face->uv_buffer_data[i * 2 * 6];
+
+        Vector2 rect_coord = {{rects[i].x, w->a.height - rects[i].y}};
+        vec2_div(&rect_coord, &extents);
+        Vector2 rect_size = {{rects[i].width, rects[i].height}};
+        vec2_div(&rect_size, &extents);
+
+        int vec_cnt = 0;
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect_coord.x + rect_size.x;
+            vertex_vec[1] = rect_coord.y - rect_size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect_coord.x + rect_size.x;
+            uv_vec[1] = rect_coord.y - rect_size.y;
+        }
+    }
+
+    glGenBuffers(1, &face->vertex);
+    glGenBuffers(1, &face->uv);
+
+    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->vertex_buffer_size * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->uv_buffer_size * 2, face->uv_buffer_data, GL_STATIC_DRAW);
+
+    w->face = face;
 }
 
 /**
@@ -453,7 +534,7 @@ static void paint_root(session_t *ps) {
 
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
-	Vector3 pos = {{0, 0, 0.000001}};
+    Vector3 pos = {{0, 0, 0.000001}};
     draw_tex(face, &ps->root_texture.texture, &pos, &rootSize);
 }
 
@@ -470,25 +551,6 @@ win_get_region(session_t *ps, win *w, bool use_offset) {
   r.height = w->heightb;
 
   return XFixesCreateRegion(ps->dpy, &r, 1);
-}
-
-/**
- * Get a rectangular region a window occupies, excluding frame and shadow.
- */
-static XserverRegion
-win_get_region_noframe(session_t *ps, win *w, bool use_offset) {
-  const margin_t extents = win_calc_frame_extents(ps, w);
-  XRectangle r;
-
-  r.x = (use_offset ? w->a.x: 0) + extents.left;
-  r.y = (use_offset ? w->a.y: 0) + extents.top;
-  r.width = max_i(w->a.width - extents.left - extents.right, 0);
-  r.height = max_i(w->a.height - extents.top - extents.bottom, 0);
-
-  if (r.width > 0 && r.height > 0)
-    return XFixesCreateRegion(ps->dpy, &r, 1);
-  else
-    return XFixesCreateRegion(ps->dpy, NULL, 0);
 }
 
 /**
@@ -550,43 +612,34 @@ get_frame_extents(session_t *ps, win *w, Window client) {
     w->has_frame = win_has_frame(w);
 
   }
-
-#ifdef DEBUG_FRAME
-  printf_dbgf("(%#010lx): %d, %d, %d, %d\n", w->id,
-      w->frame_extents.left, w->frame_extents.right,
-      w->frame_extents.top, w->frame_extents.bottom);
-#endif
-
   free_winprop(&prop);
 }
 
 static win *
-paint_preprocess(session_t *ps, win *list) {
-    win *t = NULL, *next = NULL;
-
-    XserverRegion last_reg_ignore = None;
+paint_preprocess(session_t *ps, Vector* paints) {
+    win *t = NULL;
 
     bool unredir_possible = false;
     // Trace whether it's the highest window to paint
     bool is_highest = true;
-    for (win *w = list; w; w = next) {
+
+    size_t index;
+    win_id* w_id = vector_getLast(&ps->order, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
         zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
-        const winmode_t mode_old = w->mode;
+        const bool mode_old = w->solid;
 
         // In case calling the fade callback function destroys this window
-        next = w->next;
         double opacity_old = w->opacity;
 
         // @CLEANUP: This should probably be somewhere else
         w->fullscreen = win_is_fullscreen(ps, w);
 
-        // Data expiration
-        {
-            // Destroy reg_ignore on all windows if they should expire
-            if (ps->reg_ignore_expire)
-                free_region(ps, &w->reg_ignore);
-        }
+        // Destroy reg_ignore on all windows if they should expire
+        if (ps->reg_ignore_expire)
+            free_region(ps, &w->reg_ignore);
 
         // Restore flags from last paint if the window is being faded out
         if (IsUnmapped == w->a.map_state) {
@@ -599,8 +652,6 @@ paint_preprocess(session_t *ps, win *list) {
         if (WFLAG_OPCT_CHANGE & w->flags) {
             calc_dim(ps, w);
         }
-
-        // Opacity will not change, from now on.
 
         // Give up if it's not damaged or invisible, or it's unmapped and its
         // pixmap is gone (for example due to a ConfigureNotify), or when it's
@@ -634,8 +685,7 @@ paint_preprocess(session_t *ps, win *list) {
             add_damage_win(ps, w);
 
         // Destroy all reg_ignore above when window mode changes
-        if ((to_paint && WMODE_SOLID == w->mode)
-                != (w->to_paint && WMODE_SOLID == mode_old))
+        if ((to_paint && w->solid) != (w->to_paint && w->solid == mode_old))
             ps->reg_ignore_expire = true;
 
         if (to_paint) {
@@ -679,6 +729,7 @@ paint_preprocess(session_t *ps, win *list) {
             if(t != NULL)
                 t->next_trans = w;
             t = w;
+            vector_putBack(paints, w_id);
         } else {
             assert(w->fade_callback == NULL);
         }
@@ -694,6 +745,8 @@ paint_preprocess(session_t *ps, win *list) {
             }
         }
         zone_leave(&ZONE_preprocess_window);
+
+        w_id = vector_getPrev(&ps->order, &index);
     }
 
 
@@ -748,23 +801,6 @@ paint_all(session_t *ps, win *t) {
   glx_paint_pre(ps);
 
 #ifdef MONITOR_REPAINT
-  // Note: MONITOR_REPAINT cannot work with DBE right now.
-  // Picture old_tgt_buffer = ps->tgt_buffer.pict;
-  ps->tgt_buffer.pict = ps->tgt_picture;
-#else
-  if (!paint_isvalid(ps, &ps->tgt_buffer)) {
-    // No-DBE painting mode: Paint to an intermediate Picture then paint
-    // the Picture to root window
-  if (!ps->tgt_buffer.pixmap) {
-    free_paint(ps, &ps->tgt_buffer);
-    ps->tgt_buffer.pixmap = XCreatePixmap(ps->dpy, ps->root,
-        ps->root_width, ps->root_height, ps->depth);
-  }
-
-  }
-#endif
-
-#ifdef MONITOR_REPAINT
   glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
   glClear(GL_COLOR_BUFFER_BIT);
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -777,6 +813,7 @@ paint_all(session_t *ps, win *t) {
       numWins++;
   }
 
+  glDepthMask(GL_TRUE);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
   glDrawBuffers(1, DRAWBUFS);
@@ -827,25 +864,19 @@ wid_get_prop_wintype(session_t *ps, Window wid) {
   return WINTYPE_UNKNOWN;
 }
 
-static void
-map_win(session_t *ps, Window id) {
+static void map_win(session_t *ps, win_id wid) {
+  struct _win* w = swiss_get(&ps->win_list, wid);
+  assert(w != NULL);
   // Unmap overlay window if it got mapped but we are currently not
   // in redirected state.
-  if (ps->overlay && id == ps->overlay && !ps->redirected) {
+  if (ps->overlay && w->id == ps->overlay && !ps->redirected) {
     XUnmapWindow(ps->dpy, ps->overlay);
     XFlush(ps->dpy);
   }
 
-  win *w = find_win(ps, id);
-
-#ifdef DEBUG_EVENTS
-  printf_dbgf("(%#010lx \"%s\"): %p\n", id, (w ? w->name: NULL), w);
-#endif
-
   // Don't care about window mapping if it's an InputOnly window
   // Try avoiding mapping a window twice
-  if (!w || InputOnly == w->a.class
-      || IsViewable == w->a.map_state)
+  if (InputOnly == w->a.class || IsViewable == w->a.map_state)
     return;
 
   assert(!win_is_focused_real(ps, w));
@@ -856,12 +887,7 @@ map_win(session_t *ps, Window id) {
 
   // Call XSelectInput() before reading properties so that no property
   // changes are lost
-  XSelectInput(ps->dpy, id, determine_evmask(ps, id, WIN_EVMODE_FRAME));
-
-  // Notify compton when the shape of a window changes
-  if (ps->shape_exists) {
-    XShapeSelectInput(ps->dpy, id, ShapeNotifyMask);
-  }
+  XSelectInput(ps->dpy, w->id, determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
 
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
@@ -880,10 +906,6 @@ map_win(session_t *ps, Window id) {
   }
 
   assert(w->client_win);
-
-#ifdef DEBUG_WINTYPE
-  printf_dbgf("(%#010lx): type %s\n", w->id, WINTYPES[w->window_type]);
-#endif
 
   // @HACK: We need to save the old state here before recheck focus might
   // change it. It kinda sucks, but such is life.
@@ -950,31 +972,6 @@ map_win(session_t *ps, Window id) {
 #endif
 }
 
-void finish_map_win(session_t *ps, win *w) {
-  w->in_openclose = false;
-  if (ps->o.no_fading_openclose) {
-    win_determine_fade(ps, w);
-  }
-}
-
-static void
-finish_unmap_win(session_t *ps, win *w) {
-  w->damaged = false;
-
-  w->in_openclose = false;
-
-  update_reg_ignore_expire(ps, w);
-
-  free_region(ps, &w->border_size);
-  if(ps->redirected)
-      wd_unbind(&w->drawable);
-}
-
-void
-unmap_callback(session_t *ps, win *w) {
-  finish_unmap_win(ps, w);
-}
-
 static void unmap_win(session_t *ps, win *w) {
     if (!w || IsUnmapped == w->a.map_state) return;
 
@@ -1005,26 +1002,14 @@ static void unmap_win(session_t *ps, win *w) {
 #endif
 }
 
-static void
-win_determine_mode(session_t *ps, win *w) {
-  winmode_t mode = WMODE_SOLID;
-
-  if (w->pictfmt && w->pictfmt->type == PictTypeDirect
-      && w->pictfmt->direct.alphaMask) {
-    mode = WMODE_ARGB;
-  } else if (w->opacity != 100.0) {
-    mode = WMODE_TRANS;
-  } else {
-    mode = WMODE_SOLID;
-  }
-
-  if(mode == WMODE_SOLID) {
-      w->solid = true;
-  } else {
-      w->solid = false;
-  }
-
-  w->mode = mode;
+static void win_determine_mode(session_t *ps, win *w) {
+    if (w->pictfmt && w->pictfmt->type == PictTypeDirect && w->pictfmt->direct.alphaMask) {
+        w->solid = false;
+    } else if (w->opacity != 100.0) {
+        w->solid = false;
+    } else {
+        w->solid = true;
+    }
 }
 
 /**
@@ -1062,7 +1047,7 @@ win_determine_fade(session_t *ps, win *w) {
   else if (ps->o.no_fading_openclose && w->in_openclose)
     w->fade_last = w->fade = false;
   else if (ps->o.no_fading_destroyed_argb && w->destroyed
-      && WMODE_ARGB == w->mode && w->client_win && w->client_win != w->id) {
+      && !w->solid && w->client_win && w->client_win != w->id) {
     w->fade_last = w->fade = false;
   }
   // Ignore other possible causes of fading state changes after window
@@ -1337,20 +1322,20 @@ win_recheck_client(session_t *ps, win *w) {
 }
 
 static bool
-add_win(session_t *ps, Window id, Window prev) {
+add_win(session_t *ps, Window id) {
   const static win win_def = {
-    .next = NULL,
+    .next = -1,
     .prev_trans = NULL,
     .next_trans = NULL,
 
     .id = None,
     .a = { },
+    .face = NULL,
     .state = STATE_INVISIBLE,
 #ifdef CONFIG_XINERAMA
     .xinerama_scr = -1,
 #endif
     .pictfmt = NULL,
-    .mode = WMODE_TRANS,
     .damaged = false,
     .damage = None,
     .border_size = None,
@@ -1402,6 +1387,9 @@ add_win(session_t *ps, Window id, Window prev) {
     .invert_color_force = UNSET,
 
     .blur_background = false,
+
+    .stencil = {0},
+    .stencil_damaged = true,
   };
 
   // Reject overlay window and already added windows
@@ -1410,7 +1398,9 @@ add_win(session_t *ps, Window id, Window prev) {
   }
 
   // Allocate and initialize the new win structure
-  win *new = malloc(sizeof(win));
+  win_id slot;
+  swiss_putBack(&ps->win_list, &win_def, &slot);
+  win* new = swiss_get(&ps->win_list, slot);
 
 #ifdef DEBUG_EVENTS
   printf_dbgf("(%#010lx): %p\n", id, new);
@@ -1421,30 +1411,25 @@ add_win(session_t *ps, Window id, Window prev) {
     return false;
   }
 
-  memcpy(new, &win_def, sizeof(win));
-
-  // Find window insertion point
-  win **p = NULL;
-  if (prev) {
-    for (p = &ps->list; *p; p = &(*p)->next) {
-      if ((*p)->id == prev && !(*p)->destroyed)
-        break;
-    }
-  } else {
-    p = &ps->list;
-  }
-
   // Fill structure
   new->id = id;
 
   set_ignore_next(ps);
   if (!XGetWindowAttributes(ps->dpy, id, &new->a)
       || IsUnviewable == new->a.map_state) {
-    // Failed to get window attributes probably means the window is gone
-    // already. IsUnviewable means the window is already reparented
-    // elsewhere.
-    free(new);
+      // Failed to get window attributes probably means the window is gone
+      // already. IsUnviewable means the window is already reparented
+      // elsewhere.
+      swiss_remove(&ps->win_list, slot);
     return false;
+  }
+
+  fetch_shaped_window_face(ps, new);
+
+  // Notify compton when the shape of a window changes
+  if (ps->shape_exists) {
+      // It will stop when the window is destroyed
+      XShapeSelectInput(ps->dpy, new->id, ShapeNotifyMask);
   }
 
   // Delay window mapping
@@ -1489,9 +1474,20 @@ add_win(session_t *ps, Window id, Window prev) {
       return false;
   }
 
+  // @PERFORMANCE @MEMORY: We only need stencil buffers for ARGB windows, but
+  // for now we'll just have it for all windows
+  if(renderbuffer_stencil_init(&new->stencil, NULL) != 0){
+      printf_errf("Failed initializing window stencil");
 
-  new->next = *p;
-  *p = new;
+      shadow_cache_delete(&new->shadow_cache);
+      blur_cache_delete(&new->glx_blur_cache);
+      wd_delete(&new->drawable);
+      free(new);
+
+      return false;
+  }
+
+  vector_putBack(&ps->order, &slot);
 
 #ifdef CONFIG_DBUS
   // Send D-Bus signal
@@ -1501,7 +1497,7 @@ add_win(session_t *ps, Window id, Window prev) {
 #endif
 
   if (IsViewable == map_state) {
-      map_win(ps, id);
+      map_win(ps, swiss_indexOfPointer(&ps->win_list, new));
   }
 
   return true;
@@ -1509,77 +1505,39 @@ add_win(session_t *ps, Window id, Window prev) {
 
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
-  Window old_above;
 
-  update_reg_ignore_expire(ps, w);
+    update_reg_ignore_expire(ps, w);
 
-  if (w->next) {
-    old_above = w->next->id;
-  } else {
-    old_above = None;
-  }
+    win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
 
-  if (old_above != new_above) {
-    win **prev = NULL, **prev_old = NULL;
+    struct _win* w_above = find_win(ps, new_above);
+    assert(w_above != NULL);
+    win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
 
-    // unhook
-    for (prev = &ps->list; *prev; prev = &(*prev)->next) {
-      if ((*prev) == w) break;
+    size_t w_loc;
+    size_t above_loc;
+
+    size_t index;
+    win_id* t = vector_getFirst(&ps->order, &index);
+    while(t != NULL) {
+        if(*t == w_id)
+            w_loc = index;
+
+        if(*t == above_id)
+            above_loc = index;
+        t = vector_getNext(&ps->order, &index);
     }
 
-    prev_old = prev;
-
-    bool found = false;
-
-    // rehook
-    for (prev = &ps->list; *prev; prev = &(*prev)->next) {
-      if ((*prev)->id == new_above && !(*prev)->destroyed) {
-        found = true;
-        break;
-      }
+    // Circulate moves the windows between the src and target, so we
+    // have to move one after the target when we are moving backwards
+    if(above_loc < w_loc) {
+        above_loc++;
     }
 
-    if (new_above && !found) {
-      printf_errf("(%#010lx, %#010lx): "
-          "Failed to found new above window.", w->id, new_above);
-      return;
-    }
+    if(w_loc == above_loc)
+        return;
 
-    *prev_old = w->next;
-
-    w->next = *prev;
-    *prev = w;
-
-#ifdef DEBUG_RESTACK
-    {
-      const char *desc;
-      char *window_name = NULL;
-      bool to_free;
-      win* c = ps->list;
-
-      printf_dbgf("(%#010lx, %#010lx): "
-             "Window stack modified. Current stack:\n", w->id, new_above);
-
-      for (; c; c = c->next) {
-        window_name = "(Failed to get title)";
-
-        to_free = ev_window_name(ps, c->id, &window_name);
-
-        desc = "";
-        if (c->destroyed) desc = "(D) ";
-        printf("%#010lx \"%s\" %s", c->id, window_name, desc);
-        if (c->next)
-          printf("-> ");
-
-        if (to_free) {
-          cxfree(window_name);
-          window_name = NULL;
-        }
-      }
-      fputs("\n", stdout);
-    }
-#endif
-  }
+    vector_circulate(&ps->order, w_loc, above_loc);
 }
 
 static bool
@@ -1589,7 +1547,6 @@ static void
 configure_win(session_t *ps, XConfigureEvent *ce) {
   // On root window changes
   if (ce->window == ps->root) {
-    free_paint(ps, &ps->tgt_buffer);
 
     ps->root_width = ce->width;
     ps->root_height = ce->height;
@@ -1663,6 +1620,7 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
             if(!wd_bind(&w->drawable)) {
                 printf_errf("Failed rebinding window on resize");
             }
+            w->stencil_damaged = true;
 
             if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
                 printf_errf("Failed resizing window blur %s", w->name);
@@ -1696,74 +1654,67 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
 static void
 circulate_win(session_t *ps, XCirculateEvent *ce) {
-  win *w = find_win(ps, ce->window);
-  Window new_above;
+    win *w = find_win(ps, ce->window);
 
-  if (!w) return;
+    if (!w) return;
 
-  if (ce->place == PlaceOnTop) {
-    new_above = ps->list->id;
-  } else {
-    new_above = None;
-  }
+    size_t w_loc = vector_find_uint64(&ps->order, swiss_indexOfPointer(&ps->win_list, w));
+    size_t new_loc;
+    if (ce->place == PlaceOnTop) {
+        new_loc = vector_size(&ps->order) - 1;
+    } else {
+        new_loc = 0;
+    }
 
-  restack_win(ps, w, new_above);
+    if(w_loc == new_loc)
+        return;
+
+    vector_circulate(&ps->order, w_loc, new_loc);
 }
 
-static void
-finish_destroy_win(session_t *ps, Window id) {
-  win **prev = NULL, *w = NULL;
-
-#ifdef DEBUG_EVENTS
-  printf_dbgf("(%#010lx): Starting...\n", id);
-#endif
-
-  for (prev = &ps->list; (w = *prev); prev = &w->next) {
-    if (w->id == id) {
-#ifdef DEBUG_EVENTS
-      printf_dbgf("(%#010lx \"%s\"): %p\n", id, w->name, w);
-#endif
-
-      *prev = w->next;
-
-      // Clear active_win if it's pointing to the destroyed window
-      if (w == ps->active_win)
+static void finish_destroy_win(session_t *ps, win_id wid) {
+    struct _win* w = swiss_get(&ps->win_list, wid);
+    if (w == ps->active_win)
         ps->active_win = NULL;
 
-      if(w->prev_trans != NULL)
-          w->prev_trans->next_trans = w->next_trans;
-      if(w->next_trans != NULL)
-          w->next_trans->prev_trans = w->prev_trans;
+    if(w->prev_trans != NULL)
+        w->prev_trans->next_trans = w->next_trans;
+    if(w->next_trans != NULL)
+        w->next_trans->prev_trans = w->prev_trans;
 
-      free(w);
-      break;
+    size_t order_index = vector_find_uint64(&ps->order, wid);
+    vector_remove(&ps->order, order_index);
+
+    // Unhook the window from the legacy linked list
+    size_t index = 0;
+    struct _win* p = swiss_getFirst(&ps->win_list, &index);
+    while(p != NULL) {
+        if (p->next == wid) {
+            p->next = w->next;
+            break;
+        }
+        p = swiss_getNext(&ps->win_list, &index);
     }
-  }
+
+    swiss_remove(&ps->win_list, wid);
 }
 
-static void
-destroy_win(session_t *ps, Window id) {
-  win *w = find_win(ps, id);
+static void destroy_win(session_t *ps, struct _win* w) {
+    if (w) {
+        w->destroyed = true;
 
-#ifdef DEBUG_EVENTS
-  printf_dbgf("(%#010lx \"%s\"): %p\n", id, (w ? w->name: NULL), w);
-#endif
+        // You can only destroy a window that is already hiding or invisible
+        assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
 
-  if (w) {
-    w->destroyed = true;
-
-    // You can only destroy a window that is already hiding or invisible
-    assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
-
-    w->state = STATE_DESTROYING;
+        w->state = STATE_DESTROYING;
 
 #ifdef CONFIG_DBUS
-    // Send D-Bus signal
-    if (ps->o.dbus) {
-      cdbus_ev_win_destroyed(ps, w);
-    }
+        // Send D-Bus signal
+        if (ps->o.dbus) {
+            cdbus_ev_win_destroyed(ps, w);
+        }
 #endif
-  }
+    }
 }
 
 static inline void
@@ -1797,6 +1748,8 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
   XDamageSubtract(ps->dpy, w->damage, None, None);
 
   w->damaged = true;
+
+  w->stencil_damaged = true;
 
   // Damage all the bg blurs of the windows on top of this one
   for (win *t = w; t; t = t->prev_trans) {
@@ -1998,9 +1951,12 @@ static void win_set_focused(session_t *ps, win *w) {
             ps->active_leader = None;
 
             //Update the focused state of all other windows lead by leader
-            for (win *t = ps->list; t; t = t->next) {
+            size_t index = 0;
+            win* t = swiss_getFirst(&ps->win_list, &index);
+            while(t != NULL) {
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
+                t = swiss_getNext(&ps->win_list, &index);
             }
         }
 
@@ -2024,24 +1980,17 @@ static void win_set_focused(session_t *ps, win *w) {
             ps->active_leader = leader;
 
             //Update the focused state of all other windows lead by old leader
-            for (win *t = ps->list; t; t = t->next) {
+            size_t index = 0;
+            win* t = swiss_getFirst(&ps->win_list, &index);
+            while(t != NULL) {
+
                 if (win_get_leader(ps, t) == active_leader_old)
                     win_update_focused(ps, t);
-            }
 
-            //Update the focused state of all other windows lead by leader
-            for (win *t = ps->list; t; t = t->next) {
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
-            }
-        } else if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader
-                && !group_is_focused(ps, leader)) {
-            ps->active_leader = None;
 
-            //Update the focused state of all other windows lead by leader
-            for (win *t = ps->list; t; t = t->next) {
-                if (win_get_leader(ps, t) == leader)
-                    win_update_focused(ps, t);
+                t = swiss_getNext(&ps->win_list, &index);
             }
         }
     }
@@ -2103,15 +2052,17 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
       ps->active_leader = cache_leader;
 
       //Update the focused state of all other windows lead by leader
-      for (win *t = ps->list; t; t = t->next) {
+      size_t prev_index = 0;
+      win* t = swiss_getFirst(&ps->win_list, &prev_index);
+      while(t != NULL) {
+
           if (win_get_leader(ps, t) == cache_leader_old)
               win_update_focused(ps, t);
-      }
 
-      //Update the focused state of all other windows lead by leader
-      for (win *t = ps->list; t; t = t->next) {
           if (win_get_leader(ps, t) == cache_leader)
               win_update_focused(ps, t);
+
+          t = swiss_getNext(&ps->win_list, &prev_index);
       }
     }
     // Otherwise, at most the window itself is affected
@@ -2362,22 +2313,28 @@ win_set_invert_color_force(session_t *ps, win *w, switch_t val) {
  */
 void
 opts_init_track_focus(session_t *ps) {
-  // Already tracking focus
-  if (ps->o.track_focus)
-    return;
+    // Already tracking focus
+    if (ps->o.track_focus)
+        return;
 
-  ps->o.track_focus = true;
+    ps->o.track_focus = true;
 
-  if (!ps->o.use_ewmh_active_win) {
-    // Start listening to FocusChange events
-    for (win *w = ps->list; w; w = w->next)
-      if (IsViewable == w->a.map_state)
-        XSelectInput(ps->dpy, w->id,
-            determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
-  }
+    if (!ps->o.use_ewmh_active_win) {
+        // Start listening to FocusChange events
+        size_t index = 0;
+        win* w = swiss_getFirst(&ps->win_list, &index);
+        while(w != NULL) {
 
-  // Recheck focus
-  recheck_focus(ps);
+            if (IsViewable == w->a.map_state)
+                XSelectInput(ps->dpy, w->id,
+                        determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
+
+            w = swiss_getNext(&ps->win_list, &index);
+        }
+
+        // Recheck focus
+        recheck_focus(ps);
+    }
 }
 
 /**
@@ -2385,12 +2342,19 @@ opts_init_track_focus(session_t *ps) {
  */
 void
 opts_set_no_fading_openclose(session_t *ps, bool newval) {
-  if (newval != ps->o.no_fading_openclose) {
-    ps->o.no_fading_openclose = newval;
-    for (win *w = ps->list; w; w = w->next)
-      win_determine_fade(ps, w);
-    ps->skip_poll = true;
-  }
+    if (newval != ps->o.no_fading_openclose) {
+        ps->o.no_fading_openclose = newval;
+
+        size_t index = 0;
+        win* w = swiss_getFirst(&ps->win_list, &index);
+        while(w != NULL) {
+            win_determine_fade(ps, w);
+
+            w = swiss_getNext(&ps->win_list, &index);
+        }
+
+        ps->skip_poll = true;
+    }
 }
 
 //!@}
@@ -2553,7 +2517,7 @@ ev_focus_out(session_t *ps, XFocusChangeEvent *ev) {
 inline static void
 ev_create_notify(session_t *ps, XCreateWindowEvent *ev) {
   assert(ev->parent == ps->root);
-  add_win(ps, ev->window, 0);
+  add_win(ps, ev->window);
 }
 
 inline static void
@@ -2567,14 +2531,16 @@ ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
   configure_win(ps, ev);
 }
 
-inline static void
-ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
-  destroy_win(ps, ev->window);
+static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
+    win *w = find_win(ps, ev->window);
+    destroy_win(ps, w);
 }
 
-inline static void
-ev_map_notify(session_t *ps, XMapEvent *ev) {
-  map_win(ps, ev->window);
+static void ev_map_notify(session_t *ps, XMapEvent *ev) {
+    win *w = find_win(ps, ev->window);
+    if(w != NULL) {
+        map_win(ps, swiss_indexOfPointer(&ps->win_list, w));
+    }
 }
 
 inline static void
@@ -2593,9 +2559,10 @@ ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 #endif
 
   if (ev->parent == ps->root) {
-    add_win(ps, ev->window, 0);
+    add_win(ps, ev->window);
   } else {
-    destroy_win(ps, ev->window);
+    win *w = find_win(ps, ev->window);
+    destroy_win(ps, w);
 
     // Reset event mask in case something wrong happens
     XSelectInput(ps->dpy, ev->window,
@@ -2797,28 +2764,33 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
   ps->skip_poll = true;
 }
 
-inline static void
-ev_shape_notify(session_t *ps, XShapeEvent *ev) {
-  win *w = find_win(ps, ev->window);
-  if (!w || IsUnmapped == w->a.map_state) return;
+static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
+    win *w = find_win(ps, ev->window);
 
-  /*
-   * Empty border_size may indicated an
-   * unmapped/destroyed window, in which case
-   * seemingly BadRegion errors would be triggered
-   * if we attempt to rebuild border_size
-   */
-  if (w->border_size) {
-    // Mark the old border_size as damaged
-    add_damage(ps, w->border_size);
+    /*
+     * Empty border_size may indicated an
+     * unmapped/destroyed window, in which case
+     * seemingly BadRegion errors would be triggered
+     * if we attempt to rebuild border_size
+     */
+    if (w->border_size) {
+        // Mark the old border_size as damaged
+        add_damage(ps, w->border_size);
 
-    w->border_size = border_size(ps, w, true);
+        w->border_size = border_size(ps, w, true);
 
-    // Mark the new border_size as damaged
-    add_damage(ps, copy_region(ps, w->border_size));
-  }
+        // Mark the new border_size as damaged
+        add_damage(ps, copy_region(ps, w->border_size));
+    }
 
-  update_reg_ignore_expire(ps, w);
+    fetch_shaped_window_face(ps, w);
+    // We need to mark some damage
+    // The blur isn't damaged, because it will be cut out by the new geometry
+    w->stencil_damaged = true;
+    //The shadow is damaged because the outline (and therefore the inner clip) has changed.
+    w->shadow_damaged = true;
+
+    update_reg_ignore_expire(ps, w);
 }
 
 /**
@@ -2963,9 +2935,6 @@ usage(int ret) {
     "\n"
     "-d display\n"
     "  Which display should be managed.\n"
-    "\n"
-    "-r radius\n"
-    "  The blur radius for shadows. (default 12)\n"
     "\n"
     "-o opacity\n"
     "  The translucency for shadows. (default .75)\n"
@@ -3784,8 +3753,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // -D (fade_delta)
   if (lcfg_lookup_int(&cfg, "fade-delta", &ival))
     ps->o.fade_delta = ival;
-  // -r (shadow_radius)
-  lcfg_lookup_int(&cfg, "shadow-radius", &ps->o.shadow_radius);
   // -i (inactive_opacity)
   if (config_lookup_float(&cfg, "inactive-opacity", &dval))
     ps->o.inactive_opacity = normalize_d(dval) * 100.0;
@@ -3938,7 +3905,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   const static struct option longopts[] = {
     { "help", no_argument, NULL, 'h' },
     { "config", required_argument, NULL, 256 },
-    { "shadow-radius", required_argument, NULL, 'r' },
     { "shadow-opacity", required_argument, NULL, 'o' },
     { "shadow-offset-x", required_argument, NULL, 'l' },
     { "shadow-offset-y", required_argument, NULL, 't' },
@@ -4122,7 +4088,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 'F':
         fading_enable = true;
         break;
-      P_CASELONG('r', shadow_radius);
       case 'i':
         ps->o.inactive_opacity = (normalize_d(atof(optarg)) * 100.0);
         break;
@@ -4270,7 +4235,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
 
   // Range checking and option assignments
   ps->o.fade_delta = max_i(ps->o.fade_delta, 1);
-  ps->o.shadow_radius = max_i(ps->o.shadow_radius, 1);
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
   ps->o.refresh_rate = normalize_i_range(ps->o.refresh_rate, 0, 300);
@@ -4778,7 +4742,9 @@ redir_start(session_t *ps) {
     // Must call XSync() here
     XSync(ps->dpy, False);
 
-    for (win *w = ps->list; w; w = w->next) {
+    size_t index = 0;
+    win* w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
         // If the window was mapped, then we need to do the mapping again
         if(w->a.map_state == IsViewable) {
             if(!wd_bind(&w->drawable)) {
@@ -4791,6 +4757,8 @@ redir_start(session_t *ps) {
                 return;
             }
         }
+
+        w = swiss_getNext(&ps->win_list, &index);
     }
 
     ps->redirected = true;
@@ -4957,11 +4925,14 @@ redir_stop(session_t *ps) {
     // Destroy all Pictures as they expire once windows are unredirected
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
-    for (win *w = ps->list; w; w = w->next) {
-        // It it was mapped we want to just release that pixmap.
+    size_t index = 0;
+    win* w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
         if(w->a.map_state == IsViewable) {
             wd_unbind(&w->drawable);
         }
+
+        w = swiss_getNext(&ps->win_list, &index);
     }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
@@ -5120,8 +5091,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     // .root_damage = None,
     .overlay = None,
     .screen_reg = None,
-    .tgt_picture = None,
-    .tgt_buffer = PAINT_INIT,
     .root_dbe = None,
     .reg_win = None,
     .o = {
@@ -5154,7 +5123,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .vsync_aggressive = false,
 
       .wintype_shadow = { false },
-      .shadow_radius = 12,
       .clear_shadow = false,
       .shadow_blacklist = NULL,
       .respect_prop_shadow = false,
@@ -5214,13 +5182,10 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .size_expose = 0,
     .n_expose = 0,
 
-    .list = NULL,
+    .win_list = {0},
     .active_win = NULL,
     .active_leader = None,
 
-    .black_picture = None,
-    .white_picture = None,
-    .gaussian_map = NULL,
     .cgsize = 0,
 
     .refresh_rate = 0,
@@ -5286,6 +5251,10 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   // First pass
   get_cfg(ps, argc, argv, true);
+
+  swiss_init(&ps->win_list, sizeof(struct _win), 512);
+
+  vector_init(&ps->order, sizeof(win_id), 16);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
@@ -5492,26 +5461,11 @@ session_init(session_t *ps_old, int argc, char **argv) {
   {
     XRenderPictureAttributes pa;
     pa.subwindow_mode = IncludeInferiors;
-
-    ps->root_picture = XRenderCreatePicture(ps->dpy, ps->root,
-        XRenderFindVisualFormat(ps->dpy, ps->vis),
-        CPSubwindowMode, &pa);
-    if (ps->o.paint_on_overlay) {
-      ps->tgt_picture = XRenderCreatePicture(ps->dpy, ps->overlay,
-          XRenderFindVisualFormat(ps->dpy, ps->vis),
-          CPSubwindowMode, &pa);
-    }
-    else {
-      ps->tgt_picture = ps->root_picture;
-    }
   }
 
   // Initialize filters, must be preceded by OpenGL context creation
   if (!init_filters(ps))
     exit(1);
-
-  ps->black_picture = solid_picture(ps, true, 1, 0, 0, 0);
-  ps->white_picture = solid_picture(ps, true, 1, 1, 1, 1);
 
   fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
   ps->tmout_unredir = timeout_insert(ps, ps->o.unredir_if_possible_delay,
@@ -5534,7 +5488,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
       &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-      add_win(ps, children[i], i ? children[i-1] : None);
+      add_win(ps, children[i]);
     }
 
     cxfree(children);
@@ -5607,19 +5561,16 @@ session_destroy(session_t *ps) {
 
   // Free window linked list
   {
-    win *next = NULL;
-    for (win *w = ps->list; w; w = next) {
-      // Must be put here to avoid segfault
-      next = w->next;
+    size_t index = 0;
+    win* w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
+        if (IsViewable == w->a.map_state && !w->destroyed)
+            win_ev_stop(ps, w);
 
-      if (IsViewable == w->a.map_state && !w->destroyed)
-        win_ev_stop(ps, w);
+        wd_delete(&w->drawable);
 
-      wd_delete(&w->drawable);
-      free(w);
+        w = swiss_getNext(&ps->win_list, &index);
     }
-
-    ps->list = NULL;
   }
 
 #ifdef CONFIG_C2
@@ -5659,26 +5610,9 @@ session_destroy(session_t *ps) {
     ps->ignore_tail = &ps->ignore_head;
   }
 
-  free_picture(ps, &ps->black_picture);
-  free_picture(ps, &ps->white_picture);
-
-  // Free tgt_{buffer,picture} and root_picture
-  if (ps->tgt_buffer.pict == ps->tgt_picture)
-    ps->tgt_buffer.pict = None;
-
-  if (ps->tgt_picture == ps->root_picture)
-    ps->tgt_picture = None;
-  else
-    free_picture(ps, &ps->tgt_picture);
-  free_fence(ps, &ps->tgt_buffer_fence);
-
-  free_picture(ps, &ps->root_picture);
-  free_paint(ps, &ps->tgt_buffer);
-
   // Free other X resources
   free_region(ps, &ps->screen_reg);
   free(ps->expose_rects);
-  free(ps->gaussian_map);
 
   xtexture_delete(&ps->root_texture);
 
@@ -5760,12 +5694,15 @@ static void
 session_run(session_t *ps) {
     win *t;
 
+    Vector paints;
+    vector_init(&paints, sizeof(win_id), ps->win_list.maxSize);
+
     if (ps->o.sw_opti)
         ps->paint_tm_offset = get_time_timeval().tv_usec;
 
     ps->reg_ignore_expire = true;
 
-    t = paint_preprocess(ps, ps->list);
+    t = paint_preprocess(ps, &paints);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -5824,26 +5761,41 @@ session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        t = paint_preprocess(ps, ps->list);
+        vector_clear(&paints);
+        t = paint_preprocess(ps, &paints);
         ps->tmout_unredir_hit = false;
 
         zone_leave(&ZONE_preprocess);
 
         zone_enter(&ZONE_update);
 
-        for (win *w = t; w != NULL; w = w->prev_trans) {
-            win_update(ps, w, delta);
+        size_t index;
+        win_id* w_id = vector_getLast(&paints, &index);
+        while(w_id != NULL) {
+            win_update(ps, swiss_get(&ps->win_list, *w_id), delta);
+            w_id = vector_getPrev(&paints, &index);
         }
 
         zone_leave(&ZONE_update);
 
-        for (win *w = ps->list; w != NULL;) {
-            win* next = w->next;
+        zone_enter(&ZONE_effect_textures);
+
+        windowlist_updateStencil(ps, &paints);
+
+        windowlist_updateShadow(ps, &paints);
+
+        windowlist_updateBlur(ps, &paints);
+
+        zone_leave(&ZONE_effect_textures);
+
+        struct _win* w = swiss_getFirst(&ps->win_list, &index);
+        while(w != NULL) {
             if(w->state == STATE_DESTROYED) {
-                finish_destroy_win(ps, w->id);
+                finish_destroy_win(ps, swiss_indexOfPointer(&ps->win_list, w));
             }
-            w = next;
+            w = swiss_getNext(&ps->win_list, &index);
         }
+
 
         zone_enter(&ZONE_paint);
 
@@ -5860,7 +5812,7 @@ session_run(session_t *ps) {
         zone_leave(&ZONE_paint);
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
-        struct ZoneEvent* event_stream = zone_package(&ZONE_global);
+        struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef DEBUG_PROFILE
         profiler_render(event_stream);
 #endif

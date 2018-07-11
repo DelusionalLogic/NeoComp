@@ -27,7 +27,7 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
     glEnableVertexAttribArray(1);
     glBindBuffer(GL_ARRAY_BUFFER, face->uv);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDrawArrays(GL_TRIANGLES, 0, face->vertex_buffer_size);
     glDisableVertexAttribArray(1);
     glDisableVertexAttribArray(0);
 }

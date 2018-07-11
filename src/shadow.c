@@ -71,7 +71,6 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
 
 void win_calc_shadow(session_t* ps, win* w) {
     Vector2 size = {{w->widthb, w->heightb}};
-    struct face* face = assets_load("window.face");
 
     shadow_cache_resize(&w->shadow_cache, &size);
 
@@ -120,7 +119,7 @@ void win_calc_shadow(session_t* ps, win* w) {
     {
         {
             Vector3 pos = vec3_from_vec2(&w->shadow_cache.border, 0.0);
-            draw_rect(face, global_type->mvp, pos, size);
+            draw_rect(w->face, global_type->mvp, pos, size);
         }
     }
 
@@ -159,7 +158,7 @@ void win_calc_shadow(session_t* ps, win* w) {
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-    draw_tex(face, &w->shadow_cache.texture, &VEC3_ZERO, &w->shadow_cache.effect.size);
+    draw_tex(w->face, &w->shadow_cache.texture, &VEC3_ZERO, &w->shadow_cache.effect.size);
 
     glDisable(GL_STENCIL_TEST);
     view = old_view;
@@ -170,8 +169,6 @@ void win_calc_shadow(session_t* ps, win* w) {
 void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size, float z) {
     glx_mark(ps, w->id, true);
     struct glx_shadow_cache* cache = &w->shadow_cache;
-
-    struct face* face = assets_load("window.face");
 
     glEnable(GL_BLEND);
 
@@ -209,7 +206,7 @@ void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* 
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
 
-        draw_rect(face, passthough_type->mvp, tdrpos, rsize);
+        draw_rect(w->face, passthough_type->mvp, tdrpos, rsize);
 
         glDepthMask(GL_TRUE);
         glDisable(GL_DEPTH_TEST);

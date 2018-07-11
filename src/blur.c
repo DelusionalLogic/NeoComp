@@ -22,11 +22,6 @@ void blur_init(struct blur* blur) {
             return;
         }
     }
-
-    blur->face = assets_load("window.face");
-    if(blur->face == NULL) {
-        printf("Failed loading window drawing face\n");
-    }
 }
 
 static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
@@ -107,7 +102,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
         {
             Vector3 pos = vec3_from_vec2(&glRectPos, 1);
-            draw_rect(ps->psglx->blur.face, passthough_type->mvp, pos, rectSize);
+            draw_rect(w->face, passthough_type->mvp, pos, rectSize);
         }
     }
 

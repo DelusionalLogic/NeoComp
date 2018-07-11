@@ -123,6 +123,8 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
+#include "swiss.h"
+#include "vector.h"
 #include "bezier.h"
 #include "texture.h"
 #include "framebuffer.h"
@@ -136,7 +138,6 @@
 // FUCK
 // FUCK
 struct blur {
-    struct face* face;
     struct Framebuffer fbo;
     GLuint array;
 };
@@ -145,6 +146,7 @@ struct XTexture {
     struct X11Context* context;
 
     bool bound;
+    int depth;
     Pixmap pixmap;
     GLXDrawable glxPixmap;
     struct Texture texture;
@@ -166,19 +168,19 @@ struct WindowDrawable {
 };
 
 typedef struct {
-  /// Framebuffer used for blurring.
-  struct Framebuffer fbo;
-  /// Textures used for blurring.
-  struct Texture texture[2];
-  struct RenderBuffer stencil;
-  Vector2 size;
-  /// Width of the textures.
-  int width;
-  /// Height of the textures.
-  int height;
+    /// Framebuffer used for blurring.
+    struct Framebuffer fbo;
+    /// Textures used for blurring.
+    struct Texture texture[2];
+    struct RenderBuffer stencil;
+    Vector2 size;
+    /// Width of the textures.
+    int width;
+    /// Height of the textures.
+    int height;
 
-  /// Has the blur been damaged
-  bool damaged;
+    /// Has the blur been damaged
+    bool damaged;
 } glx_blur_cache_t;
 
 struct glx_shadow_cache {
@@ -214,6 +216,8 @@ struct Fading {
 // FUCK
 // FUCK
 // FUCK
+
+typedef uint64_t win_id;
 
 
 // Workarounds for missing definitions in some broken GL drivers, thanks to
@@ -364,13 +368,6 @@ typedef struct {
 
 // Or use cmemzero().
 #define MARGIN_INIT { 0, 0, 0, 0 }
-
-/// Enumeration type of window painting mode.
-typedef enum {
-  WMODE_TRANS,
-  WMODE_SOLID,
-  WMODE_ARGB
-} winmode_t;
 
 /// Structure representing needed window updates.
 typedef struct {
@@ -707,7 +704,6 @@ typedef struct _options_t {
   bool wintype_shadow[NUM_WINTYPES];
   /// Red, green and blue tone of the shadow.
   double shadow_red, shadow_green, shadow_blue;
-  int shadow_radius;
   int shadow_offset_x, shadow_offset_y;
   double shadow_opacity;
   bool clear_shadow;
@@ -858,6 +854,10 @@ typedef struct {
   glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
 
   struct X11Context xcontext;
+
+  // @MEMORY @PERFORMANCE: We don't need a dedicated FBO for just stencil, but
+  // for right now I don't want to bother with that
+  struct Framebuffer stencil_fbo;
 } glx_session_t;
 
 #define CGLX_SESSION_INIT { .context = NULL }
@@ -889,13 +889,6 @@ typedef struct _session_t {
 
   /// A region of the size of the screen.
   XserverRegion screen_reg;
-  /// Picture of root window. Destination of painting in no-DBE painting
-  /// mode.
-  Picture root_picture;
-  /// A Picture acting as the painting target.
-  Picture tgt_picture;
-  /// Temporary buffer to paint to before sending to display.
-  paint_t tgt_buffer;
 #ifdef CONFIG_XSYNC
   XSyncFence tgt_buffer_fence;
 #endif
@@ -957,8 +950,11 @@ typedef struct _session_t {
   int n_expose;
 
   // === Window related ===
-  /// Linked list of all windows.
-  struct _win *list;
+  // Swiss of windows
+  Swiss win_list;
+  // Window order vector. Since most activity involves the topmost window, the
+  // vector will be ordered with the topmost window last
+  Vector order;
   /// Pointer to <code>win</code> of current active window. Used by
   /// EWMH <code>_NET_ACTIVE_WINDOW</code> focus detection. In theory,
   /// it's more reliable to store the window ID directly here, just in
@@ -970,21 +966,9 @@ typedef struct _session_t {
   Window active_leader;
 
   // === Shadow/dimming related ===
-  /// 1x1 black Picture.
-  Picture black_picture;
-  /// 1x1 Picture of the shadow color.
-  Picture cshadow_picture;
-  /// 1x1 white Picture.
-  Picture white_picture;
-  /// Gaussian map of shadow.
-  conv *gaussian_map;
   // for shadow precomputation
   /// Shadow depth on one side.
   int cgsize;
-  /// Pre-computed color table for corners of shadow.
-  unsigned char *shadow_corner;
-  /// Pre-computed color table for a side of shadow.
-  unsigned char *shadow_top;
   /// A region in which shadow is not painted on.
   XserverRegion shadow_exclude_reg;
 
@@ -1024,7 +1008,7 @@ typedef struct _session_t {
   /// Whether X Composite NameWindowPixmap is available. Aka if X
   /// Composite version >= 0.2.
   bool has_name_pixmap;
-  /// Whether X Shape extension exists.
+  /// Whether X Shape extension exists. @CLEANUP: Should be in xorg.h
   bool shape_exists;
   /// Event base number for X Shape extension.
   int shape_event;
@@ -1119,10 +1103,12 @@ enum WindowState {
     STATE_DESTROYED,
 };
 
+typedef uint64_t win_id;
+
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
   /// Pointer to the next structure in the linked list.
-  struct _win *next;
+  size_t next;
   /// Pointer to the next higher window to paint.
   struct _win *prev_trans;
   /// Pointer to the next lower window to paint.
@@ -1134,6 +1120,8 @@ typedef struct _win {
   /// Window attributes.
   XWindowAttributes a;
 
+  struct face* face;
+
   enum WindowState state;
 
 #ifdef CONFIG_XINERAMA
@@ -1142,8 +1130,6 @@ typedef struct _win {
 #endif
   /// Window visual pict format;
   XRenderPictFormat *pictfmt;
-  /// Window painting mode.
-  winmode_t mode;
   /// Whether the window has been damaged at least once.
   bool damaged;
 #ifdef CONFIG_XSYNC
@@ -1184,6 +1170,7 @@ typedef struct _win {
   bool fullscreen;
   /// Is solid;
   bool solid;
+
   /// Has frame
   bool has_frame;
 
@@ -1271,9 +1258,13 @@ typedef struct _win {
   /// Background state on last paint.
   bool blur_background_last;
 
+  bool stencil_damaged;
+  struct RenderBuffer stencil;
+
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;
 
+  bool shadow_damaged;
   struct glx_shadow_cache shadow_cache;
 
   struct WindowDrawable drawable;
@@ -1918,14 +1909,15 @@ find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  win *w;
-
-  for (w = ps->list; w; w = w->next) {
-    if (w->id == id && !w->destroyed)
-      return w;
+  size_t index;
+  win *w = swiss_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (w->id == id && !w->destroyed)
+          return w;
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
-  return 0;
+  return NULL;
 }
 
 /**
@@ -1939,9 +1931,12 @@ find_toplevel(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  for (win *w = ps->list; w; w = w->next) {
-    if (w->client_win == id && !w->destroyed)
-      return w;
+  size_t index;
+  win *w = swiss_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (w->client_win == id && !w->destroyed)
+          return w;
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
   return NULL;

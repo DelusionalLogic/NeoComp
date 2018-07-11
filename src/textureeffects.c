@@ -57,6 +57,8 @@ bool texture_blur(struct TextureBlurData* data, struct Texture* texture, int ste
     Vector2 halfpixel = {{1.0f, 1.0f}};
     vec2_div(&halfpixel, &texture->size);
 
+    // @HACK: We just assume window is rectangular, which means this will work.
+    // In the future we probably shouldn't
     struct face* face = assets_load("window.face");
 
     // Downscale

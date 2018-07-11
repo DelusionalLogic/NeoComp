@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "assets.h"
 #include "../shaders/shaderinfo.h"
@@ -214,7 +215,7 @@ static int parse_type(char* def, struct shader_value* uniform) {
 struct shader_program* shader_program_load_file(const char* path) {
     FILE* file = fopen(path, "r");
     if(file == NULL) {
-        printf("Failed opening shader program file %s\n", path);
+        printf("Failed opening shader program file %s: %s\n", path, strerror(errno));
         return NULL;
     }
 

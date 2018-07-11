@@ -22,9 +22,11 @@ struct Block {
     double millis;
     float start;
     float end;
+
+    char* userdata;
 };
 
-#define NUM_TRACKS 10
+#define NUM_TRACKS 4
 #define NUM_BLOCKS 1000
 
 struct ProgramZone* root_zone;
@@ -74,7 +76,11 @@ static void process(struct ZoneEventStream* stream) {
     for(size_t i = 0; i < stream->events_num; i++) {
         struct ZoneEvent* cursor = &stream->events[i];
         if(cursor->type == ZE_ENTER) {
-            assert(depth < NUM_TRACKS);
+            if(depth >= NUM_TRACKS) {
+                printf("Internal Error: Too few tracks\n");
+                depth++;
+                continue;
+            }
             struct Block* block = getNextBlock(depth);
 
             block->enter_event = i;
@@ -84,9 +90,16 @@ static void process(struct ZoneEventStream* stream) {
             block->start = offset;
             block->zone = cursor->zone;
 
+            block->userdata = cursor->userdata;
+
             depth++;
         } else if(cursor->type == ZE_LEAVE) {
             assert(depth >= 0);
+            if(depth >= NUM_TRACKS) {
+                printf("Internal Error: Too few tracks\n");
+                depth--;
+                continue;
+            }
             depth--;
             struct Block* block = getCurrentBlock(depth);
 
@@ -121,7 +134,7 @@ static void draw(const Vector2* pos, const Vector2* size) {
         return;
     }
     struct Profiler* profiler_type = profiler_program->shader_type;
-    Vector3 color = {{.2, .2, .3}};
+    Vector3 color = {{.45, .2, .3}};
     shader_set_future_uniform_vec3(profiler_type->color, &color);
     shader_use(profiler_program);
 
@@ -153,23 +166,30 @@ static void draw(const Vector2* pos, const Vector2* size) {
         }
     }
 
+    glEnable(GL_SCISSOR_TEST);
+
     Vector2 textscale = {{1, 1}};
     {
         Vector2 pen = {{pos->x, bar_height + pos->y}};
-        Vector2 size = {{0}};
+        Vector2 scale = {{0}};
+
+        Vector2 boxScale = {{size->x, bar_height}};
+        Vector2 boxPos = {{pos->x, pos->y}};
+        glScissor(boxPos.x, boxPos.y, boxScale.x, boxScale.y);
 
         {
-            text_size(&debug_font, root_zone->name, &textscale, &size);
-            pen.y -= size.y;
+            text_size(&debug_font, root_zone->name, &textscale, &scale);
+            pen.y -= scale.y;
 
             text_draw(&debug_font, root_zone->name, &pen, &textscale);
         }
 
         {
+
             char *text;
             asprintf(&text, "%f ms", root_millis);
-            text_size(&debug_font, text, &textscale, &size);
-            pen.y -= size.y;
+            text_size(&debug_font, text, &textscale, &scale);
+            pen.y -= scale.y;
 
             text_draw(&debug_font, text, &pen, &textscale);
             free(text);
@@ -181,11 +201,16 @@ static void draw(const Vector2* pos, const Vector2* size) {
             struct Block* block = &tracks[track][cursor];
 
             Vector2 pen = {{block->start * size->x + pos->x, bar_height * (track+2) + pos->y}};
-            Vector2 size = {{0}};
+            Vector2 scale = {{0}};
+
+            float width = (block->end - block->start) * size->x;
+            Vector2 boxScale = {{width, bar_height}};
+            Vector2 boxPos = {{block->start * size->x, bar_height * (track+1) + pos->y}};
+            glScissor(boxPos.x, boxPos.y, boxScale.x, boxScale.y);
 
             {
-                text_size(&debug_font, block->zone->name, &textscale, &size);
-                pen.y -= size.y;
+                text_size(&debug_font, block->zone->name, &textscale, &scale);
+                pen.y -= scale.y;
 
                 text_draw(&debug_font, block->zone->name, &pen, &textscale);
             }
@@ -193,14 +218,22 @@ static void draw(const Vector2* pos, const Vector2* size) {
             {
                 char *text;
                 asprintf(&text, "%f ms", block->millis);
-                text_size(&debug_font, text, &textscale, &size);
-                pen.y -= size.y;
+                text_size(&debug_font, text, &textscale, &scale);
+                pen.y -= scale.y;
 
                 text_draw(&debug_font, text, &pen, &textscale);
                 free(text);
             }
+
+            {
+                text_size(&debug_font, block->userdata, &textscale, &scale);
+                pen.y -= scale.y;
+
+                text_draw(&debug_font, block->userdata, &pen, &textscale);
+            }
         }
     }
+    glDisable(GL_SCISSOR_TEST);
 }
 
 void profiler_render(struct ZoneEventStream* event_stream) {

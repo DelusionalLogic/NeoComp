@@ -25,3 +25,11 @@
 #define THIS "types/shadow.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/stencil.h"
+#include HEADER
+#undef THIS
+
+#define THIS "types/colored.h"
+#include HEADER
+#undef THIS

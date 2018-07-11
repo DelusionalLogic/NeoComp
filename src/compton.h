@@ -337,10 +337,6 @@ wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
   return true;
 }
 
-static Picture
-solid_picture(session_t *ps, bool argb, double a,
-              double r, double g, double b);
-
 /**
  * Stop listening for events on a particular window.
  */
@@ -356,8 +352,8 @@ win_ev_stop(session_t *ps, win *w) {
   }
 
   if (ps->shape_exists) {
-    set_ignore_next(ps);
-    XShapeSelectInput(ps->dpy, w->id, 0);
+    /* set_ignore_next(ps); */
+    /* XShapeSelectInput(ps->dpy, w->id, 0); */
   }
 }
 
@@ -408,7 +404,7 @@ wid_bounding_shaped(const session_t *ps, Window wid) {
  */
 static inline void
 update_reg_ignore_expire(session_t *ps, const win *w) {
-  if (w->to_paint && WMODE_SOLID == w->mode)
+  if (w->to_paint && w->solid)
     ps->reg_ignore_expire = true;
 }
 
@@ -494,10 +490,13 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 /**
  * Clear leader cache of all windows.
  */
-static void
-clear_cache_win_leaders(session_t *ps) {
-  for (win *w = ps->list; w; w = w->next)
-    w->cache_leader = None;
+static void clear_cache_win_leaders(session_t *ps) {
+    size_t index;
+    win *w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
+        w->cache_leader = None;
+        w = swiss_getNext(&ps->win_list, &index);
+    }
 }
 
 static win *
@@ -541,10 +540,13 @@ group_is_focused(session_t *ps, Window leader) {
   if (!leader)
     return false;
 
-  for (win *w = ps->list; w; w = w->next) {
-    if (win_get_leader(ps, w) == leader && !w->destroyed
-        && win_is_focused_real(ps, w))
-      return true;
+  size_t index;
+  win *w = swiss_getFirst(&ps->win_list, &index);
+  while(w != NULL) {
+      if (win_get_leader(ps, w) == leader && !w->destroyed
+              && win_is_focused_real(ps, w))
+          return true;
+      w = swiss_getNext(&ps->win_list, &index);
   }
 
   return false;
@@ -574,7 +576,7 @@ static void
 get_frame_extents(session_t *ps, win *w, Window client);
 
 static win *
-paint_preprocess(session_t *ps, win *list);
+paint_preprocess(session_t *ps, Vector* paints);
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
@@ -627,27 +629,13 @@ static wintype_t
 wid_get_prop_wintype(session_t *ps, Window w);
 
 static void
-map_win(session_t *ps, Window id);
-
-static void
-finish_map_win(session_t *ps, win *w);
-
-static void
-finish_unmap_win(session_t *ps, win *w);
-
-static void
-unmap_callback(session_t *ps, win *w);
+map_win(session_t *ps, win_id wid);
 
 static void
 unmap_win(session_t *ps, win *w);
 
-static double
-get_opacity_percent(win *w);
-
 static void
 win_determine_mode(session_t *ps, win *w);
-
-static double calc_opacity(session_t *ps, win *w);
 
 static void
 calc_dim(session_t *ps, win *w);
@@ -666,9 +654,6 @@ win_update_focused(session_t *ps, win *w);
 
 static inline void
 win_set_focused(session_t *ps, win *w);
-
-static void
-win_on_focus_change(session_t *ps, win *w);
 
 static void
 win_determine_fade(session_t *ps, win *w);
@@ -710,7 +695,7 @@ static void
 win_recheck_client(session_t *ps, win *w);
 
 static bool
-add_win(session_t *ps, Window id, Window prev);
+add_win(session_t *ps, Window id);
 
 static void
 restack_win(session_t *ps, win *w, Window new_above);
@@ -722,13 +707,10 @@ static void
 circulate_win(session_t *ps, XCirculateEvent *ce);
 
 static void
-finish_destroy_win(session_t *ps, Window id);
+finish_destroy_win(session_t *ps, win_id w);
 
 static void
-destroy_callback(session_t *ps, win *w);
-
-static void
-destroy_win(session_t *ps, Window id);
+destroy_win(session_t *ps, struct _win* w);
 
 static void
 damage_win(session_t *ps, XDamageNotifyEvent *de);
@@ -1077,9 +1059,6 @@ vsync_opengl_mswc_deinit(session_t *ps);
 
 static void
 vsync_wait(session_t *ps);
-
-static void
-init_alpha_picts(session_t *ps);
 
 static bool
 init_dbe(session_t *ps);

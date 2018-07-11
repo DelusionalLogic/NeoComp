@@ -23,7 +23,7 @@ LIBS := -lGL $(LIBS)
 OBJS += opengl.o
 
 OBJS += vmath.o bezier.o
-OBJS += timer.o
+OBJS += timer.o swiss.o vector.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o shadow.o texture.o include.o
 OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer.o
 OBJS += window.o windowlist.o
@@ -134,6 +134,7 @@ else
   # OBJS += backtrace-symbols.o
   LIBS += -lbfd
   CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
+  # CFLAGS += -fsanitize=address -fsanitize=leak -fsanitize=null
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif
 

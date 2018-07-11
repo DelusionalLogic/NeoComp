@@ -89,10 +89,12 @@ static struct asset_handler* find_handler(const char* path) {
 static char* append_path(const char* p1, const char* p2) {
     size_t p1_len = strlen(p1);
     size_t p2_len = strlen(p2);
-    char* path = malloc(p1_len + p2_len + 1);
+    // Make room for the separating / and the final \0
+    char* path = malloc(p1_len + p2_len + 2);
     strcpy(path, p1);
     path[p1_len] = '/';
     strcpy(path + p1_len + 1, p2);
+    path[p1_len + p2_len + 1] = '\0';
     return path;
 }
 
