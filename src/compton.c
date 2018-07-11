@@ -5668,16 +5668,6 @@ session_destroy(session_t *ps) {
     ps_g = NULL;
 }
 
-/*
-static inline void
-dump_img(session_t *ps) {
-  int len = 0;
-  unsigned char *d = glx_take_screenshot(ps, &len);
-  write_binary_data("/tmp/dump.raw", d, len);
-  free(d);
-}
-*/
-
 /**
  * Do the actual work.
  *
