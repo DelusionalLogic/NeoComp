@@ -797,21 +797,8 @@ rebuild_screen_reg(session_t *ps) {
 }
 
 static void
-paint_all(session_t *ps, win *t) {
+paint_all(session_t *ps, Vector* paints) {
   glx_paint_pre(ps);
-
-#ifdef MONITOR_REPAINT
-  glClearColor(0.0f, 0.0f, 1.0f, 0.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-#endif
-
-  win* lastWin = NULL;
-  int numWins = 0;
-  for (win *w = t; w; w = w->prev_trans) {
-      lastWin = w;
-      numWins++;
-  }
 
   glDepthMask(GL_TRUE);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -824,7 +811,7 @@ paint_all(session_t *ps, win *t) {
   glDepthFunc(GL_GREATER);
 
   float z = 0;
-  windowlist_draw(ps, lastWin, &z);
+  windowlist_draw(ps, paints, &z);
 
   /* set_tgt_clip(ps, reg_paint, NULL); */
   glEnable(GL_DEPTH_TEST);
@@ -832,9 +819,15 @@ paint_all(session_t *ps, win *t) {
   glDisable(GL_DEPTH_TEST);
 
 
-  for (win *w = t; w; w = w->prev_trans) {
-      win_postdraw(ps, w, z);
-      z += .0001;
+  {
+      size_t index;
+      win_id* w_id = vector_getFirst(paints, &index);
+      while(w_id != NULL) {
+          struct _win* w = swiss_get(&ps->win_list, *w_id);
+          win_postdraw(ps, w, z);
+          z += .0001;
+          w_id = vector_getNext(paints, &index);
+      }
   }
 }
 
@@ -5712,7 +5705,7 @@ session_run(session_t *ps) {
     }
 
     if (ps->redirected)
-        paint_all(ps, t);
+        paint_all(ps, &paints);
 
     // Initialize idling
     ps->idling = false;
@@ -5769,11 +5762,27 @@ session_run(session_t *ps) {
 
         zone_enter(&ZONE_update);
 
-        size_t index;
-        win_id* w_id = vector_getLast(&paints, &index);
-        while(w_id != NULL) {
-            win_update(ps, swiss_get(&ps->win_list, *w_id), delta);
-            w_id = vector_getPrev(&paints, &index);
+        {
+            size_t index;
+            win_id* w_id = vector_getFirst(&paints, &index);
+            while(w_id != NULL) {
+                win_update(ps, swiss_get(&ps->win_list, *w_id), delta);
+                w_id = vector_getNext(&paints, &index);
+            }
+        }
+
+        {
+            size_t index;
+            struct _win* w = swiss_getFirst(&ps->win_list, &index);
+            while(w != NULL) {
+                if(w->state == STATE_DESTROYED) {
+                    win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
+                    finish_destroy_win(ps, w_id);
+                    size_t paints_slot = vector_find_uint64(&paints, w_id);
+                    vector_remove(&paints, paints_slot);
+                }
+                w = swiss_getNext(&ps->win_list, &index);
+            }
         }
 
         zone_leave(&ZONE_update);
@@ -5788,20 +5797,11 @@ session_run(session_t *ps) {
 
         zone_leave(&ZONE_effect_textures);
 
-        struct _win* w = swiss_getFirst(&ps->win_list, &index);
-        while(w != NULL) {
-            if(w->state == STATE_DESTROYED) {
-                finish_destroy_win(ps, swiss_indexOfPointer(&ps->win_list, w));
-            }
-            w = swiss_getNext(&ps->win_list, &index);
-        }
-
-
         zone_enter(&ZONE_paint);
 
         static int paint = 0;
         if (ps->redirected || ps->o.stoppaint_force == OFF) {
-            paint_all(ps, t);
+            paint_all(ps, &paints);
             ps->reg_ignore_expire = false;
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark)

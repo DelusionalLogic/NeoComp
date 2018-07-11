@@ -16,11 +16,14 @@ static bool win_viewable(win* w) {
 }
 
 
-void windowlist_draw(session_t* ps, win* head, float* z) {
-    glx_mark(ps, head->id, true);
+void windowlist_draw(session_t* ps, Vector* paints, float* z) {
+    glx_mark(ps, 0, true);
     (*z) = 1;
     glEnable(GL_DEPTH_TEST);
-    for (win *w = head; w; w = w->next_trans) {
+    size_t index;
+    win_id* w_id = vector_getFirst(paints, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(&ps->win_list, *w_id);
 
         zone_enter_extra(&ZONE_paint_window, "%s", w->name);
         if(w->state == STATE_DESTROYING || w->state == STATE_HIDING
@@ -33,8 +36,9 @@ void windowlist_draw(session_t* ps, win* head, float* z) {
         // @HACK: This shouldn't be hardcoded. As it stands, it will probably break
         // for more than 1k windows
         (*z) -= .0001;
+        w_id = vector_getNext(paints, &index);
     }
-    glx_mark(ps, head->id, false);
+    glx_mark(ps, 0, false);
 }
 
 void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
@@ -116,7 +120,7 @@ void windowlist_updateStencil(session_t* ps, Vector* paints) {
 
 void windowlist_updateShadow(session_t* ps, Vector* paints) {
     size_t index;
-    win_id* w_id = vector_getLast(paints, &index);
+    win_id* w_id = vector_getFirst(paints, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
@@ -129,13 +133,13 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
                 win_calc_shadow(ps, w);
             }
         }
-        w_id = vector_getPrev(paints, &index);
+        w_id = vector_getNext(paints, &index);
     }
 }
 
 void windowlist_updateBlur(session_t* ps, Vector* paints) {
     size_t index;
-    win_id* w_id = vector_getLast(paints, &index);
+    win_id* w_id = vector_getFirst(paints, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
@@ -148,6 +152,6 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
                 }
             }
         }
-        w_id = vector_getPrev(paints, &index);
+        w_id = vector_getNext(paints, &index);
     }
 }
