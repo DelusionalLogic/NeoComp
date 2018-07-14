@@ -308,19 +308,6 @@ glx_init_end:
   return success;
 }
 
-static void
-glx_free_prog_main(session_t *ps, glx_prog_main_t *pprogram) {
-  if (!pprogram)
-    return;
-  if (pprogram->prog) {
-    glDeleteProgram(pprogram->prog);
-    pprogram->prog = 0;
-  }
-  pprogram->unifm_opacity = -1;
-  pprogram->unifm_invert_color = -1;
-  pprogram->unifm_tex = -1;
-}
-
 /**
  * Destroy GLX related resources.
  */
@@ -340,8 +327,6 @@ glx_destroy(session_t *ps) {
 
 
   blur_destroy(&ps->psglx->blur);
-
-  glx_free_prog_main(ps, &ps->o.glx_prog_win);
 
   glx_check_err(ps);
 
@@ -403,56 +388,7 @@ glx_on_root_change(session_t *ps) {
  */
 bool
 glx_init_blur(session_t *ps) {
-  assert(ps->o.blur_kerns[0]);
-
-  // Allocate PBO if more than one blur kernel is present
-  if (ps->o.blur_kerns[1]) {
-    // Try to generate a framebuffer
-    GLuint fbo = 0;
-    glGenFramebuffers(1, &fbo);
-    if (!fbo) {
-      printf_errf("(): Failed to generate Framebuffer. Cannot do "
-          "multi-pass blur with GLX backend.");
-      return false;
-    }
-    glDeleteFramebuffers(1, &fbo);
-  }
-
   blur_init(&ps->psglx->blur);
-
-  glx_check_err(ps);
-
-  return true;
-}
-
-/**
- * Load a GLSL main program from shader strings.
- */
-bool
-glx_load_prog_main(session_t *ps,
-    const char *vshader_str, const char *fshader_str,
-    glx_prog_main_t *pprogram) {
-  assert(pprogram);
-
-  // Build program
-  printf_dbgf("(): Creating global shader");
-  pprogram->prog = glx_create_program_from_str(vshader_str, fshader_str);
-  if (!pprogram->prog) {
-    printf_errf("(): Failed to create GLSL program.");
-    return false;
-  }
-
-  // Get uniform addresses
-#define P_GET_UNIFM_LOC(name, target) { \
-      pprogram->target = glGetUniformLocation(pprogram->prog, name); \
-      if (pprogram->target < 0) { \
-        printf_errf("(): Failed to get location of uniform '" name "'. Might be troublesome."); \
-      } \
-    }
-  P_GET_UNIFM_LOC("opacity", unifm_opacity);
-  P_GET_UNIFM_LOC("invert_color", unifm_invert_color);
-  P_GET_UNIFM_LOC("tex", unifm_tex);
-#undef P_GET_UNIFM_LOC
 
   glx_check_err(ps);
 
@@ -631,9 +567,7 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 bool
 glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool neg,
-    const glx_prog_main_t *pprogram
-    ) {
+    double opacity, bool neg) {
     assert(ptex != NULL);
 
   glEnable(GL_BLEND);

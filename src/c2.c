@@ -7,8 +7,19 @@
  * See LICENSE for more information.
  *
  */
+#define _GNU_SOURCE
 
 #include "c2.h"
+
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/Xatom.h>
+#include <string.h>
+
+#include "session.h"
+#include "atoms.h"
+#include "common.h"
+#include "logging.h"
 
 /**
  * Parse a condition string.

@@ -223,10 +223,10 @@ paint_isvalid(session_t *ps, const paint_t *ppaint) {
   if (!ppaint)
     return false;
 
-  if (bkend_use_xrender(ps) && !ppaint->pict)
+  if (!ppaint->pict)
     return false;
 
-  if (BKEND_GLX == ps->o.backend && !glx_tex_binded(ppaint->ptex, None))
+  if (!glx_tex_binded(ppaint->ptex, None))
     return false;
 
   return true;
@@ -449,9 +449,6 @@ dump_drawable(session_t *ps, Drawable drawable) {
   }
 }
 
-static void
-win_rounded_corners(session_t *ps, win *w);
-
 /**
  * Validate a pixmap.
  *
@@ -560,15 +557,6 @@ get_root_tile(session_t *ps);
 
 static void paint_root(session_t *ps);
 
-static XserverRegion
-win_get_region(session_t *ps, win *w, bool use_offset);
-
-static XserverRegion
-win_get_region_noframe(session_t *ps, win *w, bool use_offset);
-
-static XserverRegion
-border_size(session_t *ps, win *w, bool use_offset);
-
 static Window
 find_client_win(session_t *ps, Window w);
 
@@ -581,13 +569,12 @@ paint_preprocess(session_t *ps, Vector* paints);
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
     double opacity, bool neg,
-    struct Texture* ptex,
-    const glx_prog_main_t *pprogram
+    struct Texture* ptex
     );
 
 #define \
-   render(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex, pprogram) \
-  render_(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex, pprogram)
+   render(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex) \
+  render_(ps, x, y, dx, dy, wid, hei, opacity, neg, ptex)
 
 static inline void
 win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
@@ -597,8 +584,7 @@ win_render(session_t *ps, win *w, int x, int y, int wid, int hei,
   const bool neg = (w && w->invert_color);
 
   render(ps, x, y, dx, dy, wid, hei, opacity, neg,
-      (w ? &w->drawable.texture: &ps->root_texture.texture),
-      (w ? &ps->o.glx_prog_win: NULL));
+      (w ? &w->drawable.texture: &ps->root_texture.texture));
 }
 
 static inline void
@@ -1000,12 +986,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp);
 
 static void
 get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass);
-
-static void
-init_atoms(session_t *ps);
-
-static void
-update_refresh_rate(session_t *ps);
 
 /**
  * Ensure we have a GLX context.

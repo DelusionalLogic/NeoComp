@@ -11,6 +11,11 @@
 #include "compton.h"
 #include <ctype.h>
 
+#include "common.h"
+
+#include "atoms.h"
+#include "logging.h"
+
 #include "opengl.h"
 #include "vmath.h"
 #include "window.h"
@@ -68,12 +73,6 @@ const char * const VSYNC_STRS[NUM_VSYNC + 1] = {
   "opengl-oml",       // VSYNC_OPENGL_OML
   "opengl-swc",       // VSYNC_OPENGL_SWC
   "opengl-mswc",      // VSYNC_OPENGL_MSWC
-  NULL
-};
-
-/// Names of backends.
-const char * const BACKEND_STRS[NUM_BKEND + 1] = {
-  "glx",          // BKEND_GLX
   NULL
 };
 
@@ -539,37 +538,11 @@ static void paint_root(session_t *ps) {
 }
 
 /**
- * Get a rectangular region a window occupies, excluding shadow.
- */
-static XserverRegion
-win_get_region(session_t *ps, win *w, bool use_offset) {
-  XRectangle r;
-
-  r.x = (use_offset ? w->a.x: 0);
-  r.y = (use_offset ? w->a.y: 0);
-  r.width = w->widthb;
-  r.height = w->heightb;
-
-  return XFixesCreateRegion(ps->dpy, &r, 1);
-}
-
-/**
- * Retrieve the bounding shape of a window.
- */
-static XserverRegion
-border_size(session_t *ps, win *w, bool use_offset) {
-  // Start with the window rectangular region
-  XserverRegion fin = win_get_region(ps, w, use_offset);
-
-  return fin;
-}
-
-/**
  * Look for the client window of a particular window.
  */
 static Window
 find_client_win(session_t *ps, Window w) {
-  if (wid_has_prop(ps, w, ps->atom_client)) {
+  if (wid_has_prop(ps, w, ps->atoms.atom_client)) {
     return w;
   }
 
@@ -599,7 +572,7 @@ static void
 get_frame_extents(session_t *ps, win *w, Window client) {
   cmemzero_one(&w->frame_extents);
 
-  winprop_t prop = wid_get_prop(ps, client, ps->atom_frame_extents,
+  winprop_t prop = wid_get_prop(ps, client, ps->atoms.atom_frame_extents,
     4L, XA_CARDINAL, 32);
 
   if (4 == prop.nitems) {
@@ -672,10 +645,6 @@ paint_preprocess(session_t *ps, Vector* paints) {
             win_determine_mode(ps, w);
 
         if (to_paint) {
-            // Fetch bounding region
-            if (!w->border_size)
-                w->border_size = border_size(ps, w, true);
-
             // @INCOMPLETE: Vary the shadow opacity
         }
 
@@ -702,7 +671,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
 
             // If the window doesn't want to be redirected, then who are we to argue
             if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) {
-                winprop_t prop = wid_get_prop(ps, w->id, ps->atom_bypass, 1L, XA_CARDINAL, 32);
+                winprop_t prop = wid_get_prop(ps, w->id, ps->atoms.atom_bypass, 1L, XA_CARDINAL, 32);
                 // A value of 1 means that the window has taken special care to ask
                 // us not to do compositing.It would be great if we could just
                 // unredirect this specific window, or if we could just run
@@ -778,11 +747,9 @@ paint_preprocess(session_t *ps, Vector* paints) {
 
 static void
 render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool neg, struct Texture* ptex,
-    const glx_prog_main_t *pprogram
-    ) {
+    double opacity, bool neg, struct Texture* ptex) {
     glx_render(ps, ptex, x, y, dx, dy, wid, hei,
-            ps->psglx->z, opacity, neg, pprogram);
+            ps->psglx->z, opacity, neg);
     ps->psglx->z += 1;
 }
 
@@ -841,11 +808,11 @@ add_damage(session_t *ps, XserverRegion damage) {
 static wintype_t
 wid_get_prop_wintype(session_t *ps, Window wid) {
   set_ignore_next(ps);
-  winprop_t prop = wid_get_prop(ps, wid, ps->atom_win_type, 32L, XA_ATOM, 32);
+  winprop_t prop = wid_get_prop(ps, wid, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
 
   for (unsigned i = 0; i < prop.nitems; ++i) {
     for (wintype_t j = 1; j < NUM_WINTYPES; ++j) {
-      if (ps->atoms_wintypes[j] == (Atom) prop.data.p32[i]) {
+      if (ps->atoms.atoms_wintypes[j] == (Atom) prop.data.p32[i]) {
         free_winprop(&prop);
         return j;
       }
@@ -1202,7 +1169,7 @@ win_upd_wintype(session_t *ps, win *w) {
   // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
   if (WINTYPE_UNKNOWN == w->window_type) {
     if (w->a.override_redirect
-        || !wid_has_prop(ps, w->client_win, ps->atom_transient))
+        || !wid_has_prop(ps, w->client_win, ps->atoms.atom_transient))
       w->window_type = WINTYPE_NORMAL;
     else
       w->window_type = WINTYPE_DIALOG;
@@ -1556,13 +1523,12 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     if (ps->o.glx_reinit_on_root_change && ps->psglx) {
         if (!glx_reinit(ps, true))
             printf_errf("(): Failed to reinitialize GLX, troubles ahead.");
-        if (BKEND_GLX == ps->o.backend && !init_filters(ps))
+        if (!init_filters(ps))
             printf_errf("(): Failed to initialize filters.");
     }
 
     // GLX root change callback
-    if (BKEND_GLX == ps->o.backend)
-        glx_on_root_change(ps);
+	glx_on_root_change(ps);
 
     force_repaint(ps);
 
@@ -2011,10 +1977,10 @@ win_update_leader(session_t *ps, win *w) {
 
   // Read the leader properties
   if (ps->o.detect_transient && !leader)
-    leader = wid_get_prop_window(ps, w->client_win, ps->atom_transient);
+    leader = wid_get_prop_window(ps, w->client_win, ps->atoms.atom_transient);
 
   if (ps->o.detect_client_leader && !leader)
-    leader = wid_get_prop_window(ps, w->client_win, ps->atom_client_leader);
+    leader = wid_get_prop_window(ps, w->client_win, ps->atoms.atom_client_leader);
 
   win_set_leader(ps, w, leader);
 
@@ -2129,7 +2095,7 @@ wid_get_name(session_t *ps, Window wid, char **name) {
   char **strlst = NULL;
   int nstr = 0;
 
-  if (!(wid_get_text_prop(ps, wid, ps->atom_name_ewmh, &strlst, &nstr))) {
+  if (!(wid_get_text_prop(ps, wid, ps->atoms.atom_name_ewmh, &strlst, &nstr))) {
 #ifdef DEBUG_WINDATA
     printf_dbgf("(%#010lx): _NET_WM_NAME unset, falling back to WM_NAME.\n", wid);
 #endif
@@ -2163,7 +2129,7 @@ wid_get_role(session_t *ps, Window wid, char **role) {
   char **strlst = NULL;
   int nstr = 0;
 
-  if (!wid_get_text_prop(ps, wid, ps->atom_role, &strlst, &nstr)) {
+  if (!wid_get_text_prop(ps, wid, ps->atoms.atom_role, &strlst, &nstr)) {
     return false;
   }
 
@@ -2227,7 +2193,7 @@ win_get_class(session_t *ps, win *w) {
   w->class_general = NULL;
 
   // Retrieve the property string list
-  if (!wid_get_text_prop(ps, w->client_win, ps->atom_class, &strlst, &nstr))
+  if (!wid_get_text_prop(ps, w->client_win, ps->atoms.atom_class, &strlst, &nstr))
     return false;
 
   // Copy the strings if successful
@@ -2571,7 +2537,7 @@ ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
       if (w_top && (!w_top->client_win
             || w_top->client_win == w_top->id)) {
         // If it has WM_STATE, mark it the client window
-        if (wid_has_prop(ps, ev->window, ps->atom_client)) {
+        if (wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
           w_top->wmwin = false;
           win_unmark_client(ps, w_top);
           win_mark_client(ps, w_top, ev->window);
@@ -2629,7 +2595,7 @@ ev_expose(session_t *ps, XExposeEvent *ev) {
 static void
 update_ewmh_active_win(session_t *ps) {
   // Search for the window
-  Window wid = wid_get_prop_window(ps, ps->root, ps->atom_ewmh_active_win);
+  Window wid = wid_get_prop_window(ps, ps->root, ps->atoms.atom_ewmh_active_win);
   win *w = find_win_all(ps, wid);
 
   // Mark the window focused. No need to unfocus the previous one.
@@ -2649,7 +2615,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
   if (ps->root == ev->window) {
     if (ps->o.track_focus && ps->o.use_ewmh_active_win
-        && ps->atom_ewmh_active_win == ev->atom) {
+        && ps->atoms.atom_ewmh_active_win == ev->atom) {
       update_ewmh_active_win(ps);
     }
     else {
@@ -2667,7 +2633,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   }
 
   // If WM_STATE changes
-  if (ev->atom == ps->atom_client) {
+  if (ev->atom == ps->atoms.atom_client) {
     // Check whether it could be a client window
     if (!find_toplevel(ps, ev->window)) {
       // Reset event mask anyway
@@ -2677,7 +2643,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
       win *w_top = find_toplevel2(ps, ev->window);
       // Initialize client_win as early as possible
       if (w_top && (!w_top->client_win || w_top->client_win == w_top->id)
-          && wid_has_prop(ps, ev->window, ps->atom_client)) {
+          && wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
         w_top->wmwin = false;
         win_unmark_client(ps, w_top);
         win_mark_client(ps, w_top, ev->window);
@@ -2687,14 +2653,14 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
   // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
   // there are always some stupid applications. (#144)
-  if (ev->atom == ps->atom_win_type) {
+  if (ev->atom == ps->atoms.atom_win_type) {
     win *w = NULL;
     if ((w = find_toplevel(ps, ev->window)))
       win_upd_wintype(ps, w);
   }
 
   // If frame extents property changes
-  if (ev->atom == ps->atom_frame_extents) {
+  if (ev->atom == ps->atoms.atom_frame_extents) {
     win *w = find_toplevel(ps, ev->window);
     if (w) {
       get_frame_extents(ps, w, ev->window);
@@ -2705,7 +2671,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
   // If name changes
   if (ps->o.track_wdata
-      && (ps->atom_name == ev->atom || ps->atom_name_ewmh == ev->atom)) {
+      && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
     win *w = find_toplevel(ps, ev->window);
     if (w && 1 == win_get_name(ps, w)) {
       win_on_factor_change(ps, w);
@@ -2713,7 +2679,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   }
 
   // If class changes
-  if (ps->o.track_wdata && ps->atom_class == ev->atom) {
+  if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
     win *w = find_toplevel(ps, ev->window);
     if (w) {
       win_get_class(ps, w);
@@ -2722,7 +2688,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   }
 
   // If role changes
-  if (ps->o.track_wdata && ps->atom_role == ev->atom) {
+  if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
     win *w = find_toplevel(ps, ev->window);
     if (w && 1 == win_get_role(ps, w)) {
       win_on_factor_change(ps, w);
@@ -2730,8 +2696,8 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   }
 
   // If a leader property changes
-  if ((ps->o.detect_transient && ps->atom_transient == ev->atom)
-      || (ps->o.detect_client_leader && ps->atom_client_leader == ev->atom)) {
+  if ((ps->o.detect_transient && ps->atoms.atom_transient == ev->atom)
+      || (ps->o.detect_client_leader && ps->atoms.atom_client_leader == ev->atom)) {
     win *w = find_toplevel(ps, ev->window);
     if (w) {
       win_update_leader(ps, w);
@@ -2769,11 +2735,6 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     if (w->border_size) {
         // Mark the old border_size as damaged
         add_damage(ps, w->border_size);
-
-        w->border_size = border_size(ps, w, true);
-
-        // Mark the new border_size as damaged
-        add_damage(ps, copy_region(ps, w->border_size));
     }
 
     fetch_shaped_window_face(ps, w);
@@ -3035,10 +2996,6 @@ usage(int ret) {
     "  managers not passing _NET_WM_OPACITY of client windows to frame\n"
     "  windows.\n"
     "\n"
-    "--refresh-rate val\n"
-    "  Specify refresh rate of the screen. If not specified or 0, compton\n"
-    "  will try detecting this with X RandR extension.\n"
-    "\n"
     "--vsync vsync-method\n"
     "  Set VSync method. There are (up to) 5 VSync methods currently\n"
     "  available:\n"
@@ -3077,10 +3034,6 @@ usage(int ret) {
     "\n"
     "--paint-on-overlay\n"
     "  Painting on X Composite overlay window.\n"
-    "\n"
-    "--sw-opti\n"
-    "  Limit compton to repaint at most once every 1 / refresh_rate\n"
-    "  second to boost performance.\n"
     "\n"
     "--use-ewmh-active-win\n"
     "  Use _NET_WM_ACTIVE_WINDOW on the root window to determine which\n"
@@ -3178,10 +3131,6 @@ usage(int ret) {
     "\n"
 #undef WARNING
 #define WARNING
-    "--backend backend\n"
-    "  Choose backend. Possible choices are xrender, glx, and\n"
-    "  xr_glx_hybrid" WARNING ".\n"
-    "\n"
     "--glx-no-stencil\n"
     "  GLX backend: Avoid using stencil buffer. Might cause issues\n"
     "  when rendering transparent content. My tests show a 15% performance\n"
@@ -3779,13 +3728,8 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --detect-client-opacity
   lcfg_lookup_bool(&cfg, "detect-client-opacity",
       &ps->o.detect_client_opacity);
-  // --refresh-rate
-  lcfg_lookup_int(&cfg, "refresh-rate", &ps->o.refresh_rate);
   // --vsync
   if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
-    exit(1);
-  // --backend
-  if (config_lookup_string(&cfg, "backend", &sval) && !parse_backend(ps, sval))
     exit(1);
   // --alpha-step
   config_lookup_float(&cfg, "alpha-step", &ps->o.alpha_step);
@@ -3913,7 +3857,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
     { "detect-rounded-corners", no_argument, NULL, 267 },
     { "detect-client-opacity", no_argument, NULL, 268 },
-    { "refresh-rate", required_argument, NULL, 269 },
     { "vsync", required_argument, NULL, 270 },
     { "alpha-step", required_argument, NULL, 271 },
     { "dbe", no_argument, NULL, 272 },
@@ -3934,7 +3877,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "logpath", required_argument, NULL, 287 },
     { "invert-color-include", required_argument, NULL, 288 },
     { "opengl", no_argument, NULL, 289 },
-    { "backend", required_argument, NULL, 290 },
     { "glx-no-stencil", no_argument, NULL, 291 },
     { "glx-copy-from-front", no_argument, NULL, 292 },
     { "benchmark", required_argument, NULL, 293 },
@@ -4099,7 +4041,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       P_CASEBOOL(265, no_fading_openclose);
       P_CASEBOOL(266, shadow_ignore_shaped);
       P_CASEBOOL(268, detect_client_opacity);
-      P_CASELONG(269, refresh_rate);
       case 270:
         // --vsync
         if (!parse_vsync(ps, optarg))
@@ -4133,15 +4074,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 288:
         // --invert-color-include
         condlst_add(ps, &ps->o.invert_color_list, optarg);
-        break;
-      case 289:
-        // --opengl
-        ps->o.backend = BKEND_GLX;
-        break;
-      case 290:
-        // --backend
-        if (!parse_backend(ps, optarg))
-          exit(1);
         break;
       P_CASEBOOL(291, glx_no_stencil);
       P_CASEBOOL(292, glx_copy_from_front);
@@ -4216,7 +4148,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   ps->o.fade_delta = max_i(ps->o.fade_delta, 1);
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
-  ps->o.refresh_rate = normalize_i_range(ps->o.refresh_rate, 0, 300);
   ps->o.alpha_step = normalize_d_range(ps->o.alpha_step, 0.01, 1.0);
   if (shadow_enable)
     wintype_arr_enable(ps->o.wintype_shadow);
@@ -4250,96 +4181,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   if (ps->o.detect_transient || ps->o.detect_client_leader) {
     ps->o.track_leader = true;
   }
-
-  // Fill default blur kernel
-  if (ps->o.blur_background && !ps->o.blur_kerns[0]) {
-    // Convolution filter parameter (box blur)
-    // gaussian or binomial filters are definitely superior, yet looks
-    // like they aren't supported as of xorg-server-1.13.0
-    const static XFixed convolution_blur[] = {
-      // Must convert to XFixed with XDoubleToFixed()
-      // Matrix size
-      XDoubleToFixed(3), XDoubleToFixed(3),
-      // Matrix
-      XDoubleToFixed(1), XDoubleToFixed(1), XDoubleToFixed(1),
-      XDoubleToFixed(1), XDoubleToFixed(1), XDoubleToFixed(1),
-      XDoubleToFixed(1), XDoubleToFixed(1), XDoubleToFixed(1),
-    };
-    ps->o.blur_kerns[0] = malloc(sizeof(convolution_blur));
-    if (!ps->o.blur_kerns[0]) {
-      printf_errf("(): Failed to allocate memory for convolution kernel.");
-      exit(1);
-    }
-    memcpy(ps->o.blur_kerns[0], &convolution_blur, sizeof(convolution_blur));
-  }
-}
-
-/**
- * Fetch all required atoms and save them to a session.
- */
-static void
-init_atoms(session_t *ps) {
-  ps->atom_frame_extents = get_atom(ps, "_NET_FRAME_EXTENTS");
-  ps->atom_client = get_atom(ps, "WM_STATE");
-  ps->atom_name = XA_WM_NAME;
-  ps->atom_name_ewmh = get_atom(ps, "_NET_WM_NAME");
-  ps->atom_class = XA_WM_CLASS;
-  ps->atom_role = get_atom(ps, "WM_WINDOW_ROLE");
-  ps->atom_transient = XA_WM_TRANSIENT_FOR;
-  ps->atom_client_leader = get_atom(ps, "WM_CLIENT_LEADER");
-  ps->atom_ewmh_active_win = get_atom(ps, "_NET_ACTIVE_WINDOW");
-  ps->atom_compton_shadow = get_atom(ps, "_COMPTON_SHADOW");
-  ps->atom_bypass = get_atom(ps, "_NET_WM_BYPASS_COMPOSITOR");
-
-  ps->atom_win_type = get_atom(ps, "_NET_WM_WINDOW_TYPE");
-  ps->atoms_wintypes[WINTYPE_UNKNOWN] = 0;
-  ps->atoms_wintypes[WINTYPE_DESKTOP] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_DESKTOP");
-  ps->atoms_wintypes[WINTYPE_DOCK] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_DOCK");
-  ps->atoms_wintypes[WINTYPE_TOOLBAR] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_TOOLBAR");
-  ps->atoms_wintypes[WINTYPE_MENU] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_MENU");
-  ps->atoms_wintypes[WINTYPE_UTILITY] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_UTILITY");
-  ps->atoms_wintypes[WINTYPE_SPLASH] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_SPLASH");
-  ps->atoms_wintypes[WINTYPE_DIALOG] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_DIALOG");
-  ps->atoms_wintypes[WINTYPE_NORMAL] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_NORMAL");
-  ps->atoms_wintypes[WINTYPE_DROPDOWN_MENU] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU");
-  ps->atoms_wintypes[WINTYPE_POPUP_MENU] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_POPUP_MENU");
-  ps->atoms_wintypes[WINTYPE_TOOLTIP] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_TOOLTIP");
-  ps->atoms_wintypes[WINTYPE_NOTIFY] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_NOTIFICATION");
-  ps->atoms_wintypes[WINTYPE_COMBO] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_COMBO");
-  ps->atoms_wintypes[WINTYPE_DND] = get_atom(ps,
-      "_NET_WM_WINDOW_TYPE_DND");
-}
-
-/**
- * Update refresh rate info with X Randr extension.
- */
-static void
-update_refresh_rate(session_t *ps) {
-  XRRScreenConfiguration* randr_info;
-
-  if (!(randr_info = XRRGetScreenInfo(ps->dpy, ps->root)))
-    return;
-  ps->refresh_rate = XRRConfigCurrentRate(randr_info);
-
-  XRRFreeScreenConfigInfo(randr_info);
-
-  if (ps->refresh_rate)
-    ps->refresh_intv = US_PER_SEC / ps->refresh_rate;
-  else
-    ps->refresh_intv = 0;
 }
 
 /**
@@ -5002,10 +4843,8 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .o = {
       .config_file = NULL,
       .display = NULL,
-      .backend = BKEND_GLX,
       .glx_no_stencil = false,
       .glx_copy_from_front = false,
-      .glx_prog_win = GLX_PROG_MAIN_INIT,
       .mark_wmwin_focused = false,
       .mark_ovredir_focused = false,
       .fork_after_register = false,
@@ -5022,7 +4861,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .benchmark_wid = None,
       .logpath = NULL,
 
-      .refresh_rate = 0,
       .vsync = VSYNC_NONE,
       .dbe = false,
       .vsync_aggressive = false,
@@ -5051,7 +4889,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .blur_background_frame = false,
       .blur_background_fixed = false,
       .blur_background_blacklist = NULL,
-      .blur_kerns = { NULL },
       .inactive_dim = 0.0,
       .inactive_dim_fixed = false,
       .invert_color_list = NULL,
@@ -5093,10 +4930,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
     .cgsize = 0,
 
-    .refresh_rate = 0,
-    .refresh_intv = 0UL,
-    .paint_tm_offset = 0L,
-
 #ifdef CONFIG_VSYNC_DRM
     .drm_fd = -1,
 #endif
@@ -5123,17 +4956,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .dbe_exists = false,
     .xrfilter_convolution_exists = false,
 
-    .atom_frame_extents = None,
-    .atom_client = None,
-    .atom_name = None,
-    .atom_name_ewmh = None,
-    .atom_class = None,
-    .atom_role = None,
-    .atom_transient = None,
-    .atom_ewmh_active_win = None,
-    .atom_compton_shadow = None,
-    .atom_win_type = None,
-    .atoms_wintypes = { 0 },
     .track_atom_lst = NULL,
 
 #ifdef CONFIG_DBUS
@@ -5334,12 +5156,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     exit(1);
   }
 
-  // Initialize window GL shader
-  if (BKEND_GLX == ps->o.backend && ps->o.glx_fshader_win_str) {
-    if (!glx_load_prog_main(ps, NULL, ps->o.glx_fshader_win_str, &ps->o.glx_prog_win))
-      exit(1);
-  }
-
   // Monitor screen changes if vsync_sw is enabled and we are using
   // an auto-detected refresh rate, or when Xinerama features are enabled
   if (ps->randr_exists || ps->o.xinerama_shadow_crop)
@@ -5359,7 +5175,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   bezier_init(&ps->curve, 0.4, 0.0, 0.2, 1);
 
-  init_atoms(ps);
+  atoms_get(ps, &ps->atoms);
 
   {
     XRenderPictureAttributes pa;
@@ -5524,10 +5340,6 @@ session_destroy(session_t *ps) {
   free(ps->o.display);
   free(ps->o.display_repr);
   free(ps->o.logpath);
-  for (int i = 0; i < MAX_BLUR_PASS; ++i) {
-    free(ps->o.blur_kerns[i]);
-    free(ps->blur_kerns_cache[i]);
-  }
   free(ps->pfds_read);
   free(ps->pfds_write);
   free(ps->pfds_except);

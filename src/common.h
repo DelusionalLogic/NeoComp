@@ -122,6 +122,9 @@
 #include <GL/glx.h>
 
 #include "vmath.h"
+#include "wintypes.h"
+#include "session.h"
+#include "atoms.h"
 #include "swiss.h"
 #include "vector.h"
 #include "bezier.h"
@@ -130,94 +133,7 @@
 #include "xorg.h"
 #include "text.h"
 
-// @CLEANUP @HACK We don't actually want this here, but because everything is in
-// here i do now.
-// FUCK
-// FUCK
-// FUCK
-// FUCK
-struct blur {
-    struct Framebuffer fbo;
-    GLuint array;
-};
-
-struct XTexture {
-    struct X11Context* context;
-
-    bool bound;
-    int depth;
-    Pixmap pixmap;
-    GLXDrawable glxPixmap;
-    struct Texture texture;
-};
-
-struct WindowDrawable {
-    Window wid;
-    GLXFBConfig* fbconfig;
-
-    // This is a bit of magic. In C11 we can have anonymous struct members, but
-    // they have to be untagged. We'd prefer to be able to use a tagged one,
-    // luckily the "ms-extensions" allow us to do just that. The union here
-    // just means that we can also access the struct explicitly. Let me just
-    // give an early "I'm sorry".
-    union {
-        struct XTexture xtexture;
-        struct XTexture;
-    };
-};
-
-typedef struct {
-    /// Framebuffer used for blurring.
-    struct Framebuffer fbo;
-    /// Textures used for blurring.
-    struct Texture texture[2];
-    struct RenderBuffer stencil;
-    Vector2 size;
-    /// Width of the textures.
-    int width;
-    /// Height of the textures.
-    int height;
-
-    /// Has the blur been damaged
-    bool damaged;
-} glx_blur_cache_t;
-
-struct glx_shadow_cache {
-    bool initialized;
-    struct Texture texture;
-    struct Texture effect;
-    struct RenderBuffer stencil;
-    Vector2 wSize;
-    Vector2 border;
-};
-
-#define FADE_KEYFRAMES 10
-
-struct FadeKeyframe {
-    double target;
-
-    // The time to fade out the previous keyframe, -1 if the fade is done
-    double duration;
-    double time; // How long we are in the current fade
-
-    // @HACK @CLEANUP: for now we have this bool that signifies if keyframe
-    // should ignore the next time update
-    bool ignore;
-};
-struct Fading {
-    struct FadeKeyframe keyframes[FADE_KEYFRAMES];
-    size_t head; // The current "active" keyframe
-    size_t tail; // The last fading keyframe
-
-    // The current animated value
-    double value;
-};
-// FUCK
-// FUCK
-// FUCK
-
 typedef uint64_t win_id;
-
 
 // Workarounds for missing definitions in some broken GL drivers, thanks to
 // douglasp and consolers for reporting
@@ -239,30 +155,6 @@ typedef uint64_t win_id;
 
 /// @brief Wrapper for gcc branch prediction builtin, for unlikely branch.
 #define unlikely(x)  __builtin_expect(!!(x), 0)
-
-/// Print out an error message.
-#define printf_err(format, ...) \
-  fprintf(stderr, format "\n", ## __VA_ARGS__)
-
-/// Print out an error message with function name.
-#define printf_errf(format, ...) \
-  printf_err("%s(): " format,  __func__, ## __VA_ARGS__)
-
-/// Print out an error message with function name, and quit with a
-/// specific exit code.
-#define printf_errfq(code, format, ...) { \
-  printf_err("%s(): " format,  __func__, ## __VA_ARGS__); \
-  exit(code); \
-}
-
-/// Print out a debug message.
-#define printf_dbg(format, ...) \
-  printf(format, ## __VA_ARGS__); \
-  fflush(stdout)
-
-/// Print out a debug message with function name.
-#define printf_dbgf(format, ...) \
-  printf_dbg("%s(): " format, __func__, ## __VA_ARGS__)
 
 // Use #s here to prevent macro expansion
 /// Macro used for shortening some debugging code.
@@ -299,14 +191,8 @@ typedef uint64_t win_id;
 #define XRFILTER_GAUSSIAN     "gaussian"
 #define XRFILTER_BINOMIAL     "binomial"
 
-/// @brief Maximum OpenGL FBConfig depth.
-#define OPENGL_MAX_DEPTH 32
-
 /// @brief Maximum OpenGL buffer age.
 #define CGLX_MAX_BUFFER_AGE 5
-
-/// @brief Maximum passes for blur.
-#define MAX_BLUR_PASS 5
 
 // Window flags
 
@@ -320,49 +206,6 @@ typedef uint64_t win_id;
 // === Types ===
 
 typedef uint32_t opacity_t;
-typedef long time_ms_t;
-
-typedef enum {
-  WINTYPE_UNKNOWN,
-  WINTYPE_DESKTOP,
-  WINTYPE_DOCK,
-  WINTYPE_TOOLBAR,
-  WINTYPE_MENU,
-  WINTYPE_UTILITY,
-  WINTYPE_SPLASH,
-  WINTYPE_DIALOG,
-  WINTYPE_NORMAL,
-  WINTYPE_DROPDOWN_MENU,
-  WINTYPE_POPUP_MENU,
-  WINTYPE_TOOLTIP,
-  WINTYPE_NOTIFY,
-  WINTYPE_COMBO,
-  WINTYPE_DND,
-  NUM_WINTYPES
-} wintype_t;
-
-/// Enumeration type to represent switches.
-typedef enum {
-  OFF,    // false
-  ON,     // true
-  UNSET
-} switch_t;
-
-/// Structure representing a X geometry.
-typedef struct {
-  int wid;
-  int hei;
-  int x;
-  int y;
-} geometry_t;
-
-/// A structure representing margins around a rectangle.
-typedef struct {
-  int top;
-  int left;
-  int bottom;
-  int right;
-} margin_t;
 
 // Or use cmemzero().
 #define MARGIN_INIT { 0, 0, 0, 0 }
@@ -374,25 +217,6 @@ typedef struct {
   bool focus        : 1;
   bool invert_color : 1;
 } win_upd_t;
-
-/// Structure representing Window property value.
-typedef struct {
-  // All pointers have the same length, right?
-  // I wanted to use anonymous union but it's a GNU extension...
-  union {
-    unsigned char *p8;
-    short *p16;
-    long *p32;
-  } data;
-  unsigned long nitems;
-  Atom type;
-  int format;
-} winprop_t;
-
-typedef struct _ignore {
-  struct _ignore *next;
-  unsigned long sequence;
-} ignore_t;
 
 enum wincond_target {
   CONDTGT_NAME,
@@ -411,23 +235,6 @@ enum wincond_type {
 
 #define CONDF_IGNORECASE 0x0001
 
-/// VSync modes.
-typedef enum {
-  VSYNC_NONE,
-  VSYNC_DRM,
-  VSYNC_OPENGL,
-  VSYNC_OPENGL_OML,
-  VSYNC_OPENGL_SWC,
-  VSYNC_OPENGL_MSWC,
-  NUM_VSYNC,
-} vsync_t;
-
-/// @brief Possible backends of compton.
-enum backend {
-  BKEND_GLX,
-  NUM_BKEND,
-};
-
 /// @brief Possible swap methods.
 enum {
   SWAPM_BUFFER_AGE = -1,
@@ -444,22 +251,6 @@ typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
 /* typedef void (*GLDEBUGPROC) (GLenum source, GLenum type, */
 /*     GLuint id, GLenum severity, GLsizei length, const GLchar* message, */
 /*     GLvoid* userParam); */
-typedef void (*f_DebugMessageCallback) (GLDEBUGPROC, void *userParam);
-
-typedef int (*f_WaitVideoSync) (int, int, unsigned *);
-typedef int (*f_GetVideoSync) (unsigned *);
-
-typedef Bool (*f_GetSyncValuesOML) (Display* dpy, GLXDrawable drawable, int64_t* ust, int64_t* msc, int64_t* sbc);
-typedef Bool (*f_WaitForMscOML) (Display* dpy, GLXDrawable drawable, int64_t target_msc, int64_t divisor, int64_t remainder, int64_t* ust, int64_t* msc, int64_t* sbc);
-
-typedef int (*f_SwapIntervalSGI) (int interval);
-typedef int (*f_SwapIntervalMESA) (unsigned int interval);
-
-typedef void (*f_BindTexImageEXT) (Display *display, GLXDrawable drawable, int buffer, const int *attrib_list);
-typedef void (*f_ReleaseTexImageEXT) (Display *display, GLXDrawable drawable, int buffer);
-
-typedef void (*f_CopySubBuffer) (Display *dpy, GLXDrawable drawable, int x, int y, int width, int height);
-
 #ifdef CONFIG_GLX_SYNC
 // Looks like duplicate typedef of the same type is safe?
 typedef int64_t GLint64;
@@ -506,14 +297,6 @@ typedef void (*f_StringMarkerGREMEDY) (GLsizei len, const void *string);
 typedef void (*f_FrameTerminatorGREMEDY) (void);
 #endif
 
-/// @brief Wrapper of a GLX FBConfig.
-typedef struct {
-  GLXFBConfig cfg;
-  GLint texture_fmt;
-  GLint texture_tgts;
-  bool y_inverted;
-} glx_fbconfig_t;
-
 /// @brief Wrapper of a binded GLX texture.
 struct _glx_texture {
   GLuint texture;
@@ -525,49 +308,6 @@ struct _glx_texture {
   unsigned depth;
   bool y_inverted;
 };
-
-typedef struct {
-  /// Fragment shader for blur.
-  GLuint frag_shader;
-  GLuint upscale_shader;
-  GLuint vertex_shader;
-  /// GLSL program for blur.
-  GLuint prog;
-  GLuint upscale_prog;
-
-  GLuint vertexArrayID;
-  GLuint vertexBuffer;
-  GLuint uvBuffer;
-
-  /// Location of uniform "pixeluv" in blur GLSL program.
-  GLint unifm_pixeluv;
-  /// Location of uniform "extent" in the blur GLSL program.
-  GLint unifm_extent;
-  GLint unifm_uvscale;
-  /// Location of uniform "tex_scr" in blur GLSL program.
-  GLint unifm_tex;
-
-  //Vertex buffer position.
-  GLint unifm_mvp;
-} glx_blur_pass_t;
-
-typedef struct {
-  /// GLSL program.
-  GLuint prog;
-  /// Location of uniform "opacity" in window GLSL program.
-  GLint unifm_opacity;
-  /// Location of uniform "invert_color" in blur GLSL program.
-  GLint unifm_invert_color;
-  /// Location of uniform "tex" in window GLSL program.
-  GLint unifm_tex;
-} glx_prog_main_t;
-
-#define GLX_PROG_MAIN_INIT { \
-  .prog = 0, \
-  .unifm_opacity = -1, \
-  .unifm_invert_color = -1, \
-  .unifm_tex = -1, \
-}
 
 typedef struct {
   Pixmap pixmap;
@@ -582,12 +322,6 @@ typedef struct {
   double *data;
 } conv;
 
-/// Linked list type of atoms.
-typedef struct _latom {
-  Atom atom;
-  struct _latom *next;
-} latom_t;
-
 /// A representation of raw region data
 typedef struct {
   XRectangle *rects;
@@ -596,675 +330,7 @@ typedef struct {
 
 #define REG_DATA_INIT { NULL, 0 }
 
-struct _timeout_t;
-
 struct _win;
-
-typedef struct _c2_lptr c2_lptr_t;
-
-/// Structure representing all options.
-typedef struct _options_t {
-  // === General ===
-  /// The configuration file we used.
-  char *config_file;
-  /// Path to write PID to.
-  char *write_pid_path;
-  /// The display name we used. NULL means we are using the value of the
-  /// <code>DISPLAY</code> environment variable.
-  char *display;
-  /// Safe representation of display name.
-  char *display_repr;
-  /// The backend in use.
-  enum backend backend;
-  /// Whether to sync X drawing to avoid certain delay issues with
-  /// GLX backend.
-  bool xrender_sync;
-  /// Whether to sync X drawing with X Sync fence.
-  bool xrender_sync_fence;
-  /// Whether to avoid using stencil buffer under GLX backend. Might be
-  /// unsafe.
-  bool glx_no_stencil;
-  /// Whether to copy unmodified regions from front buffer.
-  bool glx_copy_from_front;
-  /// Whether to use glXCopySubBufferMESA() to update screen.
-  bool glx_use_copysubbuffermesa;
-  /// Whether to avoid rebinding pixmap on window damage.
-  bool glx_no_rebind_pixmap;
-  /// GLX swap method we assume OpenGL uses.
-  int glx_swap_method;
-  /// Whether to use GL_EXT_gpu_shader4 to (hopefully) accelerates blurring.
-  bool glx_use_gpushader4;
-  /// Custom fragment shader for painting windows, as a string.
-  char *glx_fshader_win_str;
-  /// Custom GLX program used for painting window.
-  glx_prog_main_t glx_prog_win;
-  /// Whether to fork to background.
-  bool fork_after_register;
-  /// Whether to paint on X Composite overlay window instead of root
-  /// window.
-  bool paint_on_overlay;
-  /// Force painting of window content with blending.
-  bool force_win_blend;
-  /// Blur Level
-  int blur_level;
-  /// Whether to unredirect all windows if a full-screen opaque window
-  /// is detected.
-  bool unredir_if_possible;
-  /// List of conditions of windows to ignore as a full-screen window
-  /// when determining if a window could be unredirected.
-  c2_lptr_t *unredir_if_possible_blacklist;
-  /// Delay before unredirecting screen.
-  time_ms_t unredir_if_possible_delay;
-  /// Forced redirection setting through D-Bus.
-  switch_t redirected_force;
-  /// Whether to stop painting. Controlled through D-Bus.
-  switch_t stoppaint_force;
-  /// Whether to re-redirect screen on root size change.
-  bool reredir_on_root_change;
-  /// Whether to reinitialize GLX on root size change.
-  bool glx_reinit_on_root_change;
-  /// Whether to enable D-Bus support.
-  bool dbus;
-  /// Path to log file.
-  char *logpath;
-  /// Number of cycles to paint in benchmark mode. 0 for disabled.
-  int benchmark;
-  /// Window to constantly repaint in benchmark mode. 0 for full-screen.
-  Window benchmark_wid;
-  /// A list of conditions of windows not to paint.
-  c2_lptr_t *paint_blacklist;
-  /// Whether to avoid using XCompositeNameWindowPixmap(), for debugging.
-  bool no_name_pixmap;
-  /// Whether to work under synchronized mode for debugging.
-  bool synchronize;
-  /// Whether to show all X errors.
-  bool show_all_xerrors;
-  /// Whether to avoid acquiring X Selection.
-  bool no_x_selection;
-
-  // === VSync & software optimization ===
-  /// User-specified refresh rate.
-  int refresh_rate;
-  /// VSync method to use;
-  vsync_t vsync;
-  /// Whether to enable double buffer.
-  bool dbe;
-  /// Whether to do VSync aggressively.
-  bool vsync_aggressive;
-  /// Whether to use glFinish() instead of glFlush() for (possibly) better
-  /// VSync yet probably higher CPU usage.
-  bool vsync_use_glfinish;
-
-  // === Shadow ===
-  /// Enable/disable shadow for specific window types.
-  bool wintype_shadow[NUM_WINTYPES];
-  /// Red, green and blue tone of the shadow.
-  double shadow_red, shadow_green, shadow_blue;
-  int shadow_offset_x, shadow_offset_y;
-  double shadow_opacity;
-  bool clear_shadow;
-  /// Geometry of a region in which shadow is not painted on.
-  geometry_t shadow_exclude_reg_geom;
-  /// Shadow blacklist. A linked list of conditions.
-  c2_lptr_t *shadow_blacklist;
-  /// Whether bounding-shaped window should be ignored.
-  bool shadow_ignore_shaped;
-  /// Whether to respect _COMPTON_SHADOW.
-  bool respect_prop_shadow;
-  /// Whether to crop shadow to the very Xinerama screen.
-  bool xinerama_shadow_crop;
-
-  // === Fading ===
-  /// Enable/disable fading for specific window types.
-  bool wintype_fade[NUM_WINTYPES];
-  /// Fading time delta. In milliseconds.
-  time_ms_t fade_delta;
-  /// Whether to disable fading on window open/close.
-  bool no_fading_openclose;
-  /// Whether to disable fading on ARGB managed destroyed windows.
-  bool no_fading_destroyed_argb;
-  /// Fading blacklist. A linked list of conditions.
-  c2_lptr_t *fade_blacklist;
-
-  // === Opacity ===
-  /// Default opacity for specific window types
-  double wintype_opacity[NUM_WINTYPES];
-  /// Default opacity for inactive windows.
-  /// 32-bit integer with the format of _NET_WM_OPACITY. 0 stands for
-  /// not enabled, default.
-  double inactive_opacity;
-  /// Default opacity for inactive windows.
-  double active_opacity;
-
-  double opacity_fade_time;
-  /// Whether inactive_opacity overrides the opacity set by window
-  /// attributes.
-  bool inactive_opacity_override;
-  /// Whether to detect _NET_WM_OPACITY on client windows. Used on window
-  /// managers that don't pass _NET_WM_OPACITY to frame windows.
-  bool detect_client_opacity;
-  /// Step for pregenerating alpha pictures. 0.01 - 1.0.
-  double alpha_step;
-
-  // === Other window processing ===
-  /// Whether to blur background of semi-transparent / ARGB windows.
-  bool blur_background;
-  /// Whether to blur background when the window frame is not opaque.
-  /// Implies blur_background.
-  bool blur_background_frame;
-  /// Whether to use fixed blur strength instead of adjusting according
-  /// to window opacity.
-  bool blur_background_fixed;
-  /// Background blur blacklist. A linked list of conditions.
-  c2_lptr_t *blur_background_blacklist;
-  /// Blur convolution kernel.
-  XFixed *blur_kerns[MAX_BLUR_PASS];
-  /// How much to dim an inactive window. 0.0 - 1.0, 0 to disable.
-  double inactive_dim;
-  /// Whether to use fixed inactive dim opacity, instead of deciding
-  /// based on window opacity.
-  bool inactive_dim_fixed;
-  /// Conditions of windows to have inverted colors.
-  c2_lptr_t *invert_color_list;
-  /// Rules to change window opacity.
-  c2_lptr_t *opacity_rules;
-
-  // === Focus related ===
-  /// Consider windows of specific types to be always focused.
-  bool wintype_focus[NUM_WINTYPES];
-  /// Whether to try to detect WM windows and mark them as focused.
-  bool mark_wmwin_focused;
-  /// Whether to mark override-redirect windows as focused.
-  bool mark_ovredir_focused;
-  /// Whether to use EWMH _NET_ACTIVE_WINDOW to find active window.
-  bool use_ewmh_active_win;
-  /// A list of windows always to be considered focused.
-  c2_lptr_t *focus_blacklist;
-  /// Whether to do window grouping with <code>WM_TRANSIENT_FOR</code>.
-  bool detect_transient;
-  /// Whether to do window grouping with <code>WM_CLIENT_LEADER</code>.
-  bool detect_client_leader;
-
-  // === Calculated ===
-  /// Whether compton needs to track focus changes.
-  bool track_focus;
-  /// Whether compton needs to track window name and class.
-  bool track_wdata;
-  /// Whether compton needs to track window leaders.
-  bool track_leader;
-} options_t;
-
-/// Structure containing GLX-dependent data for a compton session.
-typedef struct {
-  // === OpenGL related ===
-  /// GLX context.
-  GLXContext context;
-  /// Whether we have GL_ARB_texture_non_power_of_two.
-  bool has_texture_non_power_of_two;
-  /// Pointer to glXGetVideoSyncSGI function.
-  f_GetVideoSync glXGetVideoSyncSGI;
-  /// Pointer to glXWaitVideoSyncSGI function.
-  f_WaitVideoSync glXWaitVideoSyncSGI;
-   /// Pointer to glXGetSyncValuesOML function.
-  f_GetSyncValuesOML glXGetSyncValuesOML;
-  /// Pointer to glXWaitForMscOML function.
-  f_WaitForMscOML glXWaitForMscOML;
-  /// Pointer to glXSwapIntervalSGI function.
-  f_SwapIntervalSGI glXSwapIntervalProc;
-  /// Pointer to glXSwapIntervalMESA function.
-  f_SwapIntervalMESA glXSwapIntervalMESAProc;
-  /// Pointer to glXBindTexImageEXT function.
-  f_BindTexImageEXT glXBindTexImageProc;
-  /// Pointer to glXReleaseTexImageEXT function.
-  f_ReleaseTexImageEXT glXReleaseTexImageProc;
-  /// Pointer to glXCopySubBufferMESA function.
-  f_CopySubBuffer glXCopySubBufferProc;
-#ifdef CONFIG_GLX_SYNC
-  /// Pointer to the glFenceSync() function.
-  f_FenceSync glFenceSyncProc;
-  /// Pointer to the glIsSync() function.
-  f_IsSync glIsSyncProc;
-  /// Pointer to the glDeleteSync() function.
-  f_DeleteSync glDeleteSyncProc;
-  /// Pointer to the glClientWaitSync() function.
-  f_ClientWaitSync glClientWaitSyncProc;
-  /// Pointer to the glWaitSync() function.
-  f_WaitSync glWaitSyncProc;
-  /// Pointer to the glImportSyncEXT() function.
-  f_ImportSyncEXT glImportSyncEXT;
-#endif
-#ifdef DEBUG_GLX_MARK
-  /// Pointer to StringMarkerGREMEDY function.
-  f_StringMarkerGREMEDY glStringMarkerGREMEDY;
-  /// Pointer to FrameTerminatorGREMEDY function.
-  f_FrameTerminatorGREMEDY glFrameTerminatorGREMEDY;
-#endif
-  struct blur blur;
-  /// Current GLX Z value.
-  int z;
-  // Standard view matrix
-  Matrix view;
-  /// FBConfig-s for GLX pixmap of different depths.
-  glx_fbconfig_t *fbconfigs[OPENGL_MAX_DEPTH + 1];
-
-  glx_blur_pass_t blur_passes[MAX_BLUR_PASS];
-
-  struct X11Context xcontext;
-
-  // @MEMORY @PERFORMANCE: We don't need a dedicated FBO for just stencil, but
-  // for right now I don't want to bother with that
-  struct Framebuffer stencil_fbo;
-} glx_session_t;
-
-#define CGLX_SESSION_INIT { .context = NULL }
-
-/// Structure containing all necessary data for a compton session.
-typedef struct _session_t {
-  // === Display related ===
-  /// Display in use.
-  Display *dpy;
-  /// Default screen.
-  int scr;
-  /// Default visual.
-  Visual *vis;
-  /// Default depth.
-  int depth;
-  /// Root window.
-  Window root;
-  /// Height of root window.
-  int root_height;
-  /// Width of root window.
-  int root_width;
-  // Damage of root window.
-  // Damage root_damage;
-  /// X Composite overlay window. Used if <code>--paint-on-overlay</code>.
-  Window overlay;
-
-  /// The root tile, but better
-  struct XTexture root_texture;
-
-  /// A region of the size of the screen.
-  XserverRegion screen_reg;
-#ifdef CONFIG_XSYNC
-  XSyncFence tgt_buffer_fence;
-#endif
-  /// DBE back buffer for root window. Used in DBE painting mode.
-  XdbeBackBuffer root_dbe;
-  /// Window ID of the window we register as a symbol.
-  Window reg_win;
-  /// Pointer to GLX data.
-  glx_session_t *psglx;
-
-  struct Bezier curve;
-
-  // === Operation related ===
-  /// Program options.
-  options_t o;
-  /// File descriptors to check for reading.
-  fd_set *pfds_read;
-  /// File descriptors to check for writing.
-  fd_set *pfds_write;
-  /// File descriptors to check for exceptions.
-  fd_set *pfds_except;
-  /// Largest file descriptor in fd_set-s above.
-  int nfds_max;
-  /// Linked list of all timeouts.
-  struct _timeout_t *tmout_lst;
-  /// Timeout for delayed unredirection.
-  struct _timeout_t *tmout_unredir;
-  /// Whether we have hit unredirection timeout.
-  bool tmout_unredir_hit;
-  /// Whether we have received an event in this cycle.
-  bool skip_poll;
-  /// Whether the program is idling. I.e. no fading, no potential window
-  /// changes.
-  bool idling;
-  /// Program start time.
-  struct timeval time_start;
-  /// Whether all windows are currently redirected.
-  bool redirected;
-  /// Whether all reg_ignore of windows should expire in this paint.
-  bool reg_ignore_expire;
-  /// Time of last fading. In milliseconds.
-  time_ms_t fade_time;
-  /// Head pointer of the error ignore linked list.
-  ignore_t *ignore_head;
-  /// Pointer to the <code>next</code> member of tail element of the error
-  /// ignore linked list.
-  ignore_t **ignore_tail;
-  // Cached blur convolution kernels.
-  XFixed *blur_kerns_cache[MAX_BLUR_PASS];
-  /// Reset program after next paint.
-  bool reset;
-
-  // === Expose event related ===
-  /// Pointer to an array of <code>XRectangle</code>-s of exposed region.
-  XRectangle *expose_rects;
-  /// Number of <code>XRectangle</code>-s in <code>expose_rects</code>.
-  int size_expose;
-  /// Index of the next free slot in <code>expose_rects</code>.
-  int n_expose;
-
-  // === Window related ===
-  // Swiss of windows
-  Swiss win_list;
-  // Window order vector. Since most activity involves the topmost window, the
-  // vector will be ordered with the topmost window last
-  Vector order;
-  /// Pointer to <code>win</code> of current active window. Used by
-  /// EWMH <code>_NET_ACTIVE_WINDOW</code> focus detection. In theory,
-  /// it's more reliable to store the window ID directly here, just in
-  /// case the WM does something extraordinary, but caching the pointer
-  /// means another layer of complexity.
-  struct _win *active_win;
-  /// Window ID of leader window of currently active window. Used for
-  /// subsidiary window detection.
-  Window active_leader;
-
-  // === Shadow/dimming related ===
-  // for shadow precomputation
-  /// Shadow depth on one side.
-  int cgsize;
-  /// A region in which shadow is not painted on.
-  XserverRegion shadow_exclude_reg;
-
-  // === Software-optimization-related ===
-  /// Currently used refresh rate.
-  short refresh_rate;
-  /// Interval between refresh in nanoseconds.
-  long refresh_intv;
-  /// Nanosecond offset of the first painting.
-  long paint_tm_offset;
-
-#ifdef CONFIG_VSYNC_DRM
-  // === DRM VSync related ===
-  /// File descriptor of DRI device file. Used for DRM VSync.
-  int drm_fd;
-#endif
-
-  // === X extension related ===
-  /// Event base number for X Fixes extension.
-  int xfixes_event;
-  /// Error base number for X Fixes extension.
-  int xfixes_error;
-  /// Event base number for X Damage extension.
-  int damage_event;
-  /// Error base number for X Damage extension.
-  int damage_error;
-  /// Event base number for X Render extension.
-  int render_event;
-  /// Error base number for X Render extension.
-  int render_error;
-  /// Event base number for X Composite extension.
-  int composite_event;
-  /// Error base number for X Composite extension.
-  int composite_error;
-  /// Major opcode for X Composite extension.
-  int composite_opcode;
-  /// Whether X Composite NameWindowPixmap is available. Aka if X
-  /// Composite version >= 0.2.
-  bool has_name_pixmap;
-  /// Whether X Shape extension exists. @CLEANUP: Should be in xorg.h
-  bool shape_exists;
-  /// Event base number for X Shape extension.
-  int shape_event;
-  /// Error base number for X Shape extension.
-  int shape_error;
-  /// Whether X RandR extension exists.
-  bool randr_exists;
-  /// Event base number for X RandR extension.
-  int randr_event;
-  /// Error base number for X RandR extension.
-  int randr_error;
-  /// Whether X GLX extension exists.
-  bool glx_exists;
-  /// Event base number for X GLX extension.
-  int glx_event;
-  /// Error base number for X GLX extension.
-  int glx_error;
-  /// Whether X DBE extension exists.
-  bool dbe_exists;
-#ifdef CONFIG_XINERAMA
-  /// Whether X Xinerama extension exists.
-  bool xinerama_exists;
-  /// Xinerama screen info.
-  XineramaScreenInfo *xinerama_scrs;
-  /// Xinerama screen regions.
-  XserverRegion *xinerama_scr_regs;
-  /// Number of Xinerama screens.
-  int xinerama_nscrs;
-#endif
-#ifdef CONFIG_XSYNC
-  /// Whether X Sync extension exists.
-  bool xsync_exists;
-  /// Event base number for X Sync extension.
-  int xsync_event;
-  /// Error base number for X Sync extension.
-  int xsync_error;
-#endif
-  /// Whether X Render convolution filter exists.
-  bool xrfilter_convolution_exists;
-
-  // === Atoms ===
-  /// Atom of <code>_NET_FRAME_EXTENTS</code>.
-  Atom atom_frame_extents;
-  /// Property atom to identify top-level frame window. Currently
-  /// <code>WM_STATE</code>.
-  Atom atom_client;
-  /// Atom of property <code>WM_NAME</code>.
-  Atom atom_name;
-  /// Atom of property <code>_NET_WM_NAME</code>.
-  Atom atom_name_ewmh;
-  /// Atom of property <code>WM_CLASS</code>.
-  Atom atom_class;
-  /// Atom of property <code>WM_WINDOW_ROLE</code>.
-  Atom atom_role;
-  /// Atom of property <code>WM_TRANSIENT_FOR</code>.
-  Atom atom_transient;
-  /// Atom of property <code>WM_CLIENT_LEADER</code>.
-  Atom atom_client_leader;
-  /// Atom of property <code>_NET_ACTIVE_WINDOW</code>.
-  Atom atom_ewmh_active_win;
-  /// Atom of property <code>_COMPTON_SHADOW</code>.
-  Atom atom_compton_shadow;
-  /// Atom of property <come>_NET_BYPASS_COMPOSITOR</code>.
-  Atom atom_bypass;
-  /// Atom of property <code>_NET_WM_WINDOW_TYPE</code>.
-  Atom atom_win_type;
-  /// Array of atoms of all possible window types.
-  Atom atoms_wintypes[NUM_WINTYPES];
-  /// Linked list of additional atoms to track.
-  latom_t *track_atom_lst;
-
-#ifdef CONFIG_DBUS
-  // === DBus related ===
-  // DBus connection.
-  DBusConnection *dbus_conn;
-  // DBus service name.
-  char *dbus_service;
-#endif
-} session_t;
-
-extern const char* const StateNames[];
-
-enum WindowState {
-    STATE_HIDING,
-    STATE_INVISIBLE,
-    STATE_WAITING, // Waiting for focus assignment
-    STATE_ACTIVATING,
-    STATE_ACTIVE,
-    STATE_DEACTIVATING,
-    STATE_INACTIVE,
-    STATE_DESTROYING,
-    STATE_DESTROYED,
-};
-
-typedef uint64_t win_id;
-
-/// Structure representing a top-level window compton manages.
-typedef struct _win {
-  /// Pointer to the next structure in the linked list.
-  size_t next;
-  /// Pointer to the next higher window to paint.
-  struct _win *prev_trans;
-  /// Pointer to the next lower window to paint.
-  struct _win *next_trans;
-
-  // Core members
-  /// ID of the top-level frame window.
-  Window id;
-  /// Window attributes.
-  XWindowAttributes a;
-
-  struct face* face;
-
-  enum WindowState state;
-
-#ifdef CONFIG_XINERAMA
-  /// Xinerama screen this window is on.
-  int xinerama_scr;
-#endif
-  /// Window visual pict format;
-  XRenderPictFormat *pictfmt;
-  /// Whether the window has been damaged at least once.
-  bool damaged;
-#ifdef CONFIG_XSYNC
-  /// X Sync fence of drawable.
-  XSyncFence fence;
-#endif
-  /// Damage of the window.
-  Damage damage;
-  /// Bounding shape of the window.
-  XserverRegion border_size;
-  /// Window flags. Definitions above.
-  int_fast16_t flags;
-  /// Whether there's a pending <code>ConfigureNotify</code> happening
-  /// when the window is unmapped.
-  bool need_configure;
-  /// Queued <code>ConfigureNotify</code> when the window is unmapped.
-  XConfigureEvent queue_configure;
-  /// Region to be ignored when painting. Basically the region where
-  /// higher opaque windows will paint upon. Depends on window frame
-  /// opacity state, window geometry, window mapped/unmapped state,
-  /// window mode, of this and all higher windows.
-  XserverRegion reg_ignore;
-  /// Cached width/height of the window including border.
-  int widthb, heightb;
-  /// Whether the window has been destroyed.
-  bool destroyed;
-  /// Whether the window is bounding-shaped.
-  bool bounding_shaped;
-  /// Whether this window is to be painted.
-  bool to_paint;
-  /// Whether the window is painting excluded.
-  bool paint_excluded;
-  /// Whether the window is unredirect-if-possible excluded.
-  bool unredir_if_possible_excluded;
-  /// Whether this window is in open/close state.
-  bool in_openclose;
-  /// Is fullscreen
-  bool fullscreen;
-  /// Is solid;
-  bool solid;
-
-  /// Has frame
-  bool has_frame;
-
-  // Client window related members
-  /// ID of the top-level client window of the window.
-  Window client_win;
-  /// Type of the window.
-  wintype_t window_type;
-  /// Whether it looks like a WM window. We consider a window WM window if
-  /// it does not have a decedent with WM_STATE and it is not override-
-  /// redirected itself.
-  bool wmwin;
-  /// Leader window ID of the window.
-  Window leader;
-  /// Cached topmost window ID of the window.
-  Window cache_leader;
-
-  // Focus-related members
-  /// Whether the window is to be considered focused.
-  bool focused;
-  bool focus_changed;
-  /// Override value of window focus state. Set by D-Bus method calls.
-  switch_t focused_force;
-
-  // Blacklist related members
-  /// Name of the window.
-  char *name;
-  /// Window instance class of the window.
-  char *class_instance;
-  /// Window general class of the window.
-  char *class_general;
-  /// <code>WM_WINDOW_ROLE</code> value of the window.
-  char *role;
-  const c2_lptr_t *cache_sblst;
-  const c2_lptr_t *cache_fblst;
-  const c2_lptr_t *cache_fcblst;
-  const c2_lptr_t *cache_ivclst;
-  const c2_lptr_t *cache_bbblst;
-  const c2_lptr_t *cache_oparule;
-  const c2_lptr_t *cache_pblst;
-  const c2_lptr_t *cache_uipblst;
-
-  // Opacity-related members
-
-  // Current window opacity.
-  struct Fading opacity_fade;
-  double opacity;
-
-  bool skipFade;
-  double fadeTime;
-  double fadeDuration;
-
-  // Fading-related members
-  /// Do not fade if it's false. Change on window type change.
-  /// Used by fading blacklist in the future.
-  bool fade;
-  /// Fade state on last paint.
-  bool fade_last;
-  /// Override value of window fade state. Set by D-Bus method calls.
-  switch_t fade_force;
-  /// Callback to be called after fading completed.
-  void (*fade_callback) (session_t *ps, struct _win *w);
-
-  /// Frame extents. Acquired from _NET_FRAME_EXTENTS.
-  margin_t frame_extents;
-
-  // Shadow-related members
-  /// Whether a window has shadow. Calculated.
-  bool shadow;
-
-  // Dim-related members
-  /// Whether the window is to be dimmed.
-  bool dim;
-
-  /// Whether to invert window color.
-  bool invert_color;
-  /// Color inversion state on last paint.
-  bool invert_color_last;
-  /// Override value of window color inversion state. Set by D-Bus method
-  /// calls.
-  switch_t invert_color_force;
-
-  /// Whether to blur window background.
-  bool blur_background;
-  /// Background state on last paint.
-  bool blur_background_last;
-
-  bool stencil_damaged;
-  struct RenderBuffer stencil;
-
-  /// Textures and FBO background blur use.
-  glx_blur_cache_t glx_blur_cache;
-
-  bool shadow_damaged;
-  struct glx_shadow_cache shadow_cache;
-
-  struct WindowDrawable drawable;
-} win;
 
 /// Temporary structure used for communication between
 /// <code>get_cfg()</code> and <code>parse_config()</code>.
@@ -1274,17 +340,6 @@ struct options_tmp {
   double menu_opacity;
 };
 
-/// Structure for a recorded timeout.
-typedef struct _timeout_t {
-  bool enabled;
-  void *data;
-  bool (*callback)(session_t *ps, struct _timeout_t *ptmout);
-  time_ms_t interval;
-  time_ms_t firstrun;
-  time_ms_t lastrun;
-  struct _timeout_t *next;
-} timeout_t;
-
 /// Enumeration for window event hints.
 typedef enum {
   WIN_EVMODE_UNKNOWN,
@@ -1292,9 +347,7 @@ typedef enum {
   WIN_EVMODE_CLIENT
 } win_evmode_t;
 
-extern const char * const WINTYPES[NUM_WINTYPES];
 extern const char * const VSYNC_STRS[NUM_VSYNC + 1];
-extern const char * const BACKEND_STRS[NUM_BKEND + 1];
 extern session_t *ps_g;
 
 // == Debugging code ==
@@ -1702,21 +755,6 @@ parse_vsync(session_t *ps, const char *str) {
 }
 
 /**
- * Parse a backend option argument.
- */
-static inline bool
-parse_backend(session_t *ps, const char *str) {
-  for (enum backend i = 0; BACKEND_STRS[i]; ++i)
-    if (!strcasecmp(str, BACKEND_STRS[i])) {
-      ps->o.backend = i;
-      return true;
-    }
-  // Keep compatibility with an old revision containing a spelling mistake...
-  printf_errf("(\"%s\"): Invalid backend argument.", str);
-  return false;
-}
-
-/**
  * Parse a glx_swap_method option argument.
  */
 static inline bool
@@ -1767,19 +805,6 @@ parse_glx_swap_method(session_t *ps, const char *str) {
 
   return true;
 }
-
-timeout_t *
-timeout_insert(session_t *ps, time_ms_t interval,
-    bool (*callback)(session_t *ps, timeout_t *ptmout), void *data);
-
-void
-timeout_invoke(session_t *ps, timeout_t *ptmout);
-
-bool
-timeout_drop(session_t *ps, timeout_t *prm);
-
-void
-timeout_reset(session_t *ps, timeout_t *ptmout);
 
 /**
  * Add a file descriptor to a select() fd_set.
@@ -1879,14 +904,6 @@ static inline void
 cxfree(void *data) {
   if (data)
     XFree(data);
-}
-
-/**
- * Wrapper of XInternAtom() for convenience.
- */
-static inline Atom
-get_atom(session_t *ps, const char *atom_name) {
-  return XInternAtom(ps->dpy, atom_name, False);
 }
 
 /**
@@ -2065,10 +1082,6 @@ wid_has_prop(const session_t *ps, Window w, Atom atom) {
   return false;
 }
 
-winprop_t
-wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
-    long length, Atom rtype, int rformat);
-
 /**
  * Wrapper of wid_get_prop_adv().
  */
@@ -2151,11 +1164,6 @@ glx_on_root_change(session_t *ps);
 bool
 glx_init_blur(session_t *ps);
 
-bool
-glx_load_prog_main(session_t *ps,
-    const char *vshader_str, const char *fshader_str,
-    glx_prog_main_t *pprogram);
-
 void
 glx_release_pixmap(session_t *ps, glx_texture_t *ptex);
 
@@ -2185,13 +1193,11 @@ glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
 bool
 glx_render_(session_t *ps, const struct Texture* ptex,
     int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool neg,
-    const glx_prog_main_t *pprogram
-    );
+    double opacity, bool neg);
 
 #define \
-   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram) \
-  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg, pprogram)
+   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg) \
+  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg)
 
 void
 glx_swap_copysubbuffermesa(session_t *ps, XserverRegion reg);
@@ -2320,63 +1326,6 @@ xr_sync_(session_t *ps, Drawable d
 #endif
 }
 
-/** @name DBus handling
- */
-///@{
-#ifdef CONFIG_DBUS
-/** @name DBus handling
- */
-///@{
-bool
-cdbus_init(session_t *ps);
-
-void
-cdbus_destroy(session_t *ps);
-
-void
-cdbus_loop(session_t *ps);
-
-void
-cdbus_ev_win_added(session_t *ps, win *w);
-
-void
-cdbus_ev_win_destroyed(session_t *ps, win *w);
-
-void
-cdbus_ev_win_mapped(session_t *ps, win *w);
-
-void
-cdbus_ev_win_unmapped(session_t *ps, win *w);
-
-void
-cdbus_ev_win_focusout(session_t *ps, win *w);
-
-void
-cdbus_ev_win_focusin(session_t *ps, win *w);
-//!@}
-
-/** @name DBus hooks
- */
-///@{
-void
-win_set_shadow_force(session_t *ps, win *w, switch_t val);
-
-void
-win_set_fade_force(session_t *ps, win *w, switch_t val);
-
-void
-win_set_focused_force(session_t *ps, win *w, switch_t val);
-
-void
-win_set_invert_color_force(session_t *ps, win *w, switch_t val);
-
-void
-opts_init_track_focus(session_t *ps);
-
-void
-opts_set_no_fading_openclose(session_t *ps, bool newval);
-//!@}
-#endif
 
 #ifdef CONFIG_C2
 /** @name c2

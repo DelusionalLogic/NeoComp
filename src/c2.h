@@ -1,3 +1,5 @@
+#pragma once
+#define _GNU_SOURCE
 /*
  * Compton - a compositor for X11
  *
@@ -8,14 +10,22 @@
  *
  */
 
-#include "common.h"
+#include "window.h"
+#include "winprop.h"
+#include "wintypes.h"
 
+#include <stdio.h>
+#include <string.h>
 #include <fnmatch.h>
 #include <ctype.h>
+#include <assert.h>
 
 // libpcre
 #ifdef CONFIG_REGEX_PCRE
 #include <pcre.h>
+
+struct _session_t;
+struct _win;
 
 // For compatiblity with <libpcre-8.20
 #ifndef PCRE_STUDY_JIT_COMPILE
@@ -46,6 +56,8 @@ typedef struct {
   .isbranch = false, \
   .l = NULL, \
 }
+
+typedef struct _c2_lptr c2_lptr_t;
 
 const static c2_ptr_t C2_PTR_NULL = C2_PTR_INIT;
 
@@ -294,22 +306,22 @@ c2h_b_opcmp(c2_b_op_t op1, c2_b_op_t op2) {
 }
 
 static int
-c2_parse_grp(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult, int level);
+c2_parse_grp(struct _session_t *ps, const char *pattern, int offset, c2_ptr_t *presult, int level);
 
 static int
-c2_parse_target(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
+c2_parse_target(struct _session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
 
 static int
 c2_parse_op(const char *pattern, int offset, c2_ptr_t *presult);
 
 static int
-c2_parse_pattern(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
+c2_parse_pattern(struct _session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
 
 static int
-c2_parse_legacy(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
+c2_parse_legacy(struct _session_t *ps, const char *pattern, int offset, c2_ptr_t *presult);
 
 static bool
-c2_l_postprocess(session_t *ps, c2_l_t *pleaf);
+c2_l_postprocess(struct _session_t *ps, c2_l_t *pleaf);
 
 static void
 c2_free(c2_ptr_t p);
@@ -348,5 +360,5 @@ static Atom
 c2_get_atom_type(const c2_l_t *pleaf);
 
 static bool
-c2_match_once(session_t *ps, win *w, const c2_ptr_t cond);
+c2_match_once(struct _session_t *ps, struct _win *w, const c2_ptr_t cond);
 
