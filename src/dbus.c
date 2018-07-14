@@ -31,6 +31,17 @@ static short cdbus_get_watch_cond(DBusWatch *watch) {
   return condition;
 }
 
+static bool cdbus_reply(session_t *ps, DBusMessage *srcmsg,
+    bool (*func)(session_t *ps, DBusMessage *msg, const void *data),
+    const void *data);
+
+static bool cdbus_reply_errm(session_t *ps, DBusMessage *msg);
+
+#define cdbus_reply_err(ps, srcmsg, err_name, err_format, ...) \
+  cdbus_reply_errm((ps), dbus_message_new_error_printf((srcmsg), (err_name), (err_format), ## __VA_ARGS__))
+
+static bool cdbus_msg_get_arg(DBusMessage *msg, int count, const int type, void *pdest);
+
 static dbus_bool_t cdbus_callback_add_watch(DBusWatch *watch, void *data);
 
 static void cdbus_callback_remove_watch(DBusWatch *watch, void *data);
@@ -81,16 +92,8 @@ static bool cdbus_process_opts_set(session_t *ps, DBusMessage *msg);
 
 static bool cdbus_process_introspect(session_t *ps, DBusMessage *msg);
 
-static inline bool cdbus_signal_noarg(session_t *ps, const char *name) {
-  return cdbus_signal(ps, name, NULL, NULL);
-}
-
 static inline bool cdbus_signal_wid(session_t *ps, const char *name, Window wid) {
   return cdbus_signal(ps, name, cdbus_apdarg_wid, &wid);
-}
-
-static inline bool cdbus_reply_noarg(session_t *ps, DBusMessage *srcmsg) {
-  return cdbus_reply(ps, srcmsg, NULL, NULL);
 }
 
 static inline bool cdbus_reply_bool(session_t *ps, DBusMessage *srcmsg, bool bval) {

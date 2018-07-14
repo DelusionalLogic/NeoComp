@@ -32,6 +32,8 @@
 
 #include "shaders/shaderinfo.h"
 
+#include "logging.h"
+
 #include "profiler/zone.h"
 #include "profiler/render.h"
 
@@ -45,6 +47,373 @@ DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
+
+// From the header {{{
+
+static void discard_ignore(session_t *ps, unsigned long sequence);
+
+static void set_ignore(session_t *ps, unsigned long sequence);
+
+static void set_ignore_next(session_t *ps) {
+    set_ignore(ps, NextRequest(ps->dpy));
+}
+
+static int should_ignore(session_t *ps, unsigned long sequence);
+
+static void wintype_arr_enable(bool arr[]) {
+    wintype_t i;
+
+    for (i = 0; i < NUM_WINTYPES; ++i) {
+        arr[i] = true;
+    }
+}
+
+static void free_wincondlst(c2_lptr_t **pcondlst) {
+#ifdef CONFIG_C2
+    while ((*pcondlst = c2_free_lptr(*pcondlst)))
+        continue;
+#endif
+}
+
+static void free_xinerama_info(session_t *ps) {
+#ifdef CONFIG_XINERAMA
+    if (ps->xinerama_scr_regs) {
+        for (int i = 0; i < ps->xinerama_nscrs; ++i)
+            free_region(ps, &ps->xinerama_scr_regs[i]);
+        free(ps->xinerama_scr_regs);
+    }
+    cxfree(ps->xinerama_scrs);
+    ps->xinerama_scrs = NULL;
+    ps->xinerama_nscrs = 0;
+#endif
+}
+
+static time_ms_t get_time_ms(void) {
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    return tv.tv_sec % SEC_WRAP * 1000 + tv.tv_usec / 1000;
+}
+
+static struct timeval ms_to_tv(int timeout) {
+    return (struct timeval) {
+        .tv_sec = timeout / MS_PER_SEC,
+        .tv_usec = timeout % MS_PER_SEC * (US_PER_SEC / MS_PER_SEC)
+    };
+}
+
+static bool isdamagenotify(session_t *ps, const XEvent *ev) {
+    return ps->damage_event + XDamageNotify == ev->type;
+}
+
+static XTextProperty * make_text_prop(session_t *ps, char *str) {
+    XTextProperty *pprop = ccalloc(1, XTextProperty);
+
+    if (XmbTextListToTextProperty(ps->dpy, &str, 1,  XStringStyle, pprop)) {
+        cxfree(pprop->value);
+        free(pprop);
+        pprop = NULL;
+    }
+
+    return pprop;
+}
+
+static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
+    XTextProperty *pprop = make_text_prop(ps, str);
+    if (!pprop) {
+        printf_errf("(\"%s\"): Failed to make text property.", str);
+        return false;
+    }
+
+    XSetTextProperty(ps->dpy, wid, pprop, prop_atom);
+    cxfree(pprop->value);
+    cxfree(pprop);
+
+    return true;
+}
+
+// Stop listening for events
+static void win_ev_stop(session_t *ps, win *w) {
+    // Will get BadWindow if the window is destroyed
+    set_ignore_next(ps);
+    XSelectInput(ps->dpy, w->id, 0);
+
+    if (w->client_win) {
+        set_ignore_next(ps);
+        XSelectInput(ps->dpy, w->client_win, 0);
+    }
+
+    if (ps->shape_exists) {
+        /* set_ignore_next(ps); */
+        /* XShapeSelectInput(ps->dpy, w->id, 0); */
+    }
+}
+
+static bool wid_get_children(session_t *ps, Window w,
+        Window **children, unsigned *nchildren) {
+    Window troot, tparent;
+
+    if (!XQueryTree(ps->dpy, w, &troot, &tparent, children, nchildren)) {
+        *nchildren = 0;
+        return false;
+    }
+
+    return true;
+}
+
+static void update_reg_ignore_expire(session_t *ps, const win *w) {
+    if (w->to_paint && w->solid)
+        ps->reg_ignore_expire = true;
+}
+
+static bool __attribute__((pure)) win_has_frame(const win *w) {
+    return w->a.border_width
+        || w->frame_extents.top || w->frame_extents.left
+        || w->frame_extents.right || w->frame_extents.bottom;
+}
+
+static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
+    if (!pxmap) return false;
+
+    Window rroot = None;
+    int rx = 0, ry = 0;
+    unsigned rwid = 0, rhei = 0, rborder = 0, rdepth = 0;
+    return XGetGeometry(ps->dpy, pxmap, &rroot, &rx, &ry,
+            &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
+}
+
+static bool win_match(session_t *ps, win *w, c2_lptr_t *condlst, const c2_lptr_t **cache) {
+#ifdef CONFIG_C2
+    return c2_match(ps, w, condlst, cache);
+#else
+    return false;
+#endif
+}
+
+static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern);
+
+static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
+
+static void clear_cache_win_leaders(session_t *ps) {
+    size_t index;
+    win *w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
+        w->cache_leader = None;
+        w = swiss_getNext(&ps->win_list, &index);
+    }
+}
+
+static win * find_toplevel2(session_t *ps, Window wid);
+
+static win * find_win_all(session_t *ps, const Window wid) {
+    if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
+        return NULL;
+
+    win *w = find_win(ps, wid);
+    if (!w) w = find_toplevel(ps, wid);
+    if (!w) w = find_toplevel2(ps, wid);
+    return w;
+}
+
+static Window win_get_leader_raw(session_t *ps, win *w, int recursions);
+
+static Window win_get_leader(session_t *ps, win *w) {
+    return win_get_leader_raw(ps, w, 0);
+}
+
+static bool group_is_focused(session_t *ps, Window leader) {
+    if (!leader)
+        return false;
+
+    size_t index;
+    win *w = swiss_getFirst(&ps->win_list, &index);
+    while(w != NULL) {
+        if (win_get_leader(ps, w) == leader && !w->destroyed
+                && win_is_focused_real(ps, w))
+            return true;
+        w = swiss_getNext(&ps->win_list, &index);
+    }
+
+    return false;
+}
+
+static void add_damage(session_t *ps, XserverRegion damage);
+
+static void win_determine_mode(session_t *ps, win *w);
+
+static void calc_dim(session_t *ps, win *w);
+
+static void win_update_leader(session_t *ps, win *w);
+
+static void win_set_leader(session_t *ps, win *w, Window leader);
+
+static void win_update_focused(session_t *ps, win *w);
+
+static inline void win_set_focused(session_t *ps, win *w);
+
+static void win_determine_shadow(session_t *ps, win *w);
+
+static void win_set_invert_color(session_t *ps, win *w, bool invert_color_new);
+
+static void win_set_blur_background(session_t *ps, win *w, bool blur_background_new);
+
+static void win_determine_blur_background(session_t *ps, win *w);
+
+static void win_mark_client(session_t *ps, win *w, Window client);
+
+static void win_recheck_client(session_t *ps, win *w);
+
+static void configure_win(session_t *ps, XConfigureEvent *ce);
+
+static bool wid_get_name(session_t *ps, Window w, char **name);
+
+static bool wid_get_role(session_t *ps, Window w, char **role);
+
+static int win_get_prop_str(session_t *ps, win *w, char **tgt,
+        bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt));
+
+static int win_get_name(session_t *ps, win *w) {
+    int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
+
+#ifdef DEBUG_WINDATA
+    printf_dbgf("(%#010lx): client = %#010lx, name = \"%s\", "
+            "ret = %d\n", w->id, w->client_win, w->name, ret);
+#endif
+
+    return ret;
+}
+
+static int win_get_role(session_t *ps, win *w) {
+    int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
+
+#ifdef DEBUG_WINDATA
+    printf_dbgf("(%#010lx): client = %#010lx, role = \"%s\", "
+            "ret = %d\n", w->id, w->client_win, w->role, ret);
+#endif
+
+    return ret;
+}
+
+static bool win_get_class(session_t *ps, win *w);
+
+#ifdef DEBUG_EVENTS
+static int ev_serial(XEvent *ev);
+
+static const char * ev_name(session_t *ps, XEvent *ev);
+
+static Window ev_window(session_t *ps, XEvent *ev);
+#endif
+
+static void update_ewmh_active_win(session_t *ps);
+
+static XserverRegion get_screen_region(session_t *ps) {
+    XRectangle r;
+
+    r.x = 0;
+    r.y = 0;
+    r.width = ps->root_width;
+    r.height = ps->root_height;
+    return XFixesCreateRegion(ps->dpy, &r, 1);
+}
+
+static void add_damage_win(session_t *ps, win *w) {
+    add_damage(ps, None);
+}
+
+#if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
+static bool ev_window_name(session_t *ps, Window wid, char **name);
+#endif
+
+#ifdef CONFIG_LIBCONFIG
+static void lcfg_lookup_bool(const config_t *config, const char *path, bool *value) {
+    int ival;
+
+    if (config_lookup_bool(config, path, &ival))
+        *value = ival;
+}
+
+static int lcfg_lookup_int(const config_t *config, const char *path, int *value) {
+#ifndef CONFIG_LIBCONFIG_LEGACY
+    return config_lookup_int(config, path, value);
+#else
+    long lval;
+    int ret;
+
+    if ((ret = config_lookup_int(config, path, &lval)))
+        *value = lval;
+
+    return ret;
+#endif
+}
+#endif
+
+static bool ensure_glx_context(session_t *ps) {
+    // Create GLX context
+    if (!glx_has_context(ps))
+        glx_init(ps, false);
+
+    return ps->psglx->context;
+}
+
+static bool vsync_drm_init(session_t *ps);
+
+#ifdef CONFIG_VSYNC_DRM
+static int vsync_drm_wait(session_t *ps);
+#endif
+
+static bool vsync_opengl_init(session_t *ps);
+
+static bool vsync_opengl_oml_init(session_t *ps);
+
+static bool vsync_opengl_swc_init(session_t *ps);
+
+static bool vsync_opengl_mswc_init(session_t *ps);
+
+static int vsync_opengl_wait(session_t *ps);
+
+static int vsync_opengl_oml_wait(session_t *ps);
+
+static void vsync_opengl_swc_deinit(session_t *ps);
+
+static void vsync_opengl_mswc_deinit(session_t *ps);
+
+static void vsync_wait(session_t *ps);
+
+static bool init_dbe(session_t *ps);
+
+static void redir_start(session_t *ps);
+static void redir_stop(session_t *ps);
+
+static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
+    long a = (ptmout->lastrun + (time_ms_t) (ptmout->interval * TIMEOUT_RUN_TOLERANCE) - ptmout->firstrun) / ptmout->interval;
+    long b = (ptmout->lastrun + (time_ms_t) (ptmout->interval * (1 - TIMEOUT_RUN_TOLERANCE)) - ptmout->firstrun) / ptmout->interval;
+  return ptmout->firstrun + (max_l(a, b) + 1) * ptmout->interval;
+}
+
+/**
+ * Get the Xinerama screen a window is on.
+ *
+ * Return an index >= 0, or -1 if not found.
+ */
+static void cxinerama_win_upd_scr(session_t *ps, win *w) {
+#ifdef CONFIG_XINERAMA
+    w->xinerama_scr = -1;
+    for (XineramaScreenInfo *s = ps->xinerama_scrs;
+            s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
+        if (s->x_org <= w->a.x && s->y_org <= w->a.y
+                && s->x_org + s->width >= w->a.x + w->widthb
+                && s->y_org + s->height >= w->a.y + w->heightb) {
+            w->xinerama_scr = s - ps->xinerama_scrs;
+            return;
+        }
+#endif
+}
+
+static void cxinerama_upd_scrs(session_t *ps);
+
+static void session_destroy(session_t *ps);
+// }}}
 
 /// Name strings for window types.
 const char * const WINTYPES[NUM_WINTYPES] = {
@@ -743,14 +1112,6 @@ paint_preprocess(session_t *ps, Vector* paints) {
     }
 
     return t;
-}
-
-static void
-render_(session_t *ps, int x, int y, int dx, int dy, int wid, int hei,
-    double opacity, bool neg, struct Texture* ptex) {
-    glx_render(ps, ptex, x, y, dx, dy, wid, hei,
-            ps->psglx->z, opacity, neg);
-    ps->psglx->z += 1;
 }
 
 /**

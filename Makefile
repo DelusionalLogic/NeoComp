@@ -9,7 +9,8 @@ MANDIR ?= $(PREFIX)/share/man/man1
 APPDIR ?= $(PREFIX)/share/applications
 ICODIR ?= $(PREFIX)/share/icons/hicolor/
 
-PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr
+PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre
+
 LIBS = -lm -lrt -lJudy
 INCS =
 
@@ -70,18 +71,6 @@ ifeq "$(NO_LIBCONFIG)" ""
   # libconfig-1.3* does not define LIBCONFIG_VER* macros, so we use
   # pkg-config to determine its version here
   CFG += $(shell pkg-config --atleast-version=1.4 libconfig || echo '-DCONFIG_LIBCONFIG_LEGACY')
-endif
-
-# ==== PCRE regular expression ====
-# Enables support for PCRE regular expression pattern in window conditions
-ifeq "$(NO_REGEX_PCRE)" ""
-  CFG += -DCONFIG_REGEX_PCRE
-  LIBS += $(shell pcre-config --libs)
-  INCS += $(shell pcre-config --cflags)
-  # Enables JIT support in libpcre
-  ifeq "$(NO_REGEX_PCRE_JIT)" ""
-    CFG += -DCONFIG_REGEX_PCRE_JIT
-  endif
 endif
 
 # ==== DRM VSync ====

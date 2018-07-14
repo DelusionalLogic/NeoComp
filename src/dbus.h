@@ -74,14 +74,3 @@ void win_set_invert_color_force(session_t *ps, win *w, switch_t val);
 
 void opts_init_track_focus(session_t *ps);
 void opts_set_no_fading_openclose(session_t *ps, bool newval);
-
-static bool cdbus_reply(session_t *ps, DBusMessage *srcmsg,
-    bool (*func)(session_t *ps, DBusMessage *msg, const void *data),
-    const void *data);
-
-static bool cdbus_reply_errm(session_t *ps, DBusMessage *msg);
-
-#define cdbus_reply_err(ps, srcmsg, err_name, err_format, ...) \
-  cdbus_reply_errm((ps), dbus_message_new_error_printf((srcmsg), (err_name), (err_format), ## __VA_ARGS__))
-
-static bool cdbus_msg_get_arg(DBusMessage *msg, int count, const int type, void *pdest);

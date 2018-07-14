@@ -33,12 +33,6 @@
 // #define DEBUG_GLX_MARK   1
 // #define DEBUG_GLX_PAINTREG 1
 
-// Whether to enable PCRE regular expression support in blacklists, enabled
-// by default
-// #define CONFIG_REGEX_PCRE 1
-// Whether to enable JIT support of libpcre. This may cause problems on PaX
-// kernels.
-// #define CONFIG_REGEX_PCRE_JIT 1
 // Whether to enable parsing of configuration files using libconfig.
 // #define CONFIG_LIBCONFIG 1
 // Whether we are using a legacy version of libconfig (1.3.x).
