@@ -99,10 +99,9 @@ typedef struct _win {
 
   enum WindowState state;
 
-#ifdef CONFIG_XINERAMA
   /// Xinerama screen this window is on.
   int xinerama_scr;
-#endif
+
   /// Window visual pict format;
   XRenderPictFormat *pictfmt;
   /// Whether the window has been damaged at least once.

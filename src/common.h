@@ -89,9 +89,7 @@
 #include <X11/extensions/sync.h>
 #endif
 
-#ifdef CONFIG_XINERAMA
 #include <X11/extensions/Xinerama.h>
-#endif
 
 // Workarounds for missing definitions in very old versions of X headers,
 // thanks to consolers for reporting

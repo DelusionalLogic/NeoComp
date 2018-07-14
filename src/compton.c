@@ -76,7 +76,6 @@ static void free_wincondlst(c2_lptr_t **pcondlst) {
 }
 
 static void free_xinerama_info(session_t *ps) {
-#ifdef CONFIG_XINERAMA
     if (ps->xinerama_scr_regs) {
         for (int i = 0; i < ps->xinerama_nscrs; ++i)
             free_region(ps, &ps->xinerama_scr_regs[i]);
@@ -85,7 +84,6 @@ static void free_xinerama_info(session_t *ps) {
     cxfree(ps->xinerama_scrs);
     ps->xinerama_scrs = NULL;
     ps->xinerama_nscrs = 0;
-#endif
 }
 
 static time_ms_t get_time_ms(void) {
@@ -395,7 +393,6 @@ static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
  * Return an index >= 0, or -1 if not found.
  */
 static void cxinerama_win_upd_scr(session_t *ps, win *w) {
-#ifdef CONFIG_XINERAMA
     w->xinerama_scr = -1;
     for (XineramaScreenInfo *s = ps->xinerama_scrs;
             s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
@@ -405,7 +402,6 @@ static void cxinerama_win_upd_scr(session_t *ps, win *w) {
             w->xinerama_scr = s - ps->xinerama_scrs;
             return;
         }
-#endif
 }
 
 static void cxinerama_upd_scrs(session_t *ps);
@@ -1651,9 +1647,7 @@ add_win(session_t *ps, Window id) {
     .a = { },
     .face = NULL,
     .state = STATE_INVISIBLE,
-#ifdef CONFIG_XINERAMA
     .xinerama_scr = -1,
-#endif
     .pictfmt = NULL,
     .damaged = false,
     .damage = None,
@@ -3473,16 +3467,10 @@ usage(int ret) {
     "  should not be painted in, such as a dock window region.\n"
     "  Use --shadow-exclude-reg \'x10+0-0\', for example, if the 10 pixels\n"
     "  on the bottom of the screen should not have shadows painted on.\n"
-#undef WARNING
-#ifndef CONFIG_XINERAMA
-#define WARNING WARNING_DISABLED
-#else
-#define WARNING
-#endif
     "\n"
     "--xinerama-shadow-crop\n"
     "  Crop shadow of a window fully on a particular Xinerama screen to the\n"
-    "  screen." WARNING "\n"
+    "  screen.\n"
     "\n"
 #undef WARNING
 #define WARNING
@@ -5126,7 +5114,6 @@ mainloop(session_t *ps) {
 
 static void
 cxinerama_upd_scrs(session_t *ps) {
-#ifdef CONFIG_XINERAMA
   free_xinerama_info(ps);
 
   if (!ps->o.xinerama_shadow_crop || !ps->xinerama_exists) return;
@@ -5150,7 +5137,6 @@ cxinerama_upd_scrs(session_t *ps) {
       .width = s->width, .height = s->height };
     ps->xinerama_scr_regs[i] = XFixesCreateRegion(ps->dpy, &r, 1);
   }
-#endif
 }
 
 /**
@@ -5445,13 +5431,9 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   // Query X Xinerama extension
   if (ps->o.xinerama_shadow_crop) {
-#ifdef CONFIG_XINERAMA
     int xinerama_event = 0, xinerama_error = 0;
     if (XineramaQueryExtension(ps->dpy, &xinerama_event, &xinerama_error))
       ps->xinerama_exists = true;
-#else
-    printf_errf("(): Xinerama support not compiled in.");
-#endif
   }
 
   rebuild_screen_reg(ps);

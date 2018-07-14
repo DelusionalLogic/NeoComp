@@ -9,7 +9,8 @@ MANDIR ?= $(PREFIX)/share/man/man1
 APPDIR ?= $(PREFIX)/share/applications
 ICODIR ?= $(PREFIX)/share/icons/hicolor/
 
-PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre
+PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
+
 
 LIBS = -lm -lrt -lJudy
 INCS =
@@ -53,13 +54,6 @@ endif
 
 ifneq "$(PROFILE)" ""
     CFG += -DDEBUG_PROFILE
-endif
-
-# ==== Xinerama ====
-# Enables support for --xinerama-shadow-crop
-ifeq "$(NO_XINERAMA)" ""
-  CFG += -DCONFIG_XINERAMA
-  PACKAGES += xinerama
 endif
 
 # ==== libconfig ====

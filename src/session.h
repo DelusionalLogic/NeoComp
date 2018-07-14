@@ -478,7 +478,7 @@ typedef struct _session_t {
     int glx_event;
     /// Error base number for X GLX extension.
     int glx_error;
-#ifdef CONFIG_XINERAMA
+
     /// Whether X Xinerama extension exists.
     bool xinerama_exists;
     /// Xinerama screen info.
@@ -487,7 +487,7 @@ typedef struct _session_t {
     XserverRegion *xinerama_scr_regs;
     /// Number of Xinerama screens.
     int xinerama_nscrs;
-#endif
+
 #ifdef CONFIG_XSYNC
     /// Whether X Sync extension exists.
     bool xsync_exists;
