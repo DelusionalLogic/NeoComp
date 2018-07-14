@@ -14,7 +14,6 @@
 #include "winprop.h"
 
 #include <X11/extensions/Xinerama.h>
-#include <X11/extensions/Xdbe.h>
 
 typedef long time_ms_t;
 struct _c2l_ptr;
@@ -163,8 +162,6 @@ typedef struct _options_t {
   // === VSync & software optimization ===
   /// VSync method to use;
   vsync_t vsync;
-  /// Whether to enable double buffer.
-  bool dbe;
   /// Whether to do VSync aggressively.
   bool vsync_aggressive;
   /// Whether to use glFinish() instead of glFlush() for (possibly) better
@@ -359,8 +356,6 @@ typedef struct _session_t {
 #ifdef CONFIG_XSYNC
     XSyncFence tgt_buffer_fence;
 #endif
-    /// DBE back buffer for root window. Used in DBE painting mode.
-    XdbeBackBuffer root_dbe;
     /// Window ID of the window we register as a symbol.
     Window reg_win;
     /// Pointer to GLX data.
@@ -483,8 +478,6 @@ typedef struct _session_t {
     int glx_event;
     /// Error base number for X GLX extension.
     int glx_error;
-    /// Whether X DBE extension exists.
-    bool dbe_exists;
 #ifdef CONFIG_XINERAMA
     /// Whether X Xinerama extension exists.
     bool xinerama_exists;

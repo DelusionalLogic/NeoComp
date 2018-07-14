@@ -1026,7 +1026,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
     cdbus_reply_string(ps, msg, VSYNC_STRS[ps->o.vsync]);
     return true;
   }
-  cdbus_m_opts_get_do(dbe, cdbus_reply_bool);
   cdbus_m_opts_get_do(vsync_aggressive, cdbus_reply_bool);
 
   cdbus_m_opts_get_do(shadow_red, cdbus_reply_double);

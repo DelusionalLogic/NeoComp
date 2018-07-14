@@ -380,8 +380,6 @@ static void vsync_opengl_mswc_deinit(session_t *ps);
 
 static void vsync_wait(session_t *ps);
 
-static bool init_dbe(session_t *ps);
-
 static void redir_start(session_t *ps);
 static void redir_stop(session_t *ps);
 
@@ -3389,10 +3387,6 @@ usage(int ret) {
     "  X Render backend: Step for pregenerating alpha pictures. \n"
     "  0.01 - 1.0. Defaults to 0.03.\n"
     "\n"
-    "--dbe\n"
-    "  Enable DBE painting mode, intended to use with VSync to\n"
-    "  (hopefully) eliminate tearing.\n"
-    "\n"
     "--paint-on-overlay\n"
     "  Painting on X Composite overlay window.\n"
     "\n"
@@ -4094,8 +4088,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     exit(1);
   // --alpha-step
   config_lookup_float(&cfg, "alpha-step", &ps->o.alpha_step);
-  // --dbe
-  lcfg_lookup_bool(&cfg, "dbe", &ps->o.dbe);
   // --paint-on-overlay
   lcfg_lookup_bool(&cfg, "paint-on-overlay", &ps->o.paint_on_overlay);
   // --use-ewmh-active-win
@@ -4220,7 +4212,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "detect-client-opacity", no_argument, NULL, 268 },
     { "vsync", required_argument, NULL, 270 },
     { "alpha-step", required_argument, NULL, 271 },
-    { "dbe", no_argument, NULL, 272 },
     { "paint-on-overlay", no_argument, NULL, 273 },
     { "sw-opti", no_argument, NULL, 274 },
     { "vsync-aggressive", no_argument, NULL, 275 },
@@ -4411,7 +4402,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --alpha-step
         ps->o.alpha_step = atof(optarg);
         break;
-      P_CASEBOOL(272, dbe);
       P_CASEBOOL(273, paint_on_overlay);
       P_CASEBOOL(275, vsync_aggressive);
       P_CASEBOOL(276, use_ewmh_active_win);
@@ -4756,21 +4746,6 @@ void
 vsync_deinit(session_t *ps) {
   if (ps->o.vsync && VSYNC_FUNCS_DEINIT[ps->o.vsync])
     VSYNC_FUNCS_DEINIT[ps->o.vsync](ps);
-}
-
-/**
- * Initialize double buffer.
- */
-static bool
-init_dbe(session_t *ps) {
-  if (!(ps->root_dbe = XdbeAllocateBackBufferName(ps->dpy,
-          (ps->o.paint_on_overlay ? ps->overlay: ps->root), XdbeCopied))) {
-    printf_errf("(): Failed to create double buffer. Double buffering "
-        "cannot work.");
-    return false;
-  }
-
-  return true;
 }
 
 /**
@@ -5199,7 +5174,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     // .root_damage = None,
     .overlay = None,
     .screen_reg = None,
-    .root_dbe = None,
     .reg_win = None,
     .o = {
       .config_file = NULL,
@@ -5223,7 +5197,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .logpath = NULL,
 
       .vsync = VSYNC_NONE,
-      .dbe = false,
       .vsync_aggressive = false,
 
       .wintype_shadow = { false },
@@ -5314,7 +5287,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .glx_exists = false,
     .glx_event = 0,
     .glx_error = 0,
-    .dbe_exists = false,
     .xrfilter_convolution_exists = false,
 
     .track_atom_lst = NULL,
@@ -5471,22 +5443,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
           "detection impossible.");
   }
 
-  // Query X DBE extension
-  if (ps->o.dbe) {
-    int dbe_ver_major = 0, dbe_ver_minor = 0;
-    if (XdbeQueryExtension(ps->dpy, &dbe_ver_major, &dbe_ver_minor))
-      if (dbe_ver_major >= 1)
-        ps->dbe_exists = true;
-      else
-        fprintf(stderr, "DBE extension version too low. Double buffering "
-            "impossible.\n");
-    else {
-      fprintf(stderr, "No DBE extension. Double buffering impossible.\n");
-    }
-    if (!ps->dbe_exists)
-      ps->o.dbe = false;
-  }
-
   // Query X Xinerama extension
   if (ps->o.xinerama_shadow_crop) {
 #ifdef CONFIG_XINERAMA
@@ -5504,9 +5460,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   // of OpenGL context.
   if (ps->o.paint_on_overlay)
     init_overlay(ps);
-
-  if (ps->o.dbe && !init_dbe(ps))
-    exit(1);
 
   // Initialize OpenGL as early as possible
   if (!glx_init(ps, true))
@@ -5710,12 +5663,6 @@ session_destroy(session_t *ps) {
   xorgContext_delete(&ps->psglx->xcontext);
 
   glx_destroy(ps);
-
-  // Free double buffer
-  if (ps->root_dbe) {
-    XdbeDeallocateBackBufferName(ps->dpy, ps->root_dbe);
-    ps->root_dbe = None;
-  }
 
 #ifdef CONFIG_VSYNC_DRM
   // Close file opened for DRM VSync
