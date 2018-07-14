@@ -68,7 +68,6 @@ void cdbus_ev_win_unmapped(session_t *ps, win *w);
 void cdbus_ev_win_focusout(session_t *ps, win *w);
 void cdbus_ev_win_focusin(session_t *ps, win *w);
 
-void win_set_shadow_force(session_t *ps, win *w, switch_t val);
 void win_set_fade_force(session_t *ps, win *w, switch_t val);
 void win_set_focused_force(session_t *ps, win *w, switch_t val);
 void win_set_invert_color_force(session_t *ps, win *w, switch_t val);
@@ -86,4 +85,3 @@ static bool cdbus_reply_errm(session_t *ps, DBusMessage *msg);
   cdbus_reply_errm((ps), dbus_message_new_error_printf((srcmsg), (err_name), (err_format), ## __VA_ARGS__))
 
 static bool cdbus_msg_get_arg(DBusMessage *msg, int count, const int type, void *pdest);
-
