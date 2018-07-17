@@ -7,8 +7,9 @@ static void resize(Vector* vector, size_t newElem)
     if(newElem + vector->size > vector->maxSize)
     {
         size_t newSize = newElem + vector->size;
-        while(vector->maxSize < newSize)
+        while(vector->maxSize < newSize) {
             vector->maxSize *= 2;
+        }
         void* newMem = realloc(vector->data, vector->maxSize * vector->elementSize);
         assert(newMem != NULL);
         vector->data = newMem;
@@ -41,24 +42,31 @@ char* vector_detach(Vector* vector)
     return oldDat;
 }
 
+void* vector_reserve(Vector* vector, size_t count) {
+    assert(vector->elementSize != 0);
+
+    size_t start = vector->size;
+
+    resize(vector, count);
+    vector->size += count;
+
+    return vector->data + start * vector->elementSize;
+}
+
 void vector_putBack(Vector* vector, const void* element)
 {
     assert(vector->elementSize != 0);
 
-    resize(vector, 1);
-
-    memcpy(vector->data + vector->size * vector->elementSize, element, vector->elementSize);
-    vector->size += 1;
+    void* dest = vector_reserve(vector, 1);
+    memcpy(dest, element, vector->elementSize);
 }
 
 void vector_putListBack(Vector* vector, const void* list, const size_t count)
 {
     assert(vector->elementSize != 0);
 
-    resize(vector, count);
-
-    memcpy(vector->data + vector->size * vector->elementSize, list, count * vector->elementSize);
-    vector->size += count;
+    void* dest = vector_reserve(vector, count);
+    memcpy(dest, list, count * vector->elementSize);
 }
 
 void* vector_get(Vector* vector, const size_t count)

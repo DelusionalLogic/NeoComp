@@ -413,21 +413,7 @@ typedef struct _session_t {
     /// subsidiary window detection.
     Window active_leader;
 
-    // === Shadow/dimming related ===
-    // for shadow precomputation
-    /// Shadow depth on one side.
-    int cgsize;
-    /// A region in which shadow is not painted on.
-    XserverRegion shadow_exclude_reg;
-
-#ifdef CONFIG_VSYNC_DRM
-    // === DRM VSync related ===
-    /// File descriptor of DRI device file. Used for DRM VSync.
-    int drm_fd;
-#endif
-
-	struct X11Capabilities capabilities;
-    // === X extension related ===
+    struct X11Capabilities capabilities;
 
     /// Xinerama screen info.
     XineramaScreenInfo *xinerama_scrs;
@@ -435,17 +421,6 @@ typedef struct _session_t {
     XserverRegion *xinerama_scr_regs;
     /// Number of Xinerama screens.
     int xinerama_nscrs;
-
-#ifdef CONFIG_XSYNC
-    /// Whether X Sync extension exists.
-    bool xsync_exists;
-    /// Event base number for X Sync extension.
-    int xsync_event;
-    /// Error base number for X Sync extension.
-    int xsync_error;
-#endif
-    /// Whether X Render convolution filter exists.
-    bool xrfilter_convolution_exists;
 
     // === Atoms ===
     struct Atoms atoms;

@@ -6,10 +6,10 @@
 #include <stdbool.h>
 
 typedef struct {
-	size_t maxSize;
-	size_t size;
-	size_t elementSize;
-	char* data;
+    size_t maxSize;
+    size_t size;
+    size_t elementSize;
+    char* data;
 } Vector;
 
 typedef int (*comparator)(const void* e1, const void* e2, const size_t size);
@@ -17,6 +17,9 @@ typedef int (*comparator)(const void* e1, const void* e2, const size_t size);
 void vector_init(Vector* vector, size_t elementsize, size_t initialsize);
 void vector_kill(Vector* vector);
 char* vector_detach(Vector* vector);
+
+// Allocate some space without actually writing anything
+void* vector_reserve(Vector* vector, size_t count);
 
 void vector_putBack(Vector* vector, const void* element);
 void vector_putListBack(Vector* vector, const void* list, const size_t count);

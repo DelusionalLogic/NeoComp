@@ -48,6 +48,7 @@ DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
+DECLARE_ZONE(fetch_prop);
 
 // From the header {{{
 
@@ -325,12 +326,6 @@ static bool ensure_glx_context(session_t *ps) {
     return ps->psglx->context;
 }
 
-static bool vsync_drm_init(session_t *ps);
-
-#ifdef CONFIG_VSYNC_DRM
-static int vsync_drm_wait(session_t *ps);
-#endif
-
 static bool vsync_opengl_init(session_t *ps);
 
 static bool vsync_opengl_oml_init(session_t *ps);
@@ -402,7 +397,6 @@ const char * const WINTYPES[NUM_WINTYPES] = {
 /// Names of VSync modes.
 const char * const VSYNC_STRS[NUM_VSYNC + 1] = {
   "none",             // VSYNC_NONE
-  "drm",              // VSYNC_DRM
   "opengl",           // VSYNC_OPENGL
   "opengl-oml",       // VSYNC_OPENGL_OML
   "opengl-swc",       // VSYNC_OPENGL_SWC
@@ -424,7 +418,6 @@ const char* const StateNames[] = {
 
 /// Function pointers to init VSync modes.
 static bool (* const (VSYNC_FUNCS_INIT[NUM_VSYNC]))(session_t *ps) = {
-  [VSYNC_DRM          ] = vsync_drm_init,
   [VSYNC_OPENGL       ] = vsync_opengl_init,
   [VSYNC_OPENGL_OML   ] = vsync_opengl_oml_init,
   [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_init,
@@ -433,9 +426,6 @@ static bool (* const (VSYNC_FUNCS_INIT[NUM_VSYNC]))(session_t *ps) = {
 
 /// Function pointers to wait for VSync.
 static int (* const (VSYNC_FUNCS_WAIT[NUM_VSYNC]))(session_t *ps) = {
-#ifdef CONFIG_VSYNC_DRM
-  [VSYNC_DRM        ] = vsync_drm_wait,
-#endif
   [VSYNC_OPENGL     ] = vsync_opengl_wait,
   [VSYNC_OPENGL_OML ] = vsync_opengl_oml_wait,
 };
@@ -567,112 +557,32 @@ static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
 
     XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, w->id, ShapeBounding);
 
-    int count;
-    XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &count);
+    int rect_count;
+    XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &rect_count);
 
     XFixesDestroyRegion(ps->dpy, window_region);
 
-    struct face* face = malloc(sizeof(struct face));
-    // We want 3 floats (x, y, z) for every vertex of which there are
-    // 6 (top-left bot-left top-right top-right bot-left bot-right) per rect
-    face->vertex_buffer_data = malloc(sizeof(float) * 3 * 6 * count);
-    face->uv_buffer_data = malloc(sizeof(float) * 2 * 6 * count);
-    face->vertex_buffer_size = count * 6;
-    face->uv_buffer_size = count * 6;
+    Vector mrects;
+    vector_init(&mrects, sizeof(struct Rect), rect_count);
 
-    for(int i = 0; i < count; i++) {
-        // A single rect line in the vertex buffer is 3 * 6
-        float* vertex_rect = &face->vertex_buffer_data[i * 3 * 6];
-        // A single rect line in the uv buffer is 2 * 6
-        float* uv_rect = &face->uv_buffer_data[i * 2 * 6];
+    // Convert the XRectangles into application specific (and non-scaled) rectangles
+    for(int i = 0; i < rect_count; i++) {
+        struct Rect* mrect = vector_reserve(&mrects, 1);
+        mrect->pos.x = rects[i].x;
+        mrect->pos.y = w->a.height - rects[i].y;
 
-        Vector2 rect_coord = {{rects[i].x, w->a.height - rects[i].y}};
-        vec2_div(&rect_coord, &extents);
-        Vector2 rect_size = {{rects[i].width, rects[i].height}};
-        vec2_div(&rect_size, &extents);
+        mrect->size.x = rects[i].width;
+        mrect->size.y = rects[i].height;
 
-        int vec_cnt = 0;
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x;
-            vertex_vec[1] = rect_coord.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x;
-            uv_vec[1] = rect_coord.y;
-        }
-
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x;
-            vertex_vec[1] = rect_coord.y - rect_size.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x;
-            uv_vec[1] = rect_coord.y - rect_size.y;
-        }
-
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x + rect_size.x;
-            vertex_vec[1] = rect_coord.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x + rect_size.x;
-            uv_vec[1] = rect_coord.y;
-        }
-
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x + rect_size.x;
-            vertex_vec[1] = rect_coord.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x + rect_size.x;
-            uv_vec[1] = rect_coord.y;
-        }
-
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x;
-            vertex_vec[1] = rect_coord.y - rect_size.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x;
-            uv_vec[1] = rect_coord.y - rect_size.y;
-        }
-
-        {
-            float* vertex_vec = &vertex_rect[vec_cnt * 3];
-            float* uv_vec = &uv_rect[vec_cnt * 2];
-            vec_cnt++;
-            vertex_vec[0] = rect_coord.x + rect_size.x;
-            vertex_vec[1] = rect_coord.y - rect_size.y;
-            vertex_vec[2] = 0;
-
-            uv_vec[0] = rect_coord.x + rect_size.x;
-            uv_vec[1] = rect_coord.y - rect_size.y;
-        }
+        vec2_div(&mrect->pos, &extents);
+        vec2_div(&mrect->size, &extents);
     }
 
-    glGenBuffers(1, &face->vertex);
-    glGenBuffers(1, &face->uv);
-
-    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->vertex_buffer_size * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->uv_buffer_size * 2, face->uv_buffer_data, GL_STATIC_DRAW);
+    struct face* face = malloc(sizeof(struct face));
+    // Triangulate the rectangles into a triangle vertex stream
+    face_init_rects(face, &mrects);
+    vector_kill(&mrects);
+    face_upload(face);
 
     w->face = face;
 }
@@ -724,36 +634,32 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
 /**
  * Find out the WM frame of a client window by querying X.
  *
- * @param ps current session
- * @param wid window ID
  * @return struct _win object of the found window, NULL if not found
  */
-static win *
-find_toplevel2(session_t *ps, Window wid) {
-  win *w = NULL;
+static win * find_toplevel2(session_t *ps, Window wid) {
 
-  // We traverse through its ancestors to find out the frame
-  while (wid && wid != ps->root && !(w = find_win(ps, wid))) {
-    Window troot;
-    Window parent;
-    Window *tchildren;
-    unsigned tnchildren;
+    // We traverse through its ancestors to find out the frame
+    while (wid && wid != ps->root) {
+        Window troot;
+        Window parent;
+        Window *tchildren;
+        unsigned tnchildren;
 
-    // XQueryTree probably fails if you run compton when X is somehow
-    // initializing (like add it in .xinitrc). In this case
-    // just leave it alone.
-    if (!XQueryTree(ps->dpy, wid, &troot, &parent, &tchildren,
-          &tnchildren)) {
-      parent = 0;
-      break;
+        // XQueryTree probably fails if you run compton when X is somehow
+        // initializing (like add it in .xinitrc). In this case
+        // just leave it alone.
+        if (!XQueryTree(ps->dpy, wid, &troot, &parent, &tchildren,
+                    &tnchildren)) {
+            wid = 0;
+            break;
+        }
+
+        cxfree(tchildren);
+
+        wid = parent;
     }
 
-    cxfree(tchildren);
-
-    wid = parent;
-  }
-
-  return w;
+    return find_win(ps, wid);
 }
 
 /**
@@ -977,6 +883,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
                     unredir_possible = true;
             }
 
+            zone_enter(&ZONE_fetch_prop);
             // If the window doesn't want to be redirected, then who are we to argue
             if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) {
                 winprop_t prop = wid_get_prop(ps, w->id, ps->atoms.atom_bypass, 1L, XA_CARDINAL, 32);
@@ -993,6 +900,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
                 }
                 free_winprop(&prop);
             }
+            zone_leave(&ZONE_fetch_prop);
 
             // Reset flags
             w->flags = 0;
@@ -1991,16 +1899,12 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
         CASESTRRET2(GLX_BAD_ENUM);
     }
 
-#ifdef CONFIG_XSYNC
-    if (ps->xsync_exists) {
-        o = ev->error_code - ps->xsync_error;
-        switch (o) {
-            CASESTRRET2(XSyncBadCounter);
-            CASESTRRET2(XSyncBadAlarm);
-            CASESTRRET2(XSyncBadFence);
-        }
+    o = xorgContext_convertError(&ps->capabilities, PROTO_SYNC, ev->error_code);
+    switch (o) {
+        CASESTRRET2(XSyncBadCounter);
+        CASESTRRET2(XSyncBadAlarm);
+        CASESTRRET2(XSyncBadFence);
     }
-#endif
 
     switch (ev->error_code) {
         CASESTRRET2(BadAccess);
@@ -3152,30 +3056,6 @@ usage(int ret) {
     "  managers not passing _NET_WM_OPACITY of client windows to frame\n"
     "  windows.\n"
     "\n"
-    "--vsync vsync-method\n"
-    "  Set VSync method. There are (up to) 5 VSync methods currently\n"
-    "  available:\n"
-    "    none = No VSync\n"
-#undef WARNING
-#ifndef CONFIG_VSYNC_DRM
-#define WARNING WARNING_DISABLED
-#else
-#define WARNING
-#endif
-    "    drm = VSync with DRM_IOCTL_WAIT_VBLANK. May only work on some\n"
-    "      (DRI-based) drivers." WARNING "\n"
-#undef WARNING
-#define WARNING
-    "    opengl = Try to VSync with SGI_video_sync OpenGL extension. Only\n"
-    "      work on some drivers." WARNING"\n"
-    "    opengl-oml = Try to VSync with OML_sync_control OpenGL extension.\n"
-    "      Only work on some drivers." WARNING"\n"
-    "    opengl-swc = Try to VSync with SGI_swap_control OpenGL extension.\n"
-    "      Only work on some drivers. Works only with GLX backend." WARNING "\n"
-    "    opengl-mswc = Try to VSync with MESA_swap_control OpenGL\n"
-    "      extension. Basically the same as opengl-swc above, except the\n"
-    "      extension we use." WARNING "\n"
-    "\n"
     "--vsync-aggressive\n"
     "  Attempt to send painting request before VBlank and do XFlush()\n"
     "  during VBlank. This switch may be lifted out at any moment.\n"
@@ -4326,58 +4206,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
 }
 
 /**
- * Initialize DRM VSync.
- *
- * @return true for success, false otherwise
- */
-static bool
-vsync_drm_init(session_t *ps) {
-#ifdef CONFIG_VSYNC_DRM
-  // Should we always open card0?
-  if (ps->drm_fd < 0 && (ps->drm_fd = open("/dev/dri/card0", O_RDWR)) < 0) {
-    printf_errf("(): Failed to open device.");
-    return false;
-  }
-
-  if (vsync_drm_wait(ps))
-    return false;
-
-  return true;
-#else
-  printf_errf("(): Program not compiled with DRM VSync support.");
-  return false;
-#endif
-}
-
-#ifdef CONFIG_VSYNC_DRM
-/**
- * Wait for next VSync, DRM method.
- *
- * Stolen from: https://github.com/MythTV/mythtv/blob/master/mythtv/libs/libmythtv/vsync.cpp
- */
-static int
-vsync_drm_wait(session_t *ps) {
-  int ret = -1;
-  drm_wait_vblank_t vbl;
-
-  vbl.request.type = _DRM_VBLANK_RELATIVE,
-  vbl.request.sequence = 1;
-
-  do {
-     ret = ioctl(ps->drm_fd, DRM_IOCTL_WAIT_VBLANK, &vbl);
-     vbl.request.type &= ~_DRM_VBLANK_RELATIVE;
-  } while (ret && errno == EINTR);
-
-  if (ret)
-    fprintf(stderr, "vsync_drm_wait(): VBlank ioctl did not work, "
-        "unimplemented in this drmver?\n");
-
-  return ret;
-
-}
-#endif
-
-/**
  * Initialize OpenGL VSync.
  *
  * Stolen from: http://git.tuxfamily.org/?p=ccm/cairocompmgr.git;a=commitdiff;h=efa4ceb97da501e8630ca7f12c99b1dce853c73e
@@ -5044,14 +4872,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .active_win = NULL,
     .active_leader = None,
 
-    .cgsize = 0,
-
-#ifdef CONFIG_VSYNC_DRM
-    .drm_fd = -1,
-#endif
-
-    .xrfilter_convolution_exists = false,
-
     .track_atom_lst = NULL,
 
 #ifdef CONFIG_DBUS
@@ -5077,7 +4897,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   swiss_init(&ps->win_list, sizeof(struct _win), 512);
 
-  vector_init(&ps->order, sizeof(win_id), 16);
+  vector_init(&ps->order, sizeof(win_id), 512);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
@@ -5137,27 +4957,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   // Second pass
   get_cfg(ps, argc, argv, false);
-
-  if (ps->o.xrender_sync_fence) {
-#ifdef CONFIG_XSYNC
-    // Query X Sync
-    if (XSyncQueryExtension(ps->dpy, &ps->xsync_event, &ps->xsync_error)) {
-      // TODO: Fencing may require version >= 3.0?
-      int major_version_return = 0, minor_version_return = 0;
-      if (XSyncInitialize(ps->dpy, &major_version_return, &minor_version_return))
-        ps->xsync_exists = true;
-    }
-    if (!ps->xsync_exists) {
-      printf_errf("(): X Sync extension not found. No X Sync fence sync is "
-          "possible.");
-      exit(1);
-    }
-#else
-    printf_errf("(): X Sync support not compiled in. --xrender-sync-fence "
-        "can't work.");
-    exit(1);
-#endif
-  }
 
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
@@ -5372,14 +5171,6 @@ session_destroy(session_t *ps) {
   xorgContext_delete(&ps->psglx->xcontext);
 
   glx_destroy(ps);
-
-#ifdef CONFIG_VSYNC_DRM
-  // Close file opened for DRM VSync
-  if (ps->drm_fd >= 0) {
-    close(ps->drm_fd);
-    ps->drm_fd = -1;
-  }
-#endif
 
   // Release overlay window
   if (ps->overlay) {

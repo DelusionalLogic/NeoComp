@@ -3,6 +3,11 @@
 #include <string.h>
 #include <assert.h>
 
+void face_init(struct face* asset, size_t vertex_count) {
+    vector_init(&asset->vertex_buffer, sizeof(float), vertex_count * 3);
+    vector_init(&asset->uv_buffer, sizeof(float), vertex_count * 2);
+}
+
 struct face* face_load_file(const char* path) {
     FILE* file = fopen(path, "r");
     if(file == NULL) {
@@ -13,8 +18,6 @@ struct face* face_load_file(const char* path) {
     fseek(file, 0, SEEK_SET);
 
     struct face* face = malloc(sizeof(struct face));
-    face->vertex_buffer_data = NULL;
-    face->uv_buffer_data = NULL;
 
     char* line = NULL;
     size_t line_size = 0;
@@ -48,9 +51,8 @@ struct face* face_load_file(const char* path) {
         }
 
         if(strcmp(type, "vc") == 0) {
-            face->vertex_buffer_size = count;
-            face->vertex_buffer_data = malloc(sizeof(float) * count * 3);
-            float* cursor = face->vertex_buffer_data;
+            vector_init(&face->vertex_buffer, sizeof(float), count * 3);
+            float* cursor = vector_reserve(&face->vertex_buffer, count * 3);
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
                     continue;
@@ -80,9 +82,8 @@ struct face* face_load_file(const char* path) {
                 cursor += 3;
             }
         } else if(strcmp(type, "vtc") == 0) {
-            face->uv_buffer_size = count;
-            face->uv_buffer_data = malloc(sizeof(float) * count * 2);
-            float* cursor = face->uv_buffer_data;
+            vector_init(&face->uv_buffer, sizeof(float), count * 2);
+            float* cursor = vector_reserve(&face->uv_buffer, count * 2);
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
                     continue;
@@ -117,22 +118,117 @@ struct face* face_load_file(const char* path) {
     free(line);
     fclose(file);
 
-    glGenBuffers(1, &face->vertex);
-    glGenBuffers(1, &face->uv);
-
-    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->vertex_buffer_size * 3, face->vertex_buffer_data, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * face->uv_buffer_size * 2, face->uv_buffer_data, GL_STATIC_DRAW);
+    face_upload(face);
 
     return face;
+}
+
+void face_init_rects(struct face* asset, Vector* rects) {
+
+    face_init(asset, vector_size(rects) * 6);
+
+    float* vertex = vector_reserve(&asset->vertex_buffer, vector_size(rects) * 6 * 3);
+    float* uv = vector_reserve(&asset->uv_buffer, vector_size(rects) * 6 * 2);
+
+    size_t index;
+    struct Rect* rect = vector_getFirst(rects, &index);
+    while(rect != NULL) {
+        // A single rect line in the vertex buffer is 3 * 6
+        float* vertex_rect = &vertex[index * 3 * 6];
+        // A single rect line in the uv buffer is 2 * 6
+        float* uv_rect = &uv[index * 2 * 6];
+
+        int vec_cnt = 0;
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x;
+            vertex_vec[1] = rect->pos.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x;
+            uv_vec[1] = rect->pos.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x;
+            vertex_vec[1] = rect->pos.y - rect->size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x;
+            uv_vec[1] = rect->pos.y - rect->size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x + rect->size.x;
+            vertex_vec[1] = rect->pos.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x + rect->size.x;
+            uv_vec[1] = rect->pos.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x + rect->size.x;
+            vertex_vec[1] = rect->pos.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x + rect->size.x;
+            uv_vec[1] = rect->pos.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x;
+            vertex_vec[1] = rect->pos.y - rect->size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x;
+            uv_vec[1] = rect->pos.y - rect->size.y;
+        }
+
+        {
+            float* vertex_vec = &vertex_rect[vec_cnt * 3];
+            float* uv_vec = &uv_rect[vec_cnt * 2];
+            vec_cnt++;
+            vertex_vec[0] = rect->pos.x + rect->size.x;
+            vertex_vec[1] = rect->pos.y - rect->size.y;
+            vertex_vec[2] = 0;
+
+            uv_vec[0] = rect->pos.x + rect->size.x;
+            uv_vec[1] = rect->pos.y - rect->size.y;
+        }
+        rect = vector_getNext(rects, &index);
+    }
+}
+
+void face_upload(struct face* asset) {
+    glGenBuffers(1, &asset->vertex);
+    glGenBuffers(1, &asset->uv);
+
+    glBindBuffer(GL_ARRAY_BUFFER, asset->vertex);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * asset->vertex_buffer.size, asset->vertex_buffer.data, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, asset->uv);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * asset->uv_buffer.size, asset->uv_buffer.data, GL_STATIC_DRAW);
 }
 
 void face_unload_file(struct face* asset) {
     glDeleteBuffers(1, &asset->vertex);
     glDeleteBuffers(1, &asset->uv);
 
-    free(asset->vertex_buffer_data);
-    free(asset->uv_buffer_data);
+    vector_kill(&asset->vertex_buffer);
+    vector_kill(&asset->uv_buffer);
 }

@@ -192,9 +192,9 @@ static double calc_opacity(session_t *ps, win *w) {
         return opacity;
 
     if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING) {
-        long val;
+        void* val;
         if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
-            return (double)val;
+            return (double)(long)val;
         }
     }
 
@@ -529,7 +529,7 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
 
     {
         char* text;
-        asprintf(&text, "verts: %zu", w->face->vertex_buffer_size);
+        asprintf(&text, "verts: %zu", w->face->vertex_buffer.size / 3);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
@@ -560,7 +560,7 @@ void win_draw(session_t* ps, win* w, float z) {
 
     win_drawcontents(ps, w, z);
 
-    win_draw_debug(ps, w, z);
+    /* win_draw_debug(ps, w, z); */
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
