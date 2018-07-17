@@ -9,32 +9,31 @@
 struct _session_t;
 
 struct Atoms {
-  /// Atom of <code>_NET_FRAME_EXTENTS</code>.
+  // Atom of _NET_FRAME_EXTENTS</code>.
   Atom atom_frame_extents;
-  /// Property atom to identify top-level frame window. Currently
-  /// <code>WM_STATE</code>.
+  // Property atom to identify top-level frame window. Currently WM_STATE.
   Atom atom_client;
-  /// Atom of property <code>WM_NAME</code>.
+  // Atom of property WM_NAME.
   Atom atom_name;
-  /// Atom of property <code>_NET_WM_NAME</code>.
+  // Atom of property _NET_WM_NAME.
   Atom atom_name_ewmh;
-  /// Atom of property <code>WM_CLASS</code>.
+  // Atom of property WM_CLASS.
   Atom atom_class;
-  /// Atom of property <code>WM_WINDOW_ROLE</code>.
+  // Atom of property WM_WINDOW_ROLE.
   Atom atom_role;
-  /// Atom of property <code>WM_TRANSIENT_FOR</code>.
+  // Atom of property WM_TRANSIENT_FOR.
   Atom atom_transient;
-  /// Atom of property <code>WM_CLIENT_LEADER</code>.
+  // Atom of property WM_CLIENT_LEADER.
   Atom atom_client_leader;
-  /// Atom of property <code>_NET_ACTIVE_WINDOW</code>.
+  // Atom of property _NET_ACTIVE_WINDOW.
   Atom atom_ewmh_active_win;
-  /// Atom of property <code>_COMPTON_SHADOW</code>.
+  // Atom of property _COMPTON_SHADOW.
   Atom atom_compton_shadow;
-  /// Atom of property <come>_NET_BYPASS_COMPOSITOR</code>.
+  // Atom of property _NET_BYPASS_COMPOSITOR.
   Atom atom_bypass;
-  /// Atom of property <code>_NET_WM_WINDOW_TYPE</code>.
+  // Atom of property _NET_WM_WINDOW_TYPE.
   Atom atom_win_type;
-  /// Array of atoms of all possible window types.
+  // Array of atoms of all possible window types.
   Atom atoms_wintypes[NUM_WINTYPES];
 };
 

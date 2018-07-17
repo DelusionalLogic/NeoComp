@@ -9,6 +9,7 @@
  */
 
 #include "compton.h"
+
 #include <ctype.h>
 
 #include "common.h"
@@ -102,7 +103,7 @@ static struct timeval ms_to_tv(int timeout) {
 }
 
 static bool isdamagenotify(session_t *ps, const XEvent *ev) {
-    return ps->damage_event + XDamageNotify == ev->type;
+    return xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify;
 }
 
 static XTextProperty * make_text_prop(session_t *ps, char *str) {
@@ -141,11 +142,6 @@ static void win_ev_stop(session_t *ps, win *w) {
         set_ignore_next(ps);
         XSelectInput(ps->dpy, w->client_win, 0);
     }
-
-    if (ps->shape_exists) {
-        /* set_ignore_next(ps); */
-        /* XShapeSelectInput(ps->dpy, w->id, 0); */
-    }
 }
 
 static bool wid_get_children(session_t *ps, Window w,
@@ -158,11 +154,6 @@ static bool wid_get_children(session_t *ps, Window w,
     }
 
     return true;
-}
-
-static void update_reg_ignore_expire(session_t *ps, const win *w) {
-    if (w->to_paint && w->solid)
-        ps->reg_ignore_expire = true;
 }
 
 static bool __attribute__((pure)) win_has_frame(const win *w) {
@@ -236,12 +227,6 @@ static bool group_is_focused(session_t *ps, Window leader) {
     return false;
 }
 
-static void add_damage(session_t *ps, XserverRegion damage);
-
-static void win_determine_mode(session_t *ps, win *w);
-
-static void calc_dim(session_t *ps, win *w);
-
 static void win_update_leader(session_t *ps, win *w);
 
 static void win_set_leader(session_t *ps, win *w, Window leader);
@@ -304,20 +289,6 @@ static Window ev_window(session_t *ps, XEvent *ev);
 #endif
 
 static void update_ewmh_active_win(session_t *ps);
-
-static XserverRegion get_screen_region(session_t *ps) {
-    XRectangle r;
-
-    r.x = 0;
-    r.y = 0;
-    r.width = ps->root_width;
-    r.height = ps->root_height;
-    return XFixesCreateRegion(ps->dpy, &r, 1);
-}
-
-static void add_damage_win(session_t *ps, win *w) {
-    add_damage(ps, None);
-}
 
 #if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
 static bool ev_window_name(session_t *ps, Window wid, char **name);
@@ -965,28 +936,15 @@ paint_preprocess(session_t *ps, Vector* paints) {
         struct _win* w = swiss_get(&ps->win_list, *w_id);
         zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
-        const bool mode_old = w->solid;
-
-        // In case calling the fade callback function destroys this window
-        double opacity_old = w->opacity;
 
         // @CLEANUP: This should probably be somewhere else
         w->fullscreen = win_is_fullscreen(ps, w);
-
-        // Destroy reg_ignore on all windows if they should expire
-        if (ps->reg_ignore_expire)
-            free_region(ps, &w->reg_ignore);
 
         // Restore flags from last paint if the window is being faded out
         if (IsUnmapped == w->a.map_state) {
             w->fade = w->fade_last;
             win_set_invert_color(ps, w, w->invert_color_last);
             win_set_blur_background(ps, w, w->blur_background_last);
-        }
-
-        // Update window opacity target and dim state if asked
-        if (WFLAG_OPCT_CHANGE & w->flags) {
-            calc_dim(ps, w);
         }
 
         // Give up if it's not damaged or invisible, or it's unmapped and its
@@ -1003,22 +961,9 @@ paint_preprocess(session_t *ps, Vector* paints) {
 
         // to_paint will never change afterward
 
-        // Determine mode as early as possible
-        if (to_paint && (!w->to_paint || w->opacity != opacity_old))
-            win_determine_mode(ps, w);
-
         if (to_paint) {
             // @INCOMPLETE: Vary the shadow opacity
         }
-
-        // Add window to damaged area if its painting status changes
-        // or opacity changes
-        if (to_paint != w->to_paint || w->opacity != opacity_old)
-            add_damage_win(ps, w);
-
-        // Destroy all reg_ignore above when window mode changes
-        if ((to_paint && w->solid) != (w->to_paint && w->solid == mode_old))
-            ps->reg_ignore_expire = true;
 
         if (to_paint) {
             // (Un)redirect screen
@@ -1108,16 +1053,6 @@ paint_preprocess(session_t *ps, Vector* paints) {
     return t;
 }
 
-/**
- * Rebuild cached <code>screen_reg</code>.
- */
-static void
-rebuild_screen_reg(session_t *ps) {
-  if (ps->screen_reg)
-    XFixesDestroyRegion(ps->dpy, ps->screen_reg);
-  ps->screen_reg = get_screen_region(ps);
-}
-
 static void
 paint_all(session_t *ps, Vector* paints) {
   glx_paint_pre(ps);
@@ -1151,13 +1086,6 @@ paint_all(session_t *ps, Vector* paints) {
           w_id = vector_getNext(paints, &index);
       }
   }
-}
-
-static void
-add_damage(session_t *ps, XserverRegion damage) {
-    free_region(ps, &damage);
-
-    if (!damage) return;
 }
 
 static wintype_t
@@ -1206,9 +1134,6 @@ static void map_win(session_t *ps, win_id wid) {
 
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
-
-  // Update window mode here to check for ARGB windows
-  win_determine_mode(ps, w);
 
   // Detect client window here instead of in add_win() as the client
   // window should have been prepared at this point
@@ -1300,7 +1225,6 @@ static void unmap_win(session_t *ps, win *w) {
 
     // Fading out
     w->state = STATE_HIDING;
-    w->flags |= WFLAG_OPCT_CHANGE;
 
     win_start_opacity(w, 0, ps->o.opacity_fade_time);
 
@@ -1315,39 +1239,6 @@ static void unmap_win(session_t *ps, win *w) {
         cdbus_ev_win_unmapped(ps, w);
     }
 #endif
-}
-
-static void win_determine_mode(session_t *ps, win *w) {
-    if (w->pictfmt && w->pictfmt->type == PictTypeDirect && w->pictfmt->direct.alphaMask) {
-        w->solid = false;
-    } else if (w->opacity != 100.0) {
-        w->solid = false;
-    } else {
-        w->solid = true;
-    }
-}
-
-/**
- * Determine whether a window is to be dimmed.
- */
-static void
-calc_dim(session_t *ps, win *w) {
-  bool dim;
-
-  // Make sure we do nothing if the window is unmapped / destroyed
-  if (w->destroyed || IsViewable != w->a.map_state)
-    return;
-
-  if (ps->o.inactive_dim && !(w->focused)) {
-    dim = true;
-  } else {
-    dim = false;
-  }
-
-  if (dim != w->dim) {
-    w->dim = dim;
-    add_damage_win(ps, w);
-  }
 }
 
 /**
@@ -1396,8 +1287,6 @@ win_set_invert_color(session_t *ps, win *w, bool invert_color_new) {
   if (w->invert_color == invert_color_new) return;
 
   w->invert_color = invert_color_new;
-
-  add_damage_win(ps, w);
 }
 
 /**
@@ -1421,11 +1310,6 @@ win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
   if (w->blur_background == blur_background_new) return;
 
   w->blur_background = blur_background_new;
-
-  // Only consider window damaged if it's previously painted with background
-  // blurred
-  if (!w->solid || (ps->o.blur_background_frame))
-    add_damage_win(ps, w);
 }
 
 /**
@@ -1655,7 +1539,6 @@ add_win(session_t *ps, Window id) {
     .flags = 0,
     .need_configure = false,
     .queue_configure = { },
-    .reg_ignore = None,
     .widthb = 0,
     .heightb = 0,
     .destroyed = false,
@@ -1740,7 +1623,7 @@ add_win(session_t *ps, Window id) {
   fetch_shaped_window_face(ps, new);
 
   // Notify compton when the shape of a window changes
-  if (ps->shape_exists) {
+  if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
       // It will stop when the window is destroyed
       XShapeSelectInput(ps->dpy, new->id, ShapeNotifyMask);
   }
@@ -1819,8 +1702,6 @@ add_win(session_t *ps, Window id) {
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
 
-    update_reg_ignore_expire(ps, w);
-
     win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
 
     struct _win* w_above = find_win(ps, new_above);
@@ -1864,8 +1745,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     ps->root_width = ce->width;
     ps->root_height = ce->height;
 
-    rebuild_screen_reg(ps);
-
     // Re-redirect screen if required
     if (ps->o.reredir_on_root_change && ps->redirected) {
       redir_stop(ps);
@@ -1882,8 +1761,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     // GLX root change callback
 	glx_on_root_change(ps);
-
-    force_repaint(ps);
 
     return;
   }
@@ -1905,10 +1782,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     }
 
     bool factor_change = false;
-
-    // Windows restack (including window restacks happened when this
-    // window is not mapped) could mess up all reg_ignore
-    ps->reg_ignore_expire = true;
 
     w->need_configure = false;
 
@@ -2035,9 +1908,6 @@ root_damaged(session_t *ps) {
     xtexture_unbind(&ps->root_texture);
   }
   get_root_tile(ps);
-
-  // Mark screen damaged
-  force_repaint(ps);
 }
 
 static void
@@ -2073,111 +1943,99 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
   }
 }
 
-/**
- * Xlib error handler function.
- */
-static int
-xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
-  session_t * const ps = ps_g;
+static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
+    session_t * const ps = ps_g;
 
-  int o = 0;
-  const char *name = "Unknown";
+    int o = 0;
+    const char *name = "Unknown";
 
-  if (should_ignore(ps, ev->serial)) {
-    return 0;
-  }
+    if (should_ignore(ps, ev->serial)) {
+        return 0;
+    }
 
-  if (ev->request_code == ps->composite_opcode
-      && ev->minor_code == X_CompositeRedirectSubwindows) {
-    fprintf(stderr, "Another composite manager is already running\n");
-    exit(1);
-  }
+    if (xorgContext_convertOpcode(&ps->capabilities, ev->request_code) == PROTO_COMPOSITE
+            && ev->minor_code == X_CompositeRedirectSubwindows) {
+        fprintf(stderr, "Another composite manager is already running\n");
+        exit(1);
+    }
 
 #define CASESTRRET2(s)   case s: name = #s; break
 
-  o = ev->error_code - ps->xfixes_error;
-  switch (o) {
-    CASESTRRET2(BadRegion);
-  }
+    o = xorgContext_convertError(&ps->capabilities, PROTO_FIXES, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadRegion);
+    }
 
-  o = ev->error_code - ps->damage_error;
-  switch (o) {
-    CASESTRRET2(BadDamage);
-  }
+    o = xorgContext_convertError(&ps->capabilities, PROTO_DAMAGE, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadDamage);
+    }
 
-  o = ev->error_code - ps->render_error;
-  switch (o) {
-    CASESTRRET2(BadPictFormat);
-    CASESTRRET2(BadPicture);
-    CASESTRRET2(BadPictOp);
-    CASESTRRET2(BadGlyphSet);
-    CASESTRRET2(BadGlyph);
-  }
+    o = xorgContext_convertError(&ps->capabilities, PROTO_RENDER, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadPictFormat);
+        CASESTRRET2(BadPicture);
+        CASESTRRET2(BadPictOp);
+        CASESTRRET2(BadGlyphSet);
+        CASESTRRET2(BadGlyph);
+    }
 
-  if (ps->glx_exists) {
-      o = ev->error_code - ps->glx_error;
-      switch (o) {
-          CASESTRRET2(GLX_BAD_SCREEN);
-          CASESTRRET2(GLX_BAD_ATTRIBUTE);
-          CASESTRRET2(GLX_NO_EXTENSION);
-          CASESTRRET2(GLX_BAD_VISUAL);
-          CASESTRRET2(GLX_BAD_CONTEXT);
-          CASESTRRET2(GLX_BAD_VALUE);
-          CASESTRRET2(GLX_BAD_ENUM);
-      }
-  }
+    o = xorgContext_convertError(&ps->capabilities, PROTO_GLX, ev->error_code);
+    switch (o) {
+        CASESTRRET2(GLX_BAD_SCREEN);
+        CASESTRRET2(GLX_BAD_ATTRIBUTE);
+        CASESTRRET2(GLX_NO_EXTENSION);
+        CASESTRRET2(GLX_BAD_VISUAL);
+        CASESTRRET2(GLX_BAD_CONTEXT);
+        CASESTRRET2(GLX_BAD_VALUE);
+        CASESTRRET2(GLX_BAD_ENUM);
+    }
 
 #ifdef CONFIG_XSYNC
-  if (ps->xsync_exists) {
-    o = ev->error_code - ps->xsync_error;
-    switch (o) {
-      CASESTRRET2(XSyncBadCounter);
-      CASESTRRET2(XSyncBadAlarm);
-      CASESTRRET2(XSyncBadFence);
+    if (ps->xsync_exists) {
+        o = ev->error_code - ps->xsync_error;
+        switch (o) {
+            CASESTRRET2(XSyncBadCounter);
+            CASESTRRET2(XSyncBadAlarm);
+            CASESTRRET2(XSyncBadFence);
+        }
     }
-  }
 #endif
 
-  switch (ev->error_code) {
-    CASESTRRET2(BadAccess);
-    CASESTRRET2(BadAlloc);
-    CASESTRRET2(BadAtom);
-    CASESTRRET2(BadColor);
-    CASESTRRET2(BadCursor);
-    CASESTRRET2(BadDrawable);
-    CASESTRRET2(BadFont);
-    CASESTRRET2(BadGC);
-    CASESTRRET2(BadIDChoice);
-    CASESTRRET2(BadImplementation);
-    CASESTRRET2(BadLength);
-    CASESTRRET2(BadMatch);
-    CASESTRRET2(BadName);
-    CASESTRRET2(BadPixmap);
-    CASESTRRET2(BadRequest);
-    CASESTRRET2(BadValue);
-    CASESTRRET2(BadWindow);
-  }
+    switch (ev->error_code) {
+        CASESTRRET2(BadAccess);
+        CASESTRRET2(BadAlloc);
+        CASESTRRET2(BadAtom);
+        CASESTRRET2(BadColor);
+        CASESTRRET2(BadCursor);
+        CASESTRRET2(BadDrawable);
+        CASESTRRET2(BadFont);
+        CASESTRRET2(BadGC);
+        CASESTRRET2(BadIDChoice);
+        CASESTRRET2(BadImplementation);
+        CASESTRRET2(BadLength);
+        CASESTRRET2(BadMatch);
+        CASESTRRET2(BadName);
+        CASESTRRET2(BadPixmap);
+        CASESTRRET2(BadRequest);
+        CASESTRRET2(BadValue);
+        CASESTRRET2(BadWindow);
+    }
 
 #undef CASESTRRET2
 
-  print_timestamp(ps);
-  {
-    char buf[BUF_LEN] = "";
-    XGetErrorText(ps->dpy, ev->error_code, buf, BUF_LEN);
-    printf("error %4d %-12s request %4d minor %4d serial %6lu: \"%s\"\n",
-        ev->error_code, name, ev->request_code,
-        ev->minor_code, ev->serial, buf);
-  }
+    print_timestamp(ps);
+    {
+        char buf[BUF_LEN] = "";
+        XGetErrorText(ps->dpy, ev->error_code, buf, BUF_LEN);
+        printf("error %4d %-12s request %4d minor %4d serial %6lu: \"%s\"\n",
+                ev->error_code, name, ev->request_code,
+                ev->minor_code, ev->serial, buf);
+    }
 
-  // print_backtrace();
+    // print_backtrace();
 
-  return 0;
-}
-
-static void
-expose_root(session_t *ps, XRectangle *rects, int nrects) {
-  XserverRegion region = XFixesCreateRegion(ps->dpy, rects, nrects);
-  add_damage(ps, region);
+    return 0;
 }
 
 /**
@@ -2566,19 +2424,6 @@ win_get_class(session_t *ps, win *w) {
   return true;
 }
 
-/**
- * Force a full-screen repaint.
- */
-void
-force_repaint(session_t *ps) {
-  assert(ps->screen_reg);
-  XserverRegion reg = None;
-  if (ps->screen_reg && (reg = copy_region(ps, ps->screen_reg))) {
-    ps->skip_poll = true;
-    add_damage(ps, reg);
-  }
-}
-
 #ifdef CONFIG_DBUS
 /** @name DBus hooks
  */
@@ -2699,10 +2544,10 @@ ev_name(session_t *ps, XEvent *ev) {
     CASESTRRET(ClientMessage);
   }
 
-  if (isdamagenotify(ps, ev))
+  if (xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
     return "Damage";
 
-  if (ps->shape_exists && ev->type == ps->shape_event)
+  if (xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
     return "ShapeNotify";
 
 #ifdef CONFIG_XSYNC
@@ -2747,11 +2592,13 @@ ev_window(session_t *ps, XEvent *ev) {
     case ClientMessage:
       return ev->xclient.window;
     default:
-      if (isdamagenotify(ps, ev)) {
+      if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify) {
         return ((XDamageNotifyEvent *)ev)->drawable;
       }
 
-      if (ps->shape_exists && ev->type == ps->shape_event) {
+      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
         return ((XShapeEvent *) ev)->window;
       }
 
@@ -2855,16 +2702,14 @@ static void ev_map_notify(session_t *ps, XMapEvent *ev) {
     }
 }
 
-inline static void
-ev_unmap_notify(session_t *ps, XUnmapEvent *ev) {
+static void ev_unmap_notify(session_t *ps, XUnmapEvent *ev) {
   win *w = find_win(ps, ev->window);
 
   if (w)
     unmap_win(ps, w);
 }
 
-inline static void
-ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
+static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 #ifdef DEBUG_EVENTS
   printf_dbg("  { new_parent: %#010lx, override_redirect: %d }\n",
       ev->parent, ev->override_redirect);
@@ -2909,34 +2754,6 @@ ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 inline static void
 ev_circulate_notify(session_t *ps, XCirculateEvent *ev) {
   circulate_win(ps, ev);
-}
-
-inline static void
-ev_expose(session_t *ps, XExposeEvent *ev) {
-  if (ev->window == ps->root || (ps->overlay && ev->window == ps->overlay)) {
-    int more = ev->count + 1;
-    if (ps->n_expose == ps->size_expose) {
-      if (ps->expose_rects) {
-        ps->expose_rects = realloc(ps->expose_rects,
-          (ps->size_expose + more) * sizeof(XRectangle));
-        ps->size_expose += more;
-      } else {
-        ps->expose_rects = malloc(more * sizeof(XRectangle));
-        ps->size_expose = more;
-      }
-    }
-
-    ps->expose_rects[ps->n_expose].x = ev->x;
-    ps->expose_rects[ps->n_expose].y = ev->y;
-    ps->expose_rects[ps->n_expose].width = ev->width;
-    ps->expose_rects[ps->n_expose].height = ev->height;
-    ps->n_expose++;
-
-    if (ev->count == 0) {
-      expose_root(ps, ps->expose_rects, ps->n_expose);
-      ps->n_expose = 0;
-    }
-  }
 }
 
 /**
@@ -3017,8 +2834,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     win *w = find_toplevel(ps, ev->window);
     if (w) {
       get_frame_extents(ps, w, ev->window);
-      // If frame extents change, the window needs repaint
-      add_damage_win(ps, w);
     }
   }
 
@@ -3079,25 +2894,12 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
 static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
 
-    /*
-     * Empty border_size may indicated an
-     * unmapped/destroyed window, in which case
-     * seemingly BadRegion errors would be triggered
-     * if we attempt to rebuild border_size
-     */
-    if (w->border_size) {
-        // Mark the old border_size as damaged
-        add_damage(ps, w->border_size);
-    }
-
     fetch_shaped_window_face(ps, w);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
     w->stencil_damaged = true;
     //The shadow is damaged because the outline (and therefore the inner clip) has changed.
     w->shadow_damaged = true;
-
-    update_reg_ignore_expire(ps, w);
 }
 
 /**
@@ -3194,17 +2996,18 @@ ev_handle(session_t *ps, XEvent *ev) {
       ev_circulate_notify(ps, (XCirculateEvent *)ev);
       break;
     case Expose:
-      ev_expose(ps, (XExposeEvent *)ev);
       break;
     case PropertyNotify:
       ev_property_notify(ps, (XPropertyEvent *)ev);
       break;
     default:
-      if (ps->shape_exists && ev->type == ps->shape_event) {
+      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
         ev_shape_notify(ps, (XShapeEvent *) ev);
         break;
       }
-      if (ps->randr_exists && ev->type == (ps->randr_event + RRScreenChangeNotify)) {
+      if (xorgContext_version(&ps->capabilities, PROTO_RANDR) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_RANDR,  ev->type) == RRScreenChangeNotify) {
         ev_screen_change_notify(ps, (XRRScreenChangeNotifyEvent *) ev);
         break;
       }
@@ -4838,9 +4641,6 @@ redir_start(session_t *ps) {
     }
 
     ps->redirected = true;
-
-    // Repaint the whole screen
-    force_repaint(ps);
   }
 }
 
@@ -5052,6 +4852,8 @@ mainloop(session_t *ps) {
     XNextEvent(ps->dpy, &ev);
     ev_handle(ps, &ev);
 
+    ps->skip_poll = true;
+
     return true;
   }
 
@@ -5116,7 +4918,7 @@ static void
 cxinerama_upd_scrs(session_t *ps) {
   free_xinerama_info(ps);
 
-  if (!ps->o.xinerama_shadow_crop || !ps->xinerama_exists) return;
+  if (!ps->o.xinerama_shadow_crop) return;
 
   if (!XineramaIsActive(ps->dpy)) return;
 
@@ -5159,7 +4961,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .root_width = 0,
     // .root_damage = None,
     .overlay = None,
-    .screen_reg = None,
     .reg_win = None,
     .o = {
       .config_file = NULL,
@@ -5233,16 +5034,11 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
     .time_start = { 0, 0 },
     .redirected = false,
-    .reg_ignore_expire = false,
     .idling = false,
     .fade_time = 0L,
     .ignore_head = NULL,
     .ignore_tail = NULL,
     .reset = false,
-
-    .expose_rects = NULL,
-    .size_expose = 0,
-    .n_expose = 0,
 
     .win_list = {0},
     .active_win = NULL,
@@ -5254,25 +5050,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
     .drm_fd = -1,
 #endif
 
-    .xfixes_event = 0,
-    .xfixes_error = 0,
-    .damage_event = 0,
-    .damage_error = 0,
-    .render_event = 0,
-    .render_error = 0,
-    .composite_event = 0,
-    .composite_error = 0,
-    .composite_opcode = 0,
-    .has_name_pixmap = false,
-    .shape_exists = false,
-    .shape_event = 0,
-    .shape_error = 0,
-    .randr_exists = 0,
-    .randr_event = 0,
-    .randr_error = 0,
-    .glx_exists = false,
-    .glx_event = 0,
-    .glx_error = 0,
     .xrfilter_convolution_exists = false,
 
     .track_atom_lst = NULL,
@@ -5337,39 +5114,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   ps->root_width = DisplayWidth(ps->dpy, ps->scr);
   ps->root_height = DisplayHeight(ps->dpy, ps->scr);
 
-  if (!XRenderQueryExtension(ps->dpy,
-        &ps->render_event, &ps->render_error)) {
-    fprintf(stderr, "No render extension\n");
-    exit(1);
-  }
-
-  if (!XQueryExtension(ps->dpy, COMPOSITE_NAME, &ps->composite_opcode,
-        &ps->composite_event, &ps->composite_error)) {
-    fprintf(stderr, "No composite extension\n");
-    exit(1);
-  }
-
-  {
-    int composite_major = 0, composite_minor = 0;
-
-    XCompositeQueryVersion(ps->dpy, &composite_major, &composite_minor);
-
-    if (!ps->o.no_name_pixmap
-        && (composite_major > 0 || composite_minor >= 2)) {
-      ps->has_name_pixmap = true;
-    }
-  }
-
-  if (!XDamageQueryExtension(ps->dpy, &ps->damage_event, &ps->damage_error)) {
-    fprintf(stderr, "No damage extension\n");
-    exit(1);
-  }
-
-  if (!XFixesQueryExtension(ps->dpy, &ps->xfixes_event, &ps->xfixes_error)) {
-    fprintf(stderr, "No XFixes extension\n");
-    exit(1);
-  }
-
   // Build a safe representation of display name
   {
     char *display_repr = DisplayString(ps->dpy);
@@ -5394,11 +5138,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
   // Second pass
   get_cfg(ps, argc, argv, false);
 
-  // Query X Shape
-  if (XShapeQueryExtension(ps->dpy, &ps->shape_event, &ps->shape_error)) {
-    ps->shape_exists = true;
-  }
-
   if (ps->o.xrender_sync_fence) {
 #ifdef CONFIG_XSYNC
     // Query X Sync
@@ -5420,24 +5159,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
 #endif
   }
 
-  // Query X RandR
-  if (ps->o.xinerama_shadow_crop) {
-    if (XRRQueryExtension(ps->dpy, &ps->randr_event, &ps->randr_error))
-      ps->randr_exists = true;
-    else
-      printf_errf("(): No XRandR extension, automatic screen change "
-          "detection impossible.");
-  }
-
-  // Query X Xinerama extension
-  if (ps->o.xinerama_shadow_crop) {
-    int xinerama_event = 0, xinerama_error = 0;
-    if (XineramaQueryExtension(ps->dpy, &xinerama_event, &xinerama_error))
-      ps->xinerama_exists = true;
-  }
-
-  rebuild_screen_reg(ps);
-
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
   if (ps->o.paint_on_overlay)
@@ -5452,9 +5173,19 @@ session_init(session_t *ps_old, int argc, char **argv) {
     exit(1);
   }
 
+  if(xorgContext_capabilities(&ps->capabilities, &ps->psglx->xcontext) != 0) {
+      printf_errf("Failed getting xorg capabilities");
+      exit(1);
+  }
+
+  if(xorgContext_ensure_capabilities(&ps->capabilities)) {
+      printf_errf("One of the required X extensions were missing");
+      exit(1);
+  }
+
   // Monitor screen changes if vsync_sw is enabled and we are using
   // an auto-detected refresh rate, or when Xinerama features are enabled
-  if (ps->randr_exists || ps->o.xinerama_shadow_crop)
+  if (ps->o.xinerama_shadow_crop)
     XRRSelectInput(ps->dpy, ps->root, RRScreenChangeNotifyMask);
 
   // Initialize VSync
@@ -5625,10 +5356,6 @@ session_destroy(session_t *ps) {
     ps->ignore_tail = &ps->ignore_head;
   }
 
-  // Free other X resources
-  free_region(ps, &ps->screen_reg);
-  free(ps->expose_rects);
-
   xtexture_delete(&ps->root_texture);
 
   free(ps->o.config_file);
@@ -5694,8 +5421,6 @@ session_run(session_t *ps) {
     Vector paints;
     vector_init(&paints, sizeof(win_id), ps->win_list.maxSize);
 
-    ps->reg_ignore_expire = true;
-
     t = paint_preprocess(ps, &paints);
 
     timestamp lastTime;
@@ -5743,10 +5468,6 @@ session_run(session_t *ps) {
                     session_destroy(ps);
                     exit(1);
                 }
-                add_damage_win(ps, w);
-            }
-            else {
-                force_repaint(ps);
             }
         }
 
@@ -5803,7 +5524,6 @@ session_run(session_t *ps) {
         static int paint = 0;
         if (ps->redirected || ps->o.stoppaint_force == OFF) {
             paint_all(ps, &paints);
-            ps->reg_ignore_expire = false;
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark)
                 exit(0);

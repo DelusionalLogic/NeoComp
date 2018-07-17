@@ -91,12 +91,6 @@
 
 #include <X11/extensions/Xinerama.h>
 
-// Workarounds for missing definitions in very old versions of X headers,
-// thanks to consolers for reporting
-#ifndef PictOpDifference
-#define PictOpDifference 0x39
-#endif
-
 // libconfig
 #ifdef CONFIG_LIBCONFIG
 #include <libgen.h>
@@ -113,6 +107,7 @@
 
 #include <GL/glx.h>
 
+#include "logging.h"
 #include "vmath.h"
 #include "wintypes.h"
 #include "session.h"
@@ -192,8 +187,6 @@ typedef uint64_t win_id;
 #define WFLAG_SIZE_CHANGE   0x0001
 // Window size/position is changed
 #define WFLAG_POS_CHANGE    0x0002
-// Window opacity / dim state changed
-#define WFLAG_OPCT_CHANGE   0x0004
 
 // === Types ===
 
@@ -1264,60 +1257,6 @@ glx_mark_frame(session_t *ps) {
 }
 
 ///@}
-
-#ifdef CONFIG_XSYNC
-#define xr_sync(ps, d, pfence) xr_sync_(ps, d, pfence)
-#else
-#define xr_sync(ps, d, pfence) xr_sync_(ps, d)
-#endif
-
-/**
- * Synchronizes a X Render drawable to ensure all pending painting requests
- * are completed.
- */
-static inline void
-xr_sync_(session_t *ps, Drawable d
-#ifdef CONFIG_XSYNC
-    , XSyncFence *pfence
-#endif
-    ) {
-  if (!ps->o.xrender_sync)
-    return;
-
-  XSync(ps->dpy, False);
-#ifdef CONFIG_XSYNC
-  if (ps->o.xrender_sync_fence && ps->xsync_exists) {
-    // TODO: If everybody just follows the rules stated in X Sync prototype,
-    // we need only one fence per screen, but let's stay a bit cautious right
-    // now
-    XSyncFence tmp_fence = None;
-    if (!pfence)
-      pfence = &tmp_fence;
-    assert(pfence);
-    if (!*pfence)
-      *pfence = XSyncCreateFence(ps->dpy, d, False);
-    if (*pfence) {
-      /* if (XSyncQueryFence(ps->dpy, *pfence, &triggered) && triggered)
-        XSyncResetFence(ps->dpy, *pfence); */
-      // The fence may fail to be created (e.g. because of died drawable)
-      /* assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || !triggered); */
-      XSyncTriggerFence(ps->dpy, *pfence);
-      XSyncAwaitFence(ps->dpy, pfence, 1);
-      /* assert(!XSyncQueryFence(ps->dpy, *pfence, &triggered) || triggered); */
-    }
-    else {
-      printf_errf("(%#010lx): Failed to create X Sync fence.", d);
-    }
-    free_fence(ps, &tmp_fence);
-    if (*pfence)
-      XSyncResetFence(ps->dpy, *pfence);
-  }
-#endif
-#ifdef CONFIG_GLX_SYNC
-  xr_glx_sync(ps, d, pfence);
-#endif
-}
-
 
 #ifdef CONFIG_C2
 /** @name c2

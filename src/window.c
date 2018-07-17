@@ -2,6 +2,7 @@
 #include "window.h"
 
 #include "vmath.h"
+#include "logging.h"
 #include "bezier.h"
 #include "windowlist.h"
 #include "blur.h"

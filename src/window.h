@@ -121,11 +121,6 @@ typedef struct _win {
   bool need_configure;
   /// Queued <code>ConfigureNotify</code> when the window is unmapped.
   XConfigureEvent queue_configure;
-  /// Region to be ignored when painting. Basically the region where
-  /// higher opaque windows will paint upon. Depends on window frame
-  /// opacity state, window geometry, window mapped/unmapped state,
-  /// window mode, of this and all higher windows.
-  XserverRegion reg_ignore;
   /// Cached width/height of the window including border.
   int widthb, heightb;
   /// Whether the window has been destroyed.

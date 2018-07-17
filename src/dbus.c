@@ -674,7 +674,6 @@ cdbus_process(session_t *ps, DBusMessage *msg) {
     success = true;
   }
   else if (cdbus_m_ismethod("repaint")) {
-    force_repaint(ps);
     if (!dbus_message_get_no_reply(msg))
       cdbus_reply_bool(ps, msg, true);
     success = true;
@@ -1124,7 +1123,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
       return false;
     if (ps->o.clear_shadow != val) {
       ps->o.clear_shadow = val;
-      force_repaint(ps);
     }
     goto cdbus_process_opts_set_success;
   }
@@ -1166,7 +1164,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
     if (!cdbus_msg_get_arg(msg, 1, CDBUS_TYPE_ENUM, &val))
       return false;
     ps->o.redirected_force = val;
-    force_repaint(ps);
     goto cdbus_process_opts_set_success;
   }
 

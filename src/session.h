@@ -351,8 +351,6 @@ typedef struct _session_t {
     /// The root tile, but better
     struct XTexture root_texture;
 
-    /// A region of the size of the screen.
-    XserverRegion screen_reg;
 #ifdef CONFIG_XSYNC
     XSyncFence tgt_buffer_fence;
 #endif
@@ -389,8 +387,6 @@ typedef struct _session_t {
     struct timeval time_start;
     /// Whether all windows are currently redirected.
     bool redirected;
-    /// Whether all reg_ignore of windows should expire in this paint.
-    bool reg_ignore_expire;
     /// Time of last fading. In milliseconds.
     time_ms_t fade_time;
     /// Head pointer of the error ignore linked list.
@@ -400,14 +396,6 @@ typedef struct _session_t {
     ignore_t **ignore_tail;
     /// Reset program after next paint.
     bool reset;
-
-    // === Expose event related ===
-    /// Pointer to an array of <code>XRectangle</code>-s of exposed region.
-    XRectangle *expose_rects;
-    /// Number of <code>XRectangle</code>-s in <code>expose_rects</code>.
-    int size_expose;
-    /// Index of the next free slot in <code>expose_rects</code>.
-    int n_expose;
 
     // === Window related ===
     // Swiss of windows
@@ -438,49 +426,9 @@ typedef struct _session_t {
     int drm_fd;
 #endif
 
+	struct X11Capabilities capabilities;
     // === X extension related ===
-    /// Event base number for X Fixes extension.
-    int xfixes_event;
-    /// Error base number for X Fixes extension.
-    int xfixes_error;
-    /// Event base number for X Damage extension.
-    int damage_event;
-    /// Error base number for X Damage extension.
-    int damage_error;
-    /// Event base number for X Render extension.
-    int render_event;
-    /// Error base number for X Render extension.
-    int render_error;
-    /// Event base number for X Composite extension.
-    int composite_event;
-    /// Error base number for X Composite extension.
-    int composite_error;
-    /// Major opcode for X Composite extension.
-    int composite_opcode;
-    /// Whether X Composite NameWindowPixmap is available. Aka if X
-    /// Composite version >= 0.2.
-    bool has_name_pixmap;
-    /// Whether X Shape extension exists. @CLEANUP: Should be in xorg.h
-    bool shape_exists;
-    /// Event base number for X Shape extension.
-    int shape_event;
-    /// Error base number for X Shape extension.
-    int shape_error;
-    /// Whether X RandR extension exists.
-    bool randr_exists;
-    /// Event base number for X RandR extension.
-    int randr_event;
-    /// Error base number for X RandR extension.
-    int randr_error;
-    /// Whether X GLX extension exists.
-    bool glx_exists;
-    /// Event base number for X GLX extension.
-    int glx_event;
-    /// Error base number for X GLX extension.
-    int glx_error;
 
-    /// Whether X Xinerama extension exists.
-    bool xinerama_exists;
     /// Xinerama screen info.
     XineramaScreenInfo *xinerama_scrs;
     /// Xinerama screen regions.

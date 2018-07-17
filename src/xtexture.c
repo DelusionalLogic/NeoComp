@@ -1,5 +1,7 @@
 #include "xtexture.h"
 
+#include "logging.h"
+
 #include <assert.h>
 
 bool xtexture_init(struct XTexture* tex, struct X11Context* context) {
