@@ -106,10 +106,8 @@ typedef struct _win {
   XRenderPictFormat *pictfmt;
   /// Whether the window has been damaged at least once.
   bool damaged;
-#ifdef CONFIG_XSYNC
   /// X Sync fence of drawable.
   XSyncFence fence;
-#endif
   /// Damage of the window.
   Damage damage;
   /// Bounding shape of the window.
@@ -239,6 +237,7 @@ typedef struct _win {
   struct WindowDrawable drawable;
 } win;
 
+bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
 bool win_overlap(win* w1, win* w2);
 bool win_covers(win* w);

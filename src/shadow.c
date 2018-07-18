@@ -9,13 +9,6 @@
 
 #include <assert.h>
 
-static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
-    Vector2 glpos = {{
-        xpos->x, ps->root_height - xpos->y - size->y
-    }};
-    return glpos;
-}
-
 int shadow_cache_init(struct glx_shadow_cache* cache) {
     Vector2 border = {{32, 32}};
     cache->border = border;
@@ -131,7 +124,7 @@ void win_calc_shadow(session_t* ps, win* w) {
         .buffer = &framebuffer,
         .swap = &w->shadow_cache.effect,
     };
-    if(!texture_blur(&blurData, &w->shadow_cache.texture, 3, true)) {
+    if(!texture_blur(&blurData, &w->shadow_cache.texture, 2, true)) {
         printf_errf("Failed blurring the background texture");
         framebuffer_delete(&framebuffer);
         return;

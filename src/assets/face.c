@@ -53,16 +53,17 @@ struct face* face_load_file(const char* path) {
         if(strcmp(type, "vc") == 0) {
             vector_init(&face->vertex_buffer, sizeof(float), count * 3);
             float* cursor = vector_reserve(&face->vertex_buffer, count * 3);
+            size_t lines = 0;
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
                     continue;
 
+                // Remove the trailing newlines
+                line[strcspn(line, "\r\n")] = '\0';
+
                 float x;
                 float y;
                 float z;
-
-                // Remove the trailing newlines
-                line[strcspn(line, "\r\n")] = '\0';
                 matches = sscanf(line, "v %f %f %f", &x, &y, &z);
 
                 // An EOF from matching means either an error or empty line. We will
@@ -75,24 +76,31 @@ struct face* face_load_file(const char* path) {
                     continue;
                 }
 
+                if(lines >= count) {
+                    printf("Too many pos vertecies expected %zu\n", count);
+                    continue;
+                }
+
                 cursor[0] = x;
                 cursor[1] = y;
                 cursor[2] = z;
 
                 cursor += 3;
+                lines++;
             }
         } else if(strcmp(type, "vtc") == 0) {
             vector_init(&face->uv_buffer, sizeof(float), count * 2);
             float* cursor = vector_reserve(&face->uv_buffer, count * 2);
+            size_t lines = 0;
             while((read = getline(&line, &line_size, file)) != -1) {
                 if(line[0] == '#')
                     continue;
 
-                float u;
-                float v;
-
                 // Remove the trailing newlines
                 line[strcspn(line, "\r\n")] = '\0';
+
+                float u;
+                float v;
                 int matches = sscanf(line, "vt %f %f", &u, &v);
 
                 // An EOF from matching means either an error or empty line. We will
@@ -105,10 +113,16 @@ struct face* face_load_file(const char* path) {
                     continue;
                 }
 
+                if(lines >= count) {
+                    printf("Too many uv vertecies expected %zu\n", count);
+                    continue;
+                }
+
                 cursor[0] = u;
                 cursor[1] = v;
 
                 cursor += 2;
+                lines++;
             }
         } else {
             printf("Unknown directive \"%s\" in face file %s, ignoring\n", line, path);

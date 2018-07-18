@@ -5,6 +5,8 @@
 
 #include "shaders/shaderinfo.h"
 
+#include "renderutil.h"
+
 struct Font debug_font;
 
 int font_load(struct Font* font, char* filename) {
@@ -68,7 +70,7 @@ void text_debug_load(char* filename) {
     font_load(&debug_font, filename);
 }
 
-static void draw_letter(struct Font* font, struct Character* letter, Vector2* position, Vector2* scale) {
+static void draw_letter(const struct Font* font, const struct Character* letter, Vector2* position, const Vector2* scale) {
     struct face* face = assets_load("window.face");
 
     texture_bind(&letter->texture, GL_TEXTURE0);

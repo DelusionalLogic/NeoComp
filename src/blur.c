@@ -101,8 +101,8 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 #endif
 
         {
-            Vector3 pos = vec3_from_vec2(&glRectPos, 1);
-            draw_rect(w->face, passthough_type->mvp, pos, rectSize);
+            Vector3 pos3 = vec3_from_vec2(&glRectPos, 1);
+            draw_rect(w->face, passthough_type->mvp, pos3, rectSize);
         }
     }
 

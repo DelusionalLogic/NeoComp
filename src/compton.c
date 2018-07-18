@@ -1609,11 +1609,17 @@ add_win(session_t *ps, Window id) {
 
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
-
     win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
 
     struct _win* w_above = find_win(ps, new_above);
-    assert(w_above != NULL);
+
+    // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
+    // ConfigureNotify above value for a window that doesn't even exist
+    // (badwindow from X11). For now we will just not restack anything then,
+    // but it seems like a hack
+    if(w_above == NULL)
+        return;
+
     win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
 
     size_t w_loc;
@@ -2448,21 +2454,22 @@ ev_name(session_t *ps, XEvent *ev) {
     CASESTRRET(ClientMessage);
   }
 
-  if (xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
+  if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
+          && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
     return "Damage";
 
-  if (xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
+  if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
+          && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
     return "ShapeNotify";
 
-#ifdef CONFIG_XSYNC
-  if (ps->xsync_exists) {
-    int o = ev->type - ps->xsync_event;
-    switch (o) {
-      CASESTRRET(XSyncCounterNotify);
-      CASESTRRET(XSyncAlarmNotify);
-    }
+  if (xorgContext_version(&ps->capabilities, PROTO_SYNC)  >= XVERSION_YES) {
+      o = xorgContext_convertEvent(&ps->capabilities, PROTO_SYNC, ev->error_code);
+      int o = ev->type - ps->xsync_event;
+      switch (o) {
+          CASESTRRET(XSyncCounterNotify);
+          CASESTRRET(XSyncAlarmNotify);
+      }
   }
-#endif
 
   sprintf(buf, "Event %d", ev->type);
 
@@ -3197,16 +3204,6 @@ usage(int ret) {
     "--xrender-sync\n"
     "  Attempt to synchronize client applications' draw calls with XSync(),\n"
     "  used on GLX backend to ensure up-to-date window content is painted.\n"
-#undef WARNING
-#ifndef CONFIG_XSYNC
-#define WARNING WARNING_DISABLED
-#else
-#define WARNING
-#endif
-    "\n"
-    "--xrender-sync-fence\n"
-    "  Additionally use X Sync fence to sync clients' draw calls. Needed\n"
-    "  on nvidia-drivers with GLX backend for some users." WARNING "\n"
     "\n"
     "--glx-fshader-win shader\n"
     "  GLX backend: Use specified GLSL fragment shader for rendering window\n"
@@ -3759,8 +3756,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     exit(1);
   // --alpha-step
   config_lookup_float(&cfg, "alpha-step", &ps->o.alpha_step);
-  // --paint-on-overlay
-  lcfg_lookup_bool(&cfg, "paint-on-overlay", &ps->o.paint_on_overlay);
   // --use-ewmh-active-win
   lcfg_lookup_bool(&cfg, "use-ewmh-active-win",
       &ps->o.use_ewmh_active_win);
@@ -3817,8 +3812,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   lcfg_lookup_bool(&cfg, "glx-use-gpushader4", &ps->o.glx_use_gpushader4);
   // --xrender-sync
   lcfg_lookup_bool(&cfg, "xrender-sync", &ps->o.xrender_sync);
-  // --xrender-sync-fence
-  lcfg_lookup_bool(&cfg, "xrender-sync-fence", &ps->o.xrender_sync_fence);
   // Wintype settings
   {
     wintype_t i;
@@ -4073,7 +4066,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --alpha-step
         ps->o.alpha_step = atof(optarg);
         break;
-      P_CASEBOOL(273, paint_on_overlay);
       P_CASEBOOL(275, vsync_aggressive);
       P_CASEBOOL(276, use_ewmh_active_win);
       P_CASEBOOL(277, respect_prop_shadow);
@@ -4146,7 +4138,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       P_CASEBOOL(311, vsync_use_glfinish);
       P_CASEBOOL(312, xrender_sync);
-      P_CASEBOOL(313, xrender_sync_fence);
       P_CASEBOOL(315, no_fading_destroyed_argb);
       P_CASEBOOL(316, force_win_blend);
       case 317:
@@ -4188,9 +4179,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   // --blur-background-frame implies --blur-background
   if (ps->o.blur_background_frame)
     ps->o.blur_background = true;
-
-  if (ps->o.xrender_sync_fence)
-    ps->o.xrender_sync = true;
 
   // Other variables determined by options
 
@@ -4396,7 +4384,7 @@ init_overlay(session_t *ps) {
   else {
     fprintf(stderr, "Cannot get X Composite overlay window. Falling "
         "back to painting on root window.\n");
-    ps->o.paint_on_overlay = false;
+    exit(1);
   }
 #ifdef DEBUG_REDIR
   printf_dbgf("(): overlay = %#010lx\n", ps->overlay);
@@ -4799,7 +4787,6 @@ session_init(session_t *ps_old, int argc, char **argv) {
       .mark_ovredir_focused = false,
       .fork_after_register = false,
       .synchronize = false,
-      .paint_on_overlay = false,
       .blur_level = 0,
       .unredir_if_possible = false,
       .unredir_if_possible_blacklist = NULL,
@@ -4960,8 +4947,7 @@ session_init(session_t *ps_old, int argc, char **argv) {
 
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
-  if (ps->o.paint_on_overlay)
-    init_overlay(ps);
+  init_overlay(ps);
 
   // Initialize OpenGL as early as possible
   if (!glx_init(ps, true))

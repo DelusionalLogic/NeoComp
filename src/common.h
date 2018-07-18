@@ -43,8 +43,6 @@
 // #define CONFIG_DBUS 1
 // Whether to enable condition support.
 // #define CONFIG_C2 1
-// Whether to enable X Sync support.
-// #define CONFIG_XSYNC 1
 // Whether to enable GLX Sync support.
 // #define CONFIG_GLX_XSYNC 1
 
@@ -85,9 +83,7 @@
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xdbe.h>
-#ifdef CONFIG_XSYNC
 #include <X11/extensions/sync.h>
-#endif
 
 #include <X11/extensions/Xinerama.h>
 
@@ -896,7 +892,7 @@ cxfree(void *data) {
  */
 static inline Window
 get_tgt_window(session_t *ps) {
-  return ps->o.paint_on_overlay ? ps->overlay: ps->root;
+  return ps->overlay;
 }
 
 /**
@@ -996,7 +992,6 @@ free_region(session_t *ps, XserverRegion *p) {
   }
 }
 
-#ifdef CONFIG_XSYNC
 /**
  * Free a XSync fence.
  */
@@ -1006,9 +1001,6 @@ free_fence(session_t *ps, XSyncFence *pfence) {
     XSyncDestroyFence(ps->dpy, *pfence);
   *pfence = None;
 }
-#else
-#define free_fence(ps, pfence) ((void) 0)
-#endif
 
 /**
  * Crop a rectangle by another rectangle.

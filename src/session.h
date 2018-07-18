@@ -98,8 +98,6 @@ typedef struct _options_t {
   /// Whether to sync X drawing to avoid certain delay issues with
   /// GLX backend.
   bool xrender_sync;
-  /// Whether to sync X drawing with X Sync fence.
-  bool xrender_sync_fence;
   /// Whether to avoid using stencil buffer under GLX backend. Might be
   /// unsafe.
   bool glx_no_stencil;
@@ -117,9 +115,6 @@ typedef struct _options_t {
   char *glx_fshader_win_str;
   /// Whether to fork to background.
   bool fork_after_register;
-  /// Whether to paint on X Composite overlay window instead of root
-  /// window.
-  bool paint_on_overlay;
   /// Force painting of window content with blending.
   bool force_win_blend;
   /// Blur Level
@@ -351,9 +346,7 @@ typedef struct _session_t {
     /// The root tile, but better
     struct XTexture root_texture;
 
-#ifdef CONFIG_XSYNC
     XSyncFence tgt_buffer_fence;
-#endif
     /// Window ID of the window we register as a symbol.
     Window reg_win;
     /// Pointer to GLX data.

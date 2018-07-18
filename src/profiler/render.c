@@ -1,6 +1,8 @@
+#define _GNU_SOURCE
 #include "render.h"
 
 #include <time.h>
+#include <stdio.h>
 
 #include "../assets/assets.h"
 #include "../assets/face.h"
@@ -146,8 +148,8 @@ static void draw(const Vector2* pos, const Vector2* size) {
         Vector2 relpos = {{pos->x, pos->y}};
 
         {
-            Vector3 pos = vec3_from_vec2(&relpos, 0.0);
-            draw_rect(face, profiler_type->mvp, pos, scale);
+            Vector3 pos3 = vec3_from_vec2(&relpos, 0.0);
+            draw_rect(face, profiler_type->mvp, pos3, scale);
         }
     }
 
@@ -160,8 +162,8 @@ static void draw(const Vector2* pos, const Vector2* size) {
             Vector2 relpos = {{block->start * size->x, bar_height * (track+1) + pos->y}};
 
             {
-                Vector3 pos = vec3_from_vec2(&relpos, 0.0);
-                draw_rect(face, profiler_type->mvp, pos, scale);
+                Vector3 pos3 = vec3_from_vec2(&relpos, 0.0);
+                draw_rect(face, profiler_type->mvp, pos3, scale);
             }
         }
     }

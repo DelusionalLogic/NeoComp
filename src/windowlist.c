@@ -1,11 +1,15 @@
 #include "windowlist.h"
 
 #include "profiler/zone.h"
+
 #include "assets/shader.h"
 #include "assets/assets.h"
+
 #include "shaders/shaderinfo.h"
 
 #include "window.h"
+#include "blur.h"
+#include "renderutil.h"
 
 DECLARE_ZONE(paint_window);
 
@@ -143,8 +147,6 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
     while(w_id != NULL) {
         struct _win* w = swiss_get(&ps->win_list, *w_id);
         if(win_viewable(w) && ps->redirected) {
-            Vector2 size = {{w->widthb, w->heightb}};
-
             if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
                 if(w->glx_blur_cache.damaged == true) {
                     win_calculate_blur(&ps->psglx->blur, ps, w);

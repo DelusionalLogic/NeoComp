@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <errno.h>
 
+#include "logging.h"
+
 #include "assets.h"
 #include "../shaders/shaderinfo.h"
 
@@ -99,10 +101,10 @@ static void shader_program_link(struct shader_program* program) {
     // variable name
     char name[64] = {0};
     int* key;
-    JSLF(key, program->attributes, name);
+    JSLF(key, program->attributes, (uint8_t*) name);
     while(key != NULL) {
         glBindAttribLocation(program->gl_program, *key, name);
-        JSLN(key, program->attributes, name);
+        JSLN(key, program->attributes, (uint8_t*)name);
     }
 
     glLinkProgram(program->gl_program);
@@ -301,13 +303,13 @@ struct shader_program* shader_program_load_file(const char* path) {
             }
 
             int* index;
-            JSLG(index, program->attributes, name);
+            JSLG(index, program->attributes, (uint8_t*)name);
             if(index != NULL) {
                 printf("Attrib name %s redefine ignored\n", name);
                 continue;
             }
 
-            JSLI(index, program->attributes, name);
+            JSLI(index, program->attributes, (uint8_t*)name);
             if(index == NULL) {
                 printf("Failed inserting %s into the attribute array, ignoring\n", name);
             }
@@ -437,6 +439,9 @@ static void set_shader_uniform(const struct shader_value* uniform, const union s
             break;
         case SHADER_VALUE_SAMPLER:
             glUniform1i(uniform->gl_uniform, value->sampler);
+            break;
+        case SHADER_VALUE_IGNORED:
+            // Ignored shaders aren't set
             break;
     }
 }

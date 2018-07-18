@@ -9,21 +9,15 @@ MANDIR ?= $(PREFIX)/share/man/man1
 APPDIR ?= $(PREFIX)/share/applications
 ICODIR ?= $(PREFIX)/share/icons/hicolor/
 
-PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
 
+LIBS = -lGL -lm -lrt -lJudy
+INCS = -Isrc/
 
-LIBS = -lm -lrt -lJudy
-INCS =
-
-OBJS = compton.o
-
-# === Configuration flags ===
 CFG = -std=gnu11 -fms-extensions
 
-# -lGL must precede some other libraries, or it segfaults on FreeBSD (#74)
-LIBS := -lGL $(LIBS)
-OBJS += opengl.o
+PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
 
+OBJS = compton.o opengl.o
 OBJS += vmath.o bezier.o
 OBJS += timer.o swiss.o vector.o atoms.o
 OBJS += assets.o shader.o face.o shaderinfo.o blur.o shadow.o texture.o include.o
@@ -31,8 +25,11 @@ OBJS += renderutil.o textureeffects.o framebuffer.o zone.o render.o renderbuffer
 OBJS += window.o windowlist.o
 OBJS += xorg.o xtexture.o
 
+# Text rendering
 OBJS += text.o
 PACKAGES += freetype2
+
+# === Configuration flags ===
 
 ifneq "$(GLX_MARK)" ""
     CFG += -DDEBUG_GLX_MARK
@@ -80,12 +77,6 @@ ifeq "$(NO_DBUS)" ""
   CFG += -DCONFIG_DBUS
   PACKAGES += dbus-1
   OBJS += dbus.o
-endif
-
-# ==== X Sync ====
-# Enables support for --xrender-sync-fence
-ifeq "$(NO_XSYNC)" ""
-  CFG += -DCONFIG_XSYNC
 endif
 
 # ==== C2 ====

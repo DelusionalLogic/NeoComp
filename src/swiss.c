@@ -195,8 +195,8 @@ void swiss_putBack(Swiss* vector, const void* element, size_t* index)
 }
 
 size_t swiss_indexOfPointer(Swiss* vector, void* data) {
-    assert(data >= vector->data);
-    assert(data <= vector->data + (vector->elementSize * vector->maxSize));
+    assert(data >= (void*)vector->data);
+    assert(data <= (void*)(vector->data + vector->elementSize * vector->maxSize));
 
     return (data - (void*)vector->data) / vector->elementSize;
 }
