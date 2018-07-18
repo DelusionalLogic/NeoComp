@@ -1,1 +1,1 @@
-Compton is a X compositing window manager, fork of xcompmgr-dana.
+NeoComp is a compositing window manager for X11, fork of Compton, fork of xcompmgr-dana.
