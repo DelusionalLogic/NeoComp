@@ -12,21 +12,7 @@ install-sh
 missing
 stamp-h1
 compton
-*.o
-build/
-
-# CMake files
-compton-*.deb
-compton-*.rpm
-compton-*.tar.bz2
-release/
-_CPack_Packages/
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-CPackSourceConfig.cmake
-install_manifest.txt
-
+obj/
 
 # Vim files
 .sw[a-z]
@@ -34,16 +20,6 @@ install_manifest.txt
 *~
 
 # Misc files
-/core
-/*.core
-oprofile_data/
-compton.plist
-callgrind.out.*
 man/*.html
 man/*.1
-doxygen/
-.clang_complete
-.ycm_extra_conf.py
-.ycm_extra_conf.pyc
-/src/backtrace-symbols.[ch]
 /compton*.trace
