@@ -28,10 +28,18 @@ struct TestResultEqArr {
     char* name;
 };
 
+struct TestResultEqStr {
+    char* name;
+    char* actual;
+    char* expected;
+    int length;
+};
+
 enum TestResultType {
     TEST_EQ,
     TEST_EQ_PTR,
     TEST_EQ_ARRAY,
+    TEST_EQ_STRING,
 };
 
 struct TestResult {
@@ -41,6 +49,7 @@ struct TestResult {
         struct TestResultEq eq;
         struct TestResultEqPtr ptr_eq;
         struct TestResultEqArr eq_arr;
+        struct TestResultEqStr eq_str;
     };
 };
 
@@ -88,6 +97,24 @@ struct TestResult assertEqArray_internal(char* name, void* var, void* value, siz
     return result;
 }
 
+struct TestResult assertEqString_internal(char* name, char* var, char* value, size_t size) {
+    struct TestResult result = {
+        .type = TEST_EQ_STRING,
+        .eq_str = {
+            .name = name,
+            .actual = malloc(size),
+            .expected = malloc(size),
+            .length = size,
+        }
+    };
+
+    memcpy(result.eq_str.actual, var, size);
+    memcpy(result.eq_str.expected, value, size);
+
+    result.success = memcmp(var, value, size) == 0;
+    return result;
+}
+
 #define assertEq(var, val)               \
     return _Generic((var),               \
             void*: assertEqPtr_internal, \
@@ -98,6 +125,9 @@ struct TestResult assertEqArray_internal(char* name, void* var, void* value, siz
 
 #define assertEqArray(var, val, len) \
     return assertEqArray_internal(#var, var, val, len)
+
+#define assertEqString(var, val, len) \
+    return assertEqString_internal(#var, var, val, len)
 
 #define TEST(f)                          \
     do{                                  \
@@ -295,7 +325,7 @@ static struct TestResult vector__iterate_elements_in_order_abcdef__iterating_for
         elem = vector_getNext(&vector, &index);
     }
 
-    assertEqArray(order, "abcdef", 6);
+    assertEqString(order, "abcdef", 6);
 }
 
 static struct TestResult vector__iterate_6_times__iterating_backward_over_6_elements() {
@@ -330,7 +360,7 @@ static struct TestResult vector__iterate_elements_in_order_fedcba__iterating_bac
         elem = vector_getPrev(&vector, &index);
     }
 
-    assertEqArray(order, "fedcba", 6);
+    assertEqString(order, "fedcba", 6);
 }
 
 static struct TestResult vector__iterate_0_times__iterating_forward_over_empty() {
@@ -393,7 +423,7 @@ static struct TestResult vector__shift_elements_between_positions_left__circulat
     vector_circulate(&vector, 0, 2);
 
     char* substr = vector_get(&vector, 0);
-    assertEqArray(substr, "bc", 2);
+    assertEqString(substr, "bc", 2);
 }
 
 static struct TestResult vector__shift_elements_between_positions_right__circulating_backward() {
@@ -404,7 +434,7 @@ static struct TestResult vector__shift_elements_between_positions_right__circula
     vector_circulate(&vector, 2, 0);
 
     char* substr = vector_get(&vector, 1);
-    assertEqArray(substr, "bc", 2);
+    assertEqString(substr, "bc", 2);
 }
 
 static struct TestResult vector__keep_elements_after_old__circulating_backward() {
@@ -415,7 +445,7 @@ static struct TestResult vector__keep_elements_after_old__circulating_backward()
     vector_circulate(&vector, 2, 0);
 
     char* substr = vector_get(&vector, 3);
-    assertEqArray(substr, "def", 3);
+    assertEqString(substr, "def", 3);
 }
 
 static struct TestResult vector__keep_elements_after_new__circulating_forward() {
@@ -426,7 +456,7 @@ static struct TestResult vector__keep_elements_after_new__circulating_forward() 
     vector_circulate(&vector, 0, 2);
 
     char* substr = vector_get(&vector, 3);
-    assertEqArray(substr, "def", 3);
+    assertEqString(substr, "def", 3);
 }
 
 int main(int argc, char** argv) {
@@ -474,12 +504,13 @@ int main(int argc, char** argv) {
             printf(ANSI_COLOR_GREEN "✓ "
                     ANSI_COLOR_WHITE "A" ANSI_COLOR_RESET " %s "
                     ANSI_COLOR_WHITE "will" ANSI_COLOR_RESET " %s "
-                    ANSI_COLOR_WHITE "when" ANSI_COLOR_RESET " %s\n", name.thing, name.will, name.when);
+                    ANSI_COLOR_WHITE "when" ANSI_COLOR_RESET " %s"
+                    ANSI_COLOR_RESET "\n", name.thing, name.will, name.when);
         } else {
             printf(ANSI_COLOR_RED "✗ "
-                    ANSI_COLOR_WHITE "A" ANSI_COLOR_RESET " %s "
-                    ANSI_COLOR_WHITE "won't" ANSI_COLOR_RESET " %s "
-                    ANSI_COLOR_WHITE "when" ANSI_COLOR_RESET " %s"
+                    ANSI_COLOR_RED "A" ANSI_COLOR_RESET " %s "
+                    ANSI_COLOR_RED "won't" ANSI_COLOR_RESET " %s "
+                    ANSI_COLOR_RED "when" ANSI_COLOR_RESET " %s"
                     ANSI_COLOR_RESET "\n", name.thing, name.will, name.when);
             failed++;
         }
@@ -494,13 +525,20 @@ int main(int argc, char** argv) {
                 printf("\tBy equality test on %s %p==%p\n", result.ptr_eq.name, result.ptr_eq.actual, result.ptr_eq.expected);
                 break;
             case TEST_EQ_ARRAY:
-                printf("\tBy array equality test on %s\n", result.eq.name);
+                printf("\tBy array equality test on %s\n", result.eq_arr.name);
+                break;
+            case TEST_EQ_STRING:
+                printf("\tBy string equality test on %s %.*s==%.*s\n",result.eq_str.name,
+                        result.eq_str.length, result.eq_str.actual,
+                        result.eq_str.length, result.eq_str.expected);
+                // @LEAK: We just leak the actual and expected strings here.
+                // It's a test script, so who cares?
                 break;
         }
         test = vector_getNext(&results, &index);
     }
 
-    printf("%d tests failed\n", failed);
+    printf("%d/%d tests failed\n", failed, vector_size(&results));
 
     return 0;
 }
