@@ -173,4 +173,13 @@ clean:
 version:
 	@echo "$(COMPTON_VERSION)"
 
+test/test.o: test/test.c
+	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -o $@ -c $<
+
+test/test: test/test.o obj/vector.o
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+
+test: test/test
+	test/test
+
 .PHONY: uninstall clean docs version

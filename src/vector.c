@@ -29,7 +29,7 @@ void vector_kill(Vector* vector)
 {
     assert(vector->elementSize != 0);
     free(vector->data);
-    vector->data=(void*)0x72727272;
+    vector->data=NULL;
 }
 
 char* vector_detach(Vector* vector)
@@ -73,6 +73,11 @@ void* vector_get(Vector* vector, const size_t count)
 {
     assert(vector->elementSize != 0);
     assert(count < vector->size);
+
+    if(count >= vector->size) {
+        return NULL;
+    }
+
     return vector->data + vector->elementSize * count;
 }
 
@@ -172,4 +177,6 @@ void vector_circulate(Vector* vector, size_t old, size_t new) {
         memmove(vector_get(vector, new+1), vector_get(vector, new), vector->elementSize * (old - new));
         memcpy(vector_get(vector, new), tmp, vector->elementSize);
     }
+
+    free(tmp);
 }
