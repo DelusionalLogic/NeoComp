@@ -20,12 +20,14 @@ CFG = -std=gnu11 -fms-extensions
 
 PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
 
+MAIN_SOURCE = main.c
+
 SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c
 SOURCES += assets/assets.c assets/shader.c assets/face.c
 SOURCES += shaders/shaderinfo.c shaders/include.c
 SOURCES += blur.c shadow.c texture.c renderutil.c textureeffects.c
-SOURCES += profiler/zone.c profiler/render.c
 SOURCES += framebuffer.c renderbuffer.c window.c windowlist.c xorg.c xtexture.c
+SOURCES += profiler/zone.c profiler/render.c
 
 # Text rendering
 SOURCES += text.c
@@ -118,8 +120,11 @@ INCS += $(shell pkg-config --cflags $(PACKAGES))
 
 CFLAGS += -Wall -Wno-microsoft-anon-tag
 
-SOURCES_C = $(SOURCES:%.c=$(SRCDIR)/%.o)
+MAIN_SOURCE_C = $(MAIN_SOURCE:%.c=$(SRCDIR)/%.c)
+SOURCES_C = $(SOURCES:%.c=$(SRCDIR)/%.c)
+MAIN_OBJS_C = $(MAIN_SOURCE:%.c=$(OBJDIR)/%.o)
 OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
+MAIN_DEPS_C = $(MAIN_OBJS_C:%.o=%.d)
 DEPS_C = $(OBJS_C:%.o=%.d)
 
 BINS = compton
@@ -132,10 +137,10 @@ MANPAGES_HTML = $(addsuffix .html,$(MANPAGES))
 src/.clang_complete: Makefile
 	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
 
-compton: $(OBJS_C)
+compton: $(MAIN_OBJS_C) $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
--include $(DEPS_C)
+-include $(MAIN_DEPS_C) $(DEPS_C)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(dir $@)
@@ -168,7 +173,8 @@ ifneq "$(DOCDIR)" ""
 endif
 
 clean:
-	@rm -f $(OBJS_C) compton $(MANPAGES) $(MANPAGES_HTML) .clang_complete
+	@rm -f $(OBJS_C) $(MAIN_OBJS_C) compton $(MANPAGES) $(MANPAGES_HTML) .clang_complete
+	@rm -f test/test test/test.o
 
 version:
 	@echo "$(COMPTON_VERSION)"
@@ -176,7 +182,7 @@ version:
 test/test.o: test/test.c
 	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -o $@ -c $<
 
-test/test: test/test.o obj/vector.o
+test/test: test/test.o $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test: test/test

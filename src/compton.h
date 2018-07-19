@@ -30,3 +30,8 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #endif
+
+session_t * session_init(session_t *ps_old, int argc, char **argv);
+void session_destroy(session_t *ps);
+
+void session_run(session_t *ps);
