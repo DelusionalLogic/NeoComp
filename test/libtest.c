@@ -272,7 +272,7 @@ uint32_t test_end() {
                     printf("\tBy floating equality test on %s %f==%f\n", result.eq_flt.name, result.eq_flt.actual, result.eq_flt.expected);
                     break;
                 case TEST_EQ_PTR:
-                    printf("\tBy equality test on %s %p==%p\n", result.ptr_eq.name, result.ptr_eq.actual, result.ptr_eq.expected);
+                    printf("\tBy pointer equality test on %s %p==%p\n", result.ptr_eq.name, result.ptr_eq.actual, result.ptr_eq.expected);
                     break;
                 case TEST_EQ_ARRAY:
                     printf("\tBy array equality test on %s\n", result.eq_arr.name);
