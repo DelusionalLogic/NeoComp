@@ -33,8 +33,8 @@ struct TestResultEqArr {
 
 struct TestResultEqStr {
     char* name;
-    char* actual;
-    char* expected;
+    size_t actual;
+    size_t expected;
     int length;
 };
 
@@ -48,6 +48,8 @@ enum TestResultType {
 
 struct TestResult {
     enum TestResultType type;
+    void* extra;
+    size_t extra_len;
     bool success;
     union {
         struct TestResultEq eq;
@@ -58,8 +60,15 @@ struct TestResult {
     };
 };
 
+enum TestOutcome {
+    OUTCOME_SUCCESS,
+    OUTCOME_ASSERT,
+    OUTCOME_INTERNAL_FAILURE,
+};
+
 struct Test {
     char* name;
+    enum TestOutcome outcome;
     struct TestResult res;
 };
 
@@ -100,4 +109,4 @@ struct TestName {
 
 void test_parseName(char* name, struct TestName* res);
 
-void test_end();
+uint32_t test_end();

@@ -395,7 +395,5 @@ int main(int argc, char** argv) {
     TEST(convert_xrects_to_relative_rect__keep_x_coordinate__converting);
     TEST(convert_xrects_to_relative_rect__translate_y_coordinate__converting);
 
-    test_end();
-
-    return 0;
+    return test_end();
 }
