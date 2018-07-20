@@ -547,6 +547,22 @@ wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
   };
 }
 
+void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector* mrects) {
+    // Convert the XRectangles into application specific (and non-scaled) rectangles
+    for(int i = 0; i < rect_count; i++) {
+        struct Rect* mrect = vector_reserve(mrects, 1);
+        mrect->pos.x = rects[i].x;
+        mrect->pos.y = extents->y - rects[i].y;
+
+        mrect->size.x = rects[i].width;
+        mrect->size.y = rects[i].height;
+
+        vec2_div(&mrect->pos, extents);
+        vec2_div(&mrect->size, extents);
+    }
+
+}
+
 static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
     if(w->face != NULL)
         face_unload_file(w->face);
@@ -563,18 +579,7 @@ static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
     Vector mrects;
     vector_init(&mrects, sizeof(struct Rect), rect_count);
 
-    // Convert the XRectangles into application specific (and non-scaled) rectangles
-    for(int i = 0; i < rect_count; i++) {
-        struct Rect* mrect = vector_reserve(&mrects, 1);
-        mrect->pos.x = rects[i].x;
-        mrect->pos.y = w->a.height - rects[i].y;
-
-        mrect->size.x = rects[i].width;
-        mrect->size.y = rects[i].height;
-
-        vec2_div(&mrect->pos, &extents);
-        vec2_div(&mrect->size, &extents);
-    }
+    convert_xrects_to_relative_rect(rects, rect_count, &extents, &mrects);
 
     struct face* face = malloc(sizeof(struct face));
     // Triangulate the rectangles into a triangle vertex stream

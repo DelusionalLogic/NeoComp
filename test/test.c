@@ -1,7 +1,11 @@
 #include "vector.h"
+#include "compton.h"
+#include "assets/face.h"
 
 #include <string.h>
 #include <stdio.h>
+
+#include <X11/Xlib.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -16,6 +20,12 @@ struct TestResultEq {
     char* name;
     uint64_t actual;
     uint64_t expected;
+};
+
+struct TestResultEqFlt {
+    char* name;
+    double actual;
+    double expected;
 };
 
 struct TestResultEqPtr {
@@ -37,6 +47,7 @@ struct TestResultEqStr {
 
 enum TestResultType {
     TEST_EQ,
+    TEST_EQ_FLOAT,
     TEST_EQ_PTR,
     TEST_EQ_ARRAY,
     TEST_EQ_STRING,
@@ -47,6 +58,7 @@ struct TestResult {
     bool success;
     union {
         struct TestResultEq eq;
+        struct TestResultEqFlt eq_flt;
         struct TestResultEqPtr ptr_eq;
         struct TestResultEqArr eq_arr;
         struct TestResultEqStr eq_str;
@@ -86,6 +98,20 @@ struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expecte
     return result;
 }
 
+struct TestResult assertEqFloat_internal(char* name, double value, double expected) {
+    // @IMPROVEMENT: Maybe we shouldn't be doing == for floats.
+    struct TestResult result = {
+        .type = TEST_EQ_FLOAT,
+        .success = value == expected,
+        .eq_flt = {
+            .name = name,
+            .actual = value,
+            .expected = expected,
+        }
+    };
+    return result;
+}
+
 struct TestResult assertEqArray_internal(char* name, void* var, void* value, size_t size) {
     struct TestResult result = {
         .type = TEST_EQ_ARRAY,
@@ -115,12 +141,14 @@ struct TestResult assertEqString_internal(char* name, char* var, char* value, si
     return result;
 }
 
-#define assertEq(var, val)               \
-    return _Generic((var),               \
-            void*: assertEqPtr_internal, \
-            char*: assertEqPtr_internal, \
-            uint64_t: assertEq_internal, \
-            char: assertEq_internal      \
+#define assertEq(var, val)                  \
+    return _Generic((var),                  \
+            void*: assertEqPtr_internal,    \
+            char*: assertEqPtr_internal,    \
+            uint64_t: assertEq_internal,    \
+            char: assertEq_internal,        \
+            float: assertEqFloat_internal,  \
+            double: assertEqFloat_internal  \
             )(#var, var, val)
 
 #define assertEqArray(var, val, len) \
@@ -459,6 +487,72 @@ static struct TestResult vector__keep_elements_after_new__circulating_forward() 
     assertEqString(substr, "def", 3);
 }
 
+static struct TestResult convert_xrects_to_relative_rect__keep_all_rects__converting() {
+    XRectangle rects[2] = {
+        {
+            .x = 0,
+            .y = 0,
+            .width = 100,
+            .height = 10,
+        },
+        {
+            .x = 0,
+            .y = 10,
+            .width = 100,
+            .height = 10,
+        },
+    };
+    Vector2 extents = {{ 100, 20 }};
+
+    Vector mrects;
+    vector_init(&mrects, sizeof(struct Rect), 2);
+
+    convert_xrects_to_relative_rect(rects, 2, &extents, &mrects);
+
+    assertEq(mrects.size, 2);
+}
+
+static struct TestResult convert_xrects_to_relative_rect__keep_x_coordinate__converting() {
+    XRectangle rects[2] = {
+        {
+            .x = 0,
+            .y = 0,
+            .width = 100,
+            .height = 10,
+        },
+    };
+    Vector2 extents = {{ 100, 10 }};
+
+    Vector mrects;
+    vector_init(&mrects, sizeof(struct Rect), 1);
+
+    convert_xrects_to_relative_rect(rects, 1, &extents, &mrects);
+
+    struct Rect* rect = vector_get(&mrects, 0);
+    assertEq(rect->pos.x, 0);
+}
+
+static struct TestResult convert_xrects_to_relative_rect__translate_y_coordinate__converting() {
+    XRectangle rects[2] = {
+        {
+            .x = 0,
+            .y = 0,
+            .width = 100,
+            .height = 10,
+        },
+    };
+    Vector2 extents = {{ 100, 10 }};
+
+    Vector mrects;
+    vector_init(&mrects, sizeof(struct Rect), 1);
+
+    convert_xrects_to_relative_rect(rects, 1, &extents, &mrects);
+
+    struct Rect* rect = vector_get(&mrects, 0);
+    // Y is also converted to relative coordinates 10/10 = 1
+    assertEq(rect->pos.y, 1);
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
 
@@ -493,6 +587,10 @@ int main(int argc, char** argv) {
     TEST(vector__shift_elements_between_positions_right__circulating_backward);
     TEST(vector__keep_elements_after_old__circulating_backward);
 
+    TEST(convert_xrects_to_relative_rect__keep_all_rects__converting);
+    TEST(convert_xrects_to_relative_rect__keep_x_coordinate__converting);
+    TEST(convert_xrects_to_relative_rect__translate_y_coordinate__converting);
+
     uint32_t failed = 0;
 
     size_t index;
@@ -520,6 +618,9 @@ int main(int argc, char** argv) {
         switch(result.type) {
             case TEST_EQ:
                 printf("\tBy equality test on %s %ld==%ld\n", result.eq.name, result.eq.actual, result.eq.expected);
+                break;
+            case TEST_EQ_FLOAT:
+                printf("\tBy floating equality test on %s %f==%f\n", result.eq_flt.name, result.eq_flt.actual, result.eq_flt.expected);
                 break;
             case TEST_EQ_PTR:
                 printf("\tBy equality test on %s %p==%p\n", result.ptr_eq.name, result.ptr_eq.actual, result.ptr_eq.expected);

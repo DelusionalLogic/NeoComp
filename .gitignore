@@ -12,6 +12,8 @@ install-sh
 missing
 stamp-h1
 compton
+*.o
+test/test
 obj/
 
 # Vim files

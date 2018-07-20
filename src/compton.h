@@ -31,6 +31,8 @@
 #include <errno.h>
 #endif
 
+void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector* mrects);
+
 session_t * session_init(session_t *ps_old, int argc, char **argv);
 void session_destroy(session_t *ps);
 
