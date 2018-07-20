@@ -29,6 +29,8 @@ SOURCES += blur.c shadow.c texture.c renderutil.c textureeffects.c
 SOURCES += framebuffer.c renderbuffer.c window.c windowlist.c xorg.c xtexture.c
 SOURCES += profiler/zone.c profiler/render.c
 
+TEST_SOURCES = $(wildcard test/*.c)
+
 # Text rendering
 SOURCES += text.c
 PACKAGES += freetype2
@@ -122,10 +124,15 @@ CFLAGS += -Wall -Wno-microsoft-anon-tag
 
 MAIN_SOURCE_C = $(MAIN_SOURCE:%.c=$(SRCDIR)/%.c)
 SOURCES_C = $(SOURCES:%.c=$(SRCDIR)/%.c)
+TEST_SOURCES_C = $(TEST_SOURCES)
+
 MAIN_OBJS_C = $(MAIN_SOURCE:%.c=$(OBJDIR)/%.o)
 OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
+TEST_OBJS_C = $(TEST_SOURCES_C:%.c=%.o)
+
 MAIN_DEPS_C = $(MAIN_OBJS_C:%.o=%.d)
 DEPS_C = $(OBJS_C:%.o=%.d)
+TEST_DEPS_C = $(TEST_OBJS_C:%.o=%.d)
 
 BINS = compton
 MANPAGES = man/compton.1
@@ -179,10 +186,10 @@ clean:
 version:
 	@echo "$(COMPTON_VERSION)"
 
-test/test.o: test/test.c
-	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -o $@ -c $<
+test/%.o: test/%.c
+	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -MMD -o $@ -c $<
 
-test/test: test/test.o $(OBJS_C)
+test/test: $(TEST_OBJS_C) $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test: test/test
