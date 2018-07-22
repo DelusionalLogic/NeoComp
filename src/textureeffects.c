@@ -364,6 +364,7 @@ bool textures_blur(Vector* datas, struct Framebuffer* buffer, int stength, bool 
             // Set up to draw to the secondary texture
             framebuffer_resetTarget(buffer);
             framebuffer_targetTexture(buffer, otherData->other);
+            framebuffer_targetRenderBuffer_stencil(buffer, data->depth);
             framebuffer_rebind(buffer);
 
             glViewport(0, 0, data->tex->size.x, data->tex->size.y);

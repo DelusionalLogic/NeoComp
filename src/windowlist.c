@@ -225,7 +225,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     glDisable(GL_STENCIL_TEST);
 
-    textures_blur(&blurDatas, &framebuffer, 2, false);
+    textures_blur(&blurDatas, &framebuffer, 3, false);
 
     vector_kill(&blurDatas);
 
@@ -339,16 +339,6 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
                     draw_tex(face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
 
                     view = old_view;
-                }
-            }
-        }
-
-        if(win_viewable(w)) {
-            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-                if(w->glx_blur_cache.damaged == true) {
-
-                    // Read destination pixels into a texture
-                    struct Texture* tex = &w->glx_blur_cache.texture[1];
 
                     glDisable(GL_BLEND);
 
@@ -374,7 +364,7 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
                         return;
                     }
 
-                    Matrix old_view = view;
+                    old_view = view;
                     view = mat4_orthogonal(0, w->glx_blur_cache.texture[0].size.x, 0, w->glx_blur_cache.texture[0].size.y, -1, 1);
                     glViewport(0, 0, w->glx_blur_cache.texture[0].size.x, w->glx_blur_cache.texture[0].size.y);
 
