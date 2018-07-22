@@ -16,7 +16,7 @@ SRCDIR ?= src
 LIBS = -lGL -lm -lrt -lJudy
 INCS = -Isrc/
 
-CFG = -std=gnu11 -fms-extensions
+CFG = -std=gnu11 -fms-extensions -flto
 
 PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
 
@@ -103,10 +103,10 @@ endif
 COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1 --date=short --pretty=format:%cd)
 CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""
 
-LDFLAGS ?= -Wl,-O1 -Wl,--as-needed -Wl,--export-dynamic
+LDFLAGS ?= -Wl,-O3 -Wl,--as-needed -Wl,--export-dynamic -flto
 
 ifeq "$(CFG_DEV)" ""
-  CFLAGS ?= -DNDEBUG -O2 -D_FORTIFY_SOURCE=2
+  CFLAGS ?= -DNDEBUG -O3 -D_FORTIFY_SOURCE=2
 else
   CC = clang
   export LD_ALTEXEC = /usr/bin/ld.gold

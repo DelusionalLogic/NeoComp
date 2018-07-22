@@ -95,28 +95,10 @@ typedef struct _options_t {
   char *display;
   /// Safe representation of display name.
   char *display_repr;
-  /// Whether to sync X drawing to avoid certain delay issues with
-  /// GLX backend.
-  bool xrender_sync;
-  /// Whether to avoid using stencil buffer under GLX backend. Might be
-  /// unsafe.
-  bool glx_no_stencil;
-  /// Whether to copy unmodified regions from front buffer.
-  bool glx_copy_from_front;
-  /// Whether to use glXCopySubBufferMESA() to update screen.
-  bool glx_use_copysubbuffermesa;
-  /// Whether to avoid rebinding pixmap on window damage.
-  bool glx_no_rebind_pixmap;
   /// GLX swap method we assume OpenGL uses.
   int glx_swap_method;
-  /// Whether to use GL_EXT_gpu_shader4 to (hopefully) accelerates blurring.
-  bool glx_use_gpushader4;
-  /// Custom fragment shader for painting windows, as a string.
-  char *glx_fshader_win_str;
   /// Whether to fork to background.
   bool fork_after_register;
-  /// Force painting of window content with blending.
-  bool force_win_blend;
   /// Blur Level
   int blur_level;
   /// Whether to unredirect all windows if a full-screen opaque window
@@ -145,8 +127,6 @@ typedef struct _options_t {
   Window benchmark_wid;
   /// A list of conditions of windows not to paint.
   c2_lptr_t *paint_blacklist;
-  /// Whether to avoid using XCompositeNameWindowPixmap(), for debugging.
-  bool no_name_pixmap;
   /// Whether to work under synchronized mode for debugging.
   bool synchronize;
   /// Whether to show all X errors.
@@ -157,11 +137,6 @@ typedef struct _options_t {
   // === VSync & software optimization ===
   /// VSync method to use;
   vsync_t vsync;
-  /// Whether to do VSync aggressively.
-  bool vsync_aggressive;
-  /// Whether to use glFinish() instead of glFlush() for (possibly) better
-  /// VSync yet probably higher CPU usage.
-  bool vsync_use_glfinish;
 
   // === Shadow ===
   /// Enable/disable shadow for specific window types.
@@ -170,13 +145,10 @@ typedef struct _options_t {
   double shadow_red, shadow_green, shadow_blue;
   int shadow_offset_x, shadow_offset_y;
   double shadow_opacity;
-  bool clear_shadow;
   /// Geometry of a region in which shadow is not painted on.
   geometry_t shadow_exclude_reg_geom;
   /// Shadow blacklist. A linked list of conditions.
   c2_lptr_t *shadow_blacklist;
-  /// Whether bounding-shaped window should be ignored.
-  bool shadow_ignore_shaped;
   /// Whether to respect _COMPTON_SHADOW.
   bool respect_prop_shadow;
   /// Whether to crop shadow to the very Xinerama screen.
@@ -185,8 +157,6 @@ typedef struct _options_t {
   // === Fading ===
   /// Enable/disable fading for specific window types.
   bool wintype_fade[NUM_WINTYPES];
-  /// Fading time delta. In milliseconds.
-  time_ms_t fade_delta;
   /// Whether to disable fading on window open/close.
   bool no_fading_openclose;
   /// Whether to disable fading on ARGB managed destroyed windows.
@@ -211,8 +181,6 @@ typedef struct _options_t {
   /// Whether to detect _NET_WM_OPACITY on client windows. Used on window
   /// managers that don't pass _NET_WM_OPACITY to frame windows.
   bool detect_client_opacity;
-  /// Step for pregenerating alpha pictures. 0.01 - 1.0.
-  double alpha_step;
 
   // === Other window processing ===
   /// Whether to blur background of semi-transparent / ARGB windows.

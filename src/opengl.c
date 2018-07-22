@@ -179,7 +179,7 @@ glx_init(session_t *ps, bool need_render) {
   // Ensure we have a stencil buffer. X Fixes does not guarantee rectangles
   // in regions don't overlap, so we must use stencil buffer to make sure
   // we don't paint a region for more than one time, I think?
-  if (need_render && !ps->o.glx_no_stencil) {
+  if (need_render) {
     GLint val = 0;
     glGetIntegerv(GL_STENCIL_BITS, &val);
     if (!val) {
@@ -212,15 +212,6 @@ glx_init(session_t *ps, bool need_render) {
       goto glx_init_end;
     }
 
-    if (ps->o.glx_use_copysubbuffermesa) {
-      psglx->glXCopySubBufferProc = (f_CopySubBuffer)
-        glXGetProcAddress((const GLubyte *) "glXCopySubBufferMESA");
-      if (!psglx->glXCopySubBufferProc) {
-        printf_errf("(): Failed to acquire glXCopySubBufferMESA().");
-        goto glx_init_end;
-      }
-    }
-
 #ifdef CONFIG_GLX_SYNC
     psglx->glFenceSyncProc = (f_FenceSync)
       glXGetProcAddress((const GLubyte *) "glFenceSync");
@@ -250,13 +241,11 @@ glx_init(session_t *ps, bool need_render) {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
 
-    if (!ps->o.glx_no_stencil) {
-      // Initialize stencil buffer
-      glClear(GL_STENCIL_BUFFER_BIT);
-      glDisable(GL_STENCIL_TEST);
-      glStencilMask(0x1);
-      glStencilFunc(GL_EQUAL, 0x1, 0x1);
-    }
+    // Initialize stencil buffer
+    glClear(GL_STENCIL_BUFFER_BIT);
+    glDisable(GL_STENCIL_TEST);
+    glStencilMask(0x1);
+    glStencilFunc(GL_EQUAL, 0x1, 0x1);
 
     // Clear screen
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -407,11 +396,6 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
  */
 void
 glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg) {
-  // Quit if we aren't using stencils
-  if (ps->o.glx_no_stencil) {
-    return;
-  }
-
   glx_mark(ps, 0xDEADBEEF, true);
 
   static XRectangle rect_blank = { .x = 0, .y = 0, .width = 0, .height = 0 };

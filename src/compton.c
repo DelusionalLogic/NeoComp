@@ -334,15 +334,9 @@ static bool vsync_opengl_swc_init(session_t *ps);
 
 static bool vsync_opengl_mswc_init(session_t *ps);
 
-static int vsync_opengl_wait(session_t *ps);
-
-static int vsync_opengl_oml_wait(session_t *ps);
-
 static void vsync_opengl_swc_deinit(session_t *ps);
 
 static void vsync_opengl_mswc_deinit(session_t *ps);
-
-static void vsync_wait(session_t *ps);
 
 static void redir_start(session_t *ps);
 static void redir_stop(session_t *ps);
@@ -420,12 +414,6 @@ static bool (* const (VSYNC_FUNCS_INIT[NUM_VSYNC]))(session_t *ps) = {
   [VSYNC_OPENGL_OML   ] = vsync_opengl_oml_init,
   [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_init,
   [VSYNC_OPENGL_MSWC  ] = vsync_opengl_mswc_init,
-};
-
-/// Function pointers to wait for VSync.
-static int (* const (VSYNC_FUNCS_WAIT[NUM_VSYNC]))(session_t *ps) = {
-  [VSYNC_OPENGL     ] = vsync_opengl_wait,
-  [VSYNC_OPENGL_OML ] = vsync_opengl_oml_wait,
 };
 
 /// Function pointers to deinitialize VSync.
@@ -3130,28 +3118,9 @@ usage(int ret) {
     "  performance. The switch name may change without prior\n"
     "  notifications.\n"
     "\n"
-    "--blur-background-frame\n"
-    "  Blur background of windows when the window frame is not opaque.\n"
-    "  Implies --blur-background. Bad in performance. The switch name\n"
-    "  may change.\n"
-    "\n"
     "--blur-background-fixed\n"
     "  Use fixed blur strength instead of adjusting according to window\n"
     "  opacity.\n"
-    "\n"
-    "--blur-kern matrix\n"
-    "  Specify the blur convolution kernel, with the following format:\n"
-    "    WIDTH,HEIGHT,ELE1,ELE2,ELE3,ELE4,ELE5...\n"
-    "  The element in the center must not be included, it will be forever\n"
-    "  1.0 or changing based on opacity, depending on whether you have\n"
-    "  --blur-background-fixed.\n"
-    "  A 7x7 Gaussian blur kernel looks like:\n"
-    "    --blur-kern '7,7,0.000003,0.000102,0.000849,0.001723,0.000849,0.000102,0.000003,0.000102,0.003494,0.029143,0.059106,0.029143,0.003494,0.000102,0.000849,0.029143,0.243117,0.493069,0.243117,0.029143,0.000849,0.001723,0.059106,0.493069,0.493069,0.059106,0.001723,0.000849,0.029143,0.243117,0.493069,0.243117,0.029143,0.000849,0.000102,0.003494,0.029143,0.059106,0.029143,0.003494,0.000102,0.000003,0.000102,0.000849,0.001723,0.000849,0.000102,0.000003'\n"
-    "  Up to 4 blur kernels may be specified, separated with semicolon, for\n"
-    "  multi-pass blur.\n"
-    "  May also be one the predefined kernels: 3x3box (default), 5x5box,\n"
-    "  7x7box, 3x3gaussian, 5x5gaussian, 7x7gaussian, 9x9gaussian,\n"
-    "  11x11gaussian.\n"
     "\n"
     "--blur-background-exclude condition\n"
     "  Exclude conditions for background blur.\n"
@@ -3177,32 +3146,6 @@ usage(int ret) {
     "  Crop shadow of a window fully on a particular Xinerama screen to the\n"
     "  screen.\n"
     "\n"
-#undef WARNING
-#define WARNING
-    "--glx-no-stencil\n"
-    "  GLX backend: Avoid using stencil buffer. Might cause issues\n"
-    "  when rendering transparent content. My tests show a 15% performance\n"
-    "  boost.\n"
-    "\n"
-    "--glx-copy-from-front\n"
-    "  GLX backend: Copy unmodified regions from front buffer instead of\n"
-    "  redrawing them all. My tests with nvidia-drivers show a 5% decrease\n"
-    "  in performance when the whole screen is modified, but a 30% increase\n"
-    "  when only 1/4 is. My tests on nouveau show terrible slowdown. Could\n"
-    "  work with --glx-swap-method but not --glx-use-copysubbuffermesa.\n"
-    "\n"
-    "--glx-use-copysubbuffermesa\n"
-    "  GLX backend: Use MESA_copy_sub_buffer to do partial screen update.\n"
-    "  My tests on nouveau shows a 200% performance boost when only 1/4 of\n"
-    "  the screen is updated. May break VSync and is not available on some\n"
-    "  drivers. Overrides --glx-copy-from-front.\n"
-    "\n"
-    "--glx-no-rebind-pixmap\n"
-    "  GLX backend: Avoid rebinding pixmap on window damage. Probably\n"
-    "  could improve performance on rapid window content changes, but is\n"
-    "  known to break things on some drivers (LLVMpipe, xf86-video-intel,\n"
-    "  etc.).\n"
-    "\n"
     "--glx-swap-method undefined/copy/exchange/3/4/5/6/buffer-age\n"
     "  GLX backend: GLX buffer swap method we assume. Could be\n"
     "  undefined (0), copy (1), exchange (2), 3-6, or buffer-age (-1).\n"
@@ -3211,22 +3154,6 @@ usage(int ret) {
     "  but safer (6 is still faster than 0). -1 means auto-detect using\n"
     "  GLX_EXT_buffer_age, supported by some drivers. Useless with\n"
     "  --glx-use-copysubbuffermesa.\n"
-    "\n"
-    "--glx-use-gpushader4\n"
-    "  GLX backend: Use GL_EXT_gpu_shader4 for some optimization on blur\n"
-    "  GLSL code. My tests on GTX 670 show no noticeable effect.\n"
-    "\n"
-    "--xrender-sync\n"
-    "  Attempt to synchronize client applications' draw calls with XSync(),\n"
-    "  used on GLX backend to ensure up-to-date window content is painted.\n"
-    "\n"
-    "--glx-fshader-win shader\n"
-    "  GLX backend: Use specified GLSL fragment shader for rendering window\n"
-    "  contents.\n"
-    "\n"
-    "--force-win-blend\n"
-    "  Force all windows to be painted with blending. Useful if you have a\n"
-    "  --glx-fshader-win that could turn opaque pixels transparent.\n"
     "\n"
 #undef WARNING
 #ifndef CONFIG_DBUS
@@ -3719,9 +3646,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // Get options from the configuration file. We don't do range checking
   // right now. It will be done later
 
-  // -D (fade_delta)
-  if (lcfg_lookup_int(&cfg, "fade-delta", &ival))
-    ps->o.fade_delta = ival;
   // -i (inactive_opacity)
   if (config_lookup_float(&cfg, "inactive-opacity", &dval))
     ps->o.inactive_opacity = normalize_d(dval) * 100.0;
@@ -3731,8 +3655,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --opacity-fade-time
   if (config_lookup_float(&cfg, "opacity-fade-time", &dval))
     ps->o.opacity_fade_time = dval;
-  // -z (clear_shadow)
-  lcfg_lookup_bool(&cfg, "clear-shadow", &ps->o.clear_shadow);
   // -c (shadow_enable)
   if (config_lookup_bool(&cfg, "shadow", &ival) && ival)
     wintype_arr_enable(ps->o.wintype_shadow);
@@ -3769,8 +3691,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --vsync
   if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
     exit(1);
-  // --alpha-step
-  config_lookup_float(&cfg, "alpha-step", &ps->o.alpha_step);
   // --use-ewmh-active-win
   lcfg_lookup_bool(&cfg, "use-ewmh-active-win",
       &ps->o.use_ewmh_active_win);
@@ -3803,30 +3723,15 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   parse_cfg_condlst(ps, &cfg, &ps->o.unredir_if_possible_blacklist, "unredir-if-possible-exclude");
   // --blur-background
   lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
-  // --blur-background-frame
-  lcfg_lookup_bool(&cfg, "blur-background-frame",
-      &ps->o.blur_background_frame);
   // --blur-background-fixed
   lcfg_lookup_bool(&cfg, "blur-background-fixed",
       &ps->o.blur_background_fixed);
   // --blur-level
   lcfg_lookup_int(&cfg, "blur-level", &ps->o.blur_level);
-  // --glx-no-stencil
-  lcfg_lookup_bool(&cfg, "glx-no-stencil", &ps->o.glx_no_stencil);
-  // --glx-copy-from-front
-  lcfg_lookup_bool(&cfg, "glx-copy-from-front", &ps->o.glx_copy_from_front);
-  // --glx-use-copysubbuffermesa
-  lcfg_lookup_bool(&cfg, "glx-use-copysubbuffermesa", &ps->o.glx_use_copysubbuffermesa);
-  // --glx-no-rebind-pixmap
-  lcfg_lookup_bool(&cfg, "glx-no-rebind-pixmap", &ps->o.glx_no_rebind_pixmap);
   // --glx-swap-method
   if (config_lookup_string(&cfg, "glx-swap-method", &sval)
       && !parse_glx_swap_method(ps, sval))
     exit(1);
-  // --glx-use-gpushader4
-  lcfg_lookup_bool(&cfg, "glx-use-gpushader4", &ps->o.glx_use_gpushader4);
-  // --xrender-sync
-  lcfg_lookup_bool(&cfg, "xrender-sync", &ps->o.xrender_sync);
   // Wintype settings
   {
     wintype_t i;
@@ -3892,8 +3797,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "vsync", required_argument, NULL, 270 },
     { "alpha-step", required_argument, NULL, 271 },
     { "paint-on-overlay", no_argument, NULL, 273 },
-    { "sw-opti", no_argument, NULL, 274 },
-    { "vsync-aggressive", no_argument, NULL, 275 },
     { "use-ewmh-active-win", no_argument, NULL, 276 },
     { "respect-prop-shadow", no_argument, NULL, 277 },
     { "unredir-if-possible", no_argument, NULL, 278 },
@@ -3902,41 +3805,29 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "detect-transient", no_argument, NULL, 281 },
     { "detect-client-leader", no_argument, NULL, 282 },
     { "blur-background", no_argument, NULL, 283 },
-    { "blur-background-frame", no_argument, NULL, 284 },
     { "blur-background-fixed", no_argument, NULL, 285 },
     { "dbus", no_argument, NULL, 286 },
     { "logpath", required_argument, NULL, 287 },
     { "invert-color-include", required_argument, NULL, 288 },
     { "opengl", no_argument, NULL, 289 },
-    { "glx-no-stencil", no_argument, NULL, 291 },
-    { "glx-copy-from-front", no_argument, NULL, 292 },
     { "benchmark", required_argument, NULL, 293 },
     { "benchmark-wid", required_argument, NULL, 294 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
     { "blur-background-exclude", required_argument, NULL, 296 },
     { "active-opacity", required_argument, NULL, 297 },
-    { "glx-no-rebind-pixmap", no_argument, NULL, 298 },
     { "glx-swap-method", required_argument, NULL, 299 },
     { "fade-exclude", required_argument, NULL, 300 },
     { "blur-level", required_argument, NULL, 301 },
-    { "glx-use-gpushader4", no_argument, NULL, 303 },
     { "opacity-rule", required_argument, NULL, 304 },
     { "shadow-exclude-reg", required_argument, NULL, 305 },
-    { "paint-exclude", required_argument, NULL, 306 },
     { "xinerama-shadow-crop", no_argument, NULL, 307 },
     { "unredir-if-possible-exclude", required_argument, NULL, 308 },
     { "unredir-if-possible-delay", required_argument, NULL, 309 },
     { "write-pid-path", required_argument, NULL, 310 },
-    { "vsync-use-glfinish", no_argument, NULL, 311 },
-    { "xrender-sync", no_argument, NULL, 312 },
-    { "xrender-sync-fence", no_argument, NULL, 313 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "no-fading-destroyed-argb", no_argument, NULL, 315 },
-    { "force-win-blend", no_argument, NULL, 316 },
-    { "glx-fshader-win", required_argument, NULL, 317 },
     { "version", no_argument, NULL, 318 },
     { "no-x-selection", no_argument, NULL, 319 },
-    { "no-name-pixmap", no_argument, NULL, 320 },
     { "reredir-on-root-change", no_argument, NULL, 731 },
     { "glx-reinit-on-root-change", no_argument, NULL, 732 },
     // Must terminate with a NULL entry
@@ -3965,8 +3856,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         printf("%s\n", COMPTON_VERSION);
         exit(0);
       }
-      else if (320 == o)
-        ps->o.no_name_pixmap = true;
       else if ('?' == o || ':' == o)
         usage(1);
     }
@@ -4024,7 +3913,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 318:
       case 320:
         break;
-      P_CASELONG('D', fade_delta);
       case 'c':
         shadow_enable = true;
         break;
@@ -4047,7 +3935,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 'T':
         ps->o.opacity_fade_time = atof(optarg);
         break;
-      P_CASEBOOL('z', clear_shadow);
       case 'n':
       case 'a':
       case 's':
@@ -4070,18 +3957,12 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       P_CASEBOOL(264, mark_ovredir_focused);
       P_CASEBOOL(265, no_fading_openclose);
-      P_CASEBOOL(266, shadow_ignore_shaped);
       P_CASEBOOL(268, detect_client_opacity);
       case 270:
         // --vsync
         if (!parse_vsync(ps, optarg))
           exit(1);
         break;
-      case 271:
-        // --alpha-step
-        ps->o.alpha_step = atof(optarg);
-        break;
-      P_CASEBOOL(275, vsync_aggressive);
       P_CASEBOOL(276, use_ewmh_active_win);
       P_CASEBOOL(277, respect_prop_shadow);
       P_CASEBOOL(278, unredir_if_possible);
@@ -4093,7 +3974,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       P_CASEBOOL(281, detect_transient);
       P_CASEBOOL(282, detect_client_leader);
       P_CASEBOOL(283, blur_background);
-      P_CASEBOOL(284, blur_background_frame);
       P_CASEBOOL(285, blur_background_fixed);
       P_CASEBOOL(286, dbus);
       case 287:
@@ -4104,14 +3984,11 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --invert-color-include
         condlst_add(ps, &ps->o.invert_color_list, optarg);
         break;
-      P_CASEBOOL(291, glx_no_stencil);
-      P_CASEBOOL(292, glx_copy_from_front);
       P_CASELONG(293, benchmark);
       case 294:
         // --benchmark-wid
         ps->o.benchmark_wid = strtol(optarg, NULL, 0);
         break;
-      P_CASEBOOL(295, glx_use_copysubbuffermesa);
       case 296:
         // --blur-background-exclude
         condlst_add(ps, &ps->o.blur_background_blacklist, optarg);
@@ -4120,7 +3997,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --active-opacity
         ps->o.active_opacity = (normalize_d(atof(optarg)) * 100.0);
         break;
-      P_CASEBOOL(298, glx_no_rebind_pixmap);
       case 299:
         // --glx-swap-method
         if (!parse_glx_swap_method(ps, optarg))
@@ -4131,7 +4007,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.fade_blacklist, optarg);
         break;
       P_CASELONG(301, blur_level);
-      P_CASEBOOL(303, glx_use_gpushader4);
       case 304:
         // --opacity-rule
         if (!parse_rule_opacity(ps, optarg))
@@ -4151,13 +4026,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --write-pid-path
         ps->o.write_pid_path = mstrcpy(optarg);
         break;
-      P_CASEBOOL(311, vsync_use_glfinish);
-      P_CASEBOOL(312, xrender_sync);
       P_CASEBOOL(315, no_fading_destroyed_argb);
-      P_CASEBOOL(316, force_win_blend);
-      case 317:
-        ps->o.glx_fshader_win_str = mstrcpy(optarg);
-        break;
       P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
       P_CASEBOOL(732, glx_reinit_on_root_change);
@@ -4173,10 +4042,8 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   free(lc_numeric_old);
 
   // Range checking and option assignments
-  ps->o.fade_delta = max_i(ps->o.fade_delta, 1);
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
-  ps->o.alpha_step = normalize_d_range(ps->o.alpha_step, 0.01, 1.0);
   if (shadow_enable)
     wintype_arr_enable(ps->o.wintype_shadow);
   ps->o.wintype_shadow[WINTYPE_DESKTOP] = false;
@@ -4190,10 +4057,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     ps->o.wintype_opacity[WINTYPE_DROPDOWN_MENU] = cfgtmp.menu_opacity * 100;
     ps->o.wintype_opacity[WINTYPE_POPUP_MENU] = cfgtmp.menu_opacity * 100;
   }
-
-  // --blur-background-frame implies --blur-background
-  if (ps->o.blur_background_frame)
-    ps->o.blur_background = true;
 
   // Other variables determined by options
 
@@ -4292,36 +4155,6 @@ vsync_opengl_mswc_init(session_t *ps) {
   return true;
 }
 
-/**
- * Wait for next VSync, OpenGL method.
- */
-static int
-vsync_opengl_wait(session_t *ps) {
-  unsigned vblank_count = 0;
-
-  ps->psglx->glXGetVideoSyncSGI(&vblank_count);
-  ps->psglx->glXWaitVideoSyncSGI(2, (vblank_count + 1) % 2, &vblank_count);
-  // I see some code calling glXSwapIntervalSGI(1) afterwards, is it required?
-
-  return 0;
-}
-
-/**
- * Wait for next VSync, OpenGL OML method.
- *
- * https://mail.gnome.org/archives/clutter-list/2012-November/msg00031.html
- */
-static int
-vsync_opengl_oml_wait(session_t *ps) {
-  int64_t ust = 0, msc = 0, sbc = 0;
-
-  ps->psglx->glXGetSyncValuesOML(ps->dpy, ps->reg_win, &ust, &msc, &sbc);
-  ps->psglx->glXWaitForMscOML(ps->dpy, ps->reg_win, 0, 2, (msc + 1) % 2,
-      &ust, &msc, &sbc);
-
-  return 0;
-}
-
 static void
 vsync_opengl_swc_deinit(session_t *ps) {
   // The standard says it doesn't accept 0, but in fact it probably does
@@ -4347,18 +4180,6 @@ vsync_init(session_t *ps) {
   }
   else
     return true;
-}
-
-/**
- * Wait for next VSync.
- */
-static void
-vsync_wait(session_t *ps) {
-  if (!ps->o.vsync)
-    return;
-
-  if (VSYNC_FUNCS_WAIT[ps->o.vsync])
-    VSYNC_FUNCS_WAIT[ps->o.vsync](ps);
 }
 
 /**
@@ -4414,7 +4235,7 @@ init_overlay(session_t *ps) {
 static bool
 init_filters(session_t *ps) {
   // Blur filter
-  if (ps->o.blur_background || ps->o.blur_background_frame) {
+  if (ps->o.blur_background) {
       if (!glx_init_blur(ps))
           return false;
   }
@@ -4795,8 +4616,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .o = {
       .config_file = NULL,
       .display = NULL,
-      .glx_no_stencil = false,
-      .glx_copy_from_front = false,
       .mark_wmwin_focused = false,
       .mark_ovredir_focused = false,
       .fork_after_register = false,
@@ -4813,16 +4632,13 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .logpath = NULL,
 
       .vsync = VSYNC_NONE,
-      .vsync_aggressive = false,
 
       .wintype_shadow = { false },
-      .clear_shadow = false,
       .shadow_blacklist = NULL,
       .respect_prop_shadow = false,
       .xinerama_shadow_crop = false,
 
       .wintype_fade = { false },
-      .fade_delta = 10,
       .no_fading_openclose = false,
       .no_fading_destroyed_argb = false,
       .fade_blacklist = NULL,
@@ -4833,10 +4649,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .active_opacity = 100.0,
       .opacity_fade_time = 1000.0,
       .detect_client_opacity = false,
-      .alpha_step = 0.03,
 
       .blur_background = false,
-      .blur_background_frame = false,
       .blur_background_fixed = false,
       .blur_background_blacklist = NULL,
       .inactive_dim = 0.0,
@@ -5164,7 +4978,6 @@ void session_destroy(session_t *ps) {
   free(ps->pfds_read);
   free(ps->pfds_write);
   free(ps->pfds_except);
-  free(ps->o.glx_fshader_win_str);
   free_xinerama_info(ps);
 
   xorgContext_delete(&ps->psglx->xcontext);
@@ -5336,16 +5149,7 @@ void session_run(session_t *ps) {
             }
         }
 
-        /* // Wait for VBlank. We could do it aggressively (send the painting */
-        /* // request and XFlush() on VBlank) or conservatively (send the request */
-        /* // only on VBlank). */
-        /* if (!ps->o.vsync_aggressive) */
-        /*   vsync_wait(ps); */
-
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));
-
-        if (ps->o.vsync_aggressive)
-            vsync_wait(ps);
 
         if (ps->idling)
             ps->fade_time = 0L;
