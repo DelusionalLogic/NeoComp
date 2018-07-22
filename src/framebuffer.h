@@ -37,6 +37,7 @@ void framebuffer_targetRenderBuffer_stencil(struct Framebuffer* framebuffer, str
 void framebuffer_targetBack(struct Framebuffer* framebuffer);
 
 int framebuffer_bind(struct Framebuffer* framebuffer);
+int framebuffer_rebind(struct Framebuffer* framebuffer);
 
 int framebuffer_bind_read(struct Framebuffer* framebuffer);
 

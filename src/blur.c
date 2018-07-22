@@ -38,7 +38,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 #ifdef DEBUG_GLX
     printf_dbgf("(): %f, %f, %f, %f\n", pos->x, pos->y, size->x, size->y);
 #endif
-    const bool have_scissors = glIsEnabled(GL_SCISSOR_TEST);
     const bool have_stencil = glIsEnabled(GL_STENCIL_TEST);
 
     struct Texture* tex_scr = &pbc->texture[0];
@@ -46,8 +45,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
     glViewport(0, 0, ps->root_width, ps->root_height);
 
     // Lets just make sure we write this back into the stenctil buffer
-    if (have_scissors)
-        glEnable(GL_SCISSOR_TEST);
     if (have_stencil)
         glEnable(GL_STENCIL_TEST);
 
@@ -57,8 +54,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         printf_errf("Shader was not a passthough shader");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
-        if (have_scissors)
-            glEnable(GL_SCISSOR_TEST);
         if (have_stencil)
             glEnable(GL_STENCIL_TEST);
         return false;
@@ -82,8 +77,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
         glDrawBuffers(1, DRAWBUFS);
 
         // Reenable those configs saved at the start
-        if (have_scissors)
-            glEnable(GL_SCISSOR_TEST);
         if (have_stencil)
             glEnable(GL_STENCIL_TEST);
     }
@@ -111,8 +104,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
-    if (have_scissors)
-        glEnable(GL_SCISSOR_TEST);
     if (have_stencil)
         glEnable(GL_STENCIL_TEST);
 

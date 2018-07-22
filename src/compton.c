@@ -886,24 +886,24 @@ paint_preprocess(session_t *ps, Vector* paints) {
                     unredir_possible = true;
             }
 
-            zone_enter(&ZONE_fetch_prop);
-            // If the window doesn't want to be redirected, then who are we to argue
-            if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) {
-                winprop_t prop = wid_get_prop(ps, w->id, ps->atoms.atom_bypass, 1L, XA_CARDINAL, 32);
-                // A value of 1 means that the window has taken special care to ask
-                // us not to do compositing.It would be great if we could just
-                // unredirect this specific window, or if we could just run
-                // a fastpath to pump out frames as fast as possible. I don't know if
-                // we can unredirect the specific window, and doing a fastpath will
-                // require some more refactoring.
-                // For now we just assume the developer really means it and
-                // unredirect the entire screen. -Delusional 20/03-2018
-                if(prop.nitems && *prop.data.p32 == 1) {
-                    unredir_possible = true;
-                }
-                free_winprop(&prop);
-            }
-            zone_leave(&ZONE_fetch_prop);
+            /* zone_enter(&ZONE_fetch_prop); */
+            /* // If the window doesn't want to be redirected, then who are we to argue */
+            /* if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) { */
+            /*     winprop_t prop = wid_get_prop(ps, w->id, ps->atoms.atom_bypass, 1L, XA_CARDINAL, 32); */
+            /*     // A value of 1 means that the window has taken special care to ask */
+            /*     // us not to do compositing.It would be great if we could just */
+            /*     // unredirect this specific window, or if we could just run */
+            /*     // a fastpath to pump out frames as fast as possible. I don't know if */
+            /*     // we can unredirect the specific window, and doing a fastpath will */
+            /*     // require some more refactoring. */
+            /*     // For now we just assume the developer really means it and */
+            /*     // unredirect the entire screen. -Delusional 20/03-2018 */
+            /*     if(prop.nitems && *prop.data.p32 == 1) { */
+            /*         unredir_possible = true; */
+            /*     } */
+            /*     free_winprop(&prop); */
+            /* } */
+            /* zone_leave(&ZONE_fetch_prop); */
 
             // Reset flags
             w->flags = 0;
@@ -987,6 +987,7 @@ paint_all(session_t *ps, Vector* paints) {
   glDisable(GL_DEPTH_TEST);
 
 
+  glEnable(GL_DEPTH_TEST);
   {
       size_t index;
       win_id* w_id = vector_getFirst(paints, &index);
@@ -997,6 +998,7 @@ paint_all(session_t *ps, Vector* paints) {
           w_id = vector_getNext(paints, &index);
       }
   }
+  glDisable(GL_DEPTH_TEST);
 }
 
 static wintype_t
@@ -1712,6 +1714,16 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
     w->a.x = ce->x;
     w->a.y = ce->y;
+
+    // We need to damage all the blurs on top of this one, because the
+    // DamageNotify event might arrive a frame late (which looks bad)
+    for (win *t = w; t; t = t->prev_trans) {
+        // @CLEANUP: Ideally we should just recalculate the blur right now. We need
+        // to render the windows behind this though, and that takes time. For now we
+        // just do it indirectly
+        if(win_overlap(w, t))
+            t->glx_blur_cache.damaged = true;
+    }
 
     if (w->a.width != ce->width || w->a.height != ce->height
             || w->a.border_width != ce->border_width) {

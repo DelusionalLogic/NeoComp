@@ -94,6 +94,7 @@ typedef struct _win {
   Window id;
   /// Window attributes.
   XWindowAttributes a;
+  float z;
 
   struct face* face;
 

@@ -406,10 +406,12 @@ struct shader_program* shader_program_load_file(const char* path) {
         }
     }
 
+    printf("Uniforms in shader \"%s\"\n", program->shader_type_info->name);
     // Bind the uniforms to the shader program
     for(int i = 0; i < uniform_cursor; i++) {
         struct shader_value* uniform = &program->uniforms[i];
         uniform->gl_uniform = glGetUniformLocation(program->gl_program, names[i]);
+        printf("\tUniform \"%s\" has id %d\n", names[i], uniform->gl_uniform);
     }
 
     return program;
@@ -446,23 +448,25 @@ static void set_shader_uniform(const struct shader_value* uniform, const union s
     }
 }
 
-void shader_use(const struct shader_program* shader) {
+void shader_use(struct shader_program* shader) {
     for(size_t i = 0; i < shader->uniforms_num; i++) {
         const struct shader_value* uniform = &shader->uniforms[i];
         if(uniform->required && !uniform->set) {
             printf("WARNING: Required uniform %zu not set in %s\n", i, shader->shader_type_info->name);
         }
+        assert(!uniform->required || uniform->set);
     }
 
     glUseProgram(shader->gl_program);
 
     for(size_t i = 0; i < shader->uniforms_num; i++) {
-        const struct shader_value* uniform = &shader->uniforms[i];
+        struct shader_value* uniform = &shader->uniforms[i];
         if(uniform->set) {
             set_shader_uniform(uniform, &uniform->value);
         } else if(!uniform->required) {
             set_shader_uniform(uniform, &uniform->stock);
         }
+        shader_clear_future_uniform(uniform);
     }
 }
 
@@ -505,4 +509,8 @@ void shader_set_future_uniform_vec3(struct shader_value* uniform, const Vector3*
 void shader_set_future_uniform_sampler(struct shader_value* uniform, int value) {
     uniform->value.sampler = value;
     uniform->set = true;
+}
+
+void shader_clear_future_uniform(struct shader_value* uniform) {
+    uniform->set = false;
 }

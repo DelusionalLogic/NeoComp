@@ -61,100 +61,6 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
     return glpos;
 }
 
-bool win_calculate_blur(struct blur* blur, session_t* ps, win* w) {
-    Vector2 pos = {{w->a.x, w->a.y}};
-    Vector2 size = {{w->widthb, w->heightb}};
-
-    // Read destination pixels into a texture
-    struct Texture* tex = &w->glx_blur_cache.texture[1];
-
-    Vector2 glpos = X11_rectpos_to_gl(ps, &pos, &size);
-    /* texture_read_from(tex, 0, GL_BACK, &glpos, &size); */
-
-    glEnable(GL_BLEND);
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-
-    framebuffer_resetTarget(&blur->fbo);
-    framebuffer_targetRenderBuffer_stencil(&blur->fbo, &w->glx_blur_cache.stencil);
-    framebuffer_targetTexture(&blur->fbo, tex);
-    framebuffer_bind(&blur->fbo);
-
-    glDepthMask(GL_TRUE);
-
-    glClearColor(1.0, 0.0, 1.0, 0.0);
-
-    glEnable(GL_DEPTH_TEST);
-
-    glClearDepth(0.0);
-    glDepthFunc(GL_GREATER);
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glViewport(0, 0, size.x, size.y);
-    Matrix old_view = view;
-    view = mat4_orthogonal(glpos.x, glpos.x + size.x, glpos.y, glpos.y + size.y, -1, 1);
-
-    float z = 0;
-    windowlist_drawoverlap(ps, w->next_trans, w, &z);
-
-    Vector2 root_size = {{ps->root_width, ps->root_height}};
-
-    struct shader_program* global_program = assets_load("passthough.shader");
-    if(global_program->shader_type_info != &passthough_info) {
-        printf_errf("Shader was not a passthough shader\n");
-        return false;
-    }
-
-    struct face* face = assets_load("window.face");
-    draw_tex(face, &ps->root_texture.texture, &VEC3_ZERO, &root_size);
-
-    view = old_view;
-
-    glDisable(GL_BLEND);
-
-    int level = ps->o.blur_level;
-
-    struct TextureBlurData blurData = {
-        .buffer = &blur->fbo,
-        .swap = &w->glx_blur_cache.texture[0],
-    };
-    // Do the blur
-    if(!texture_blur(&blurData, tex, level, false)) {
-        printf_errf("Failed blurring the background texture");
-        return false;
-    }
-
-    // Flip the blur back into texture[0] to clip to the stencil
-    framebuffer_resetTarget(&blur->fbo);
-    framebuffer_targetTexture(&blur->fbo, &w->glx_blur_cache.texture[0]);
-    framebuffer_targetRenderBuffer_stencil(&blur->fbo, &w->stencil);
-    if(framebuffer_bind(&blur->fbo) != 0) {
-        printf("Failed binding framebuffer to clip blur\n");
-        return false;
-    }
-
-    old_view = view;
-    view = mat4_orthogonal(0, w->glx_blur_cache.texture[0].size.x, 0, w->glx_blur_cache.texture[0].size.y, -1, 1);
-    glViewport(0, 0, w->glx_blur_cache.texture[0].size.x, w->glx_blur_cache.texture[0].size.y);
-
-    glEnable(GL_BLEND);
-    glClearColor(0.0, 0.0, 0.0, 0.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glEnable(GL_STENCIL_TEST);
-
-    glStencilMask(0);
-    glStencilFunc(GL_EQUAL, 1, 0xFF);
-
-    draw_tex(face, &w->glx_blur_cache.texture[1], &VEC3_ZERO, &w->glx_blur_cache.texture[0].size);
-
-    glDisable(GL_STENCIL_TEST);
-    view = old_view;
-
-    return true;
-}
-
 void win_start_opacity(win* w, double opacity, double duration) {
     // Fast path for skipping fading
     if(duration == 0) {
@@ -540,6 +446,19 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         free(text);
     }
 
+    {
+        char* text;
+        asprintf(&text, "z: %f", w->z);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -571,7 +490,7 @@ void win_postdraw(session_t* ps, win* w, float z) {
     if(win_viewable(w)) {
         // Painting shadow
         if (w->shadow) {
-            win_paint_shadow(ps, w, &glPos, &size, z + 0.00001);
+            win_paint_shadow(ps, w, &glPos, &size, w->z);
         }
     }
 }

@@ -61,6 +61,13 @@ void framebuffer_targetBack(struct Framebuffer* framebuffer) {
 int framebuffer_bind(struct Framebuffer* framebuffer) {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer->gl_fbo);
 
+    if(framebuffer->target == 0)
+        return 0;
+
+    return framebuffer_rebind(framebuffer);
+}
+
+int framebuffer_rebind(struct Framebuffer* framebuffer) {
     GLenum DRAWBUFS[4] = {0};
     size_t i = 0;
 
@@ -86,7 +93,6 @@ int framebuffer_bind(struct Framebuffer* framebuffer) {
     }
 
     glDrawBuffers(1, DRAWBUFS);
-
     return 0;
 }
 
