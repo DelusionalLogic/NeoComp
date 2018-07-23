@@ -180,7 +180,7 @@ ifneq "$(DOCDIR)" ""
 endif
 
 clean:
-	@rm -f $(OBJS_C) $(MAIN_OBJS_C) compton $(MANPAGES) $(MANPAGES_HTML) .clang_complete
+	@rm -f $(OBJS_C) $(DEPS_C) $(MAIN_OBJS_C) $(MAIN_DEPS_C) compton $(MANPAGES) $(MANPAGES_HTML) .clang_complete
 	@rm -f test/test test/test.o
 
 version:
