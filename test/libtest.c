@@ -4,12 +4,15 @@
 #include <sys/wait.h>
 
 Vector results;
-int test_fd;
 
-void write_complete(void* buf, size_t size) {
+// Per test data
+int test_fd;
+static bool test_sentAssertSignal = false;
+
+void write_complete(int fd, void* buf, size_t size) {
     size_t written = 0;
     while(size - written > 0) {
-        ssize_t ret = write(test_fd, buf + written, size - written);
+        ssize_t ret = write(fd, buf + written, size - written);
         if(ret >= 0) {
             written += ret;
         } else {
@@ -18,9 +21,22 @@ void write_complete(void* buf, size_t size) {
     }
 }
 
-void finalize_assert(struct TestResult* result) {
-    write_complete(result, sizeof(struct TestResult));
-    write_complete(result->extra, result->extra_len);
+void sendResult(int fd, struct TestResult* result) {
+    if(!test_sentAssertSignal) {
+        static const uint8_t assertBuf = {0};
+        write_complete(fd, &assertBuf, 1);
+    }
+    write_complete(fd, result, sizeof(struct TestResult));
+    write_complete(fd, result->extra, result->extra_len);
+}
+
+struct TestResult assertNo_internal() {
+    struct TestResult result = {
+        .type = TEST_NO,
+        .success = false,
+    };
+
+    return result;
 }
 
 struct TestResult assertEqPtr_internal(char* name, void* value, void* expected) {
@@ -33,7 +49,7 @@ struct TestResult assertEqPtr_internal(char* name, void* value, void* expected) 
             .expected = expected,
         }
     };
-    finalize_assert(&result);
+
     return result;
 }
 
@@ -47,7 +63,7 @@ struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expecte
             .expected = expected,
         }
     };
-    finalize_assert(&result);
+
     return result;
 }
 
@@ -62,7 +78,7 @@ struct TestResult assertEqFloat_internal(char* name, double value, double expect
             .expected = expected,
         }
     };
-    finalize_assert(&result);
+
     return result;
 }
 
@@ -73,8 +89,8 @@ struct TestResult assertEqArray_internal(char* name, void* var, void* value, siz
             .name = name,
         }
     };
+
     result.success = memcmp(var, value, size) == 0;
-    finalize_assert(&result);
     return result;
 }
 
@@ -96,7 +112,6 @@ struct TestResult assertEqString_internal(char* name, char* var, char* value, si
     memcpy(result.extra + result.eq_str.expected, value, size);
 
     result.success = memcmp(var, value, size) == 0;
-    finalize_assert(&result);
     return result;
 }
 
@@ -132,26 +147,43 @@ void test_parseName(char* name, struct TestName* res) {
     res->when[when_len] = '\0';
 }
 
-void test_receiveData(int fd, struct Test* test) {
+int receiveAll(int fd, void* buffer, size_t bufferSize) {
     // @HACK: Right now we just keep reading until we either error out or
     // receive 0. We need some errorhandling instead
     size_t offset = 0;
-    while(sizeof(test->res) - offset > 0) {
-        ssize_t ret = read(fd, ((void*)&test->res) + offset, sizeof(test->res) - offset);
+    while(bufferSize - offset > 0) {
+        ssize_t ret = read(fd, buffer + offset, bufferSize - offset);
         if(ret == 0)
             break;
 
         if(ret < 0) {
-            test->outcome = OUTCOME_INTERNAL_FAILURE;
-            return;
+            return 1;
         }
 
         offset += ret;
+    }
+    return 0;
+}
+
+void receiveResult(int fd, struct Test* test) {
+    // The first byte we receive indicates if we wanted to assert
+    uint8_t shouldAssert = 0;
+    if(receiveAll(fd, &shouldAssert, 1) != 0) {
+        test->outcome = OUTCOME_INTERNAL_FAILURE;
+        return;
+    }
+    test->crashExpected = shouldAssert != 0;
+
+    // The second part is the result structure itself
+    if(receiveAll(fd, &test->res, sizeof(test->res)) != 0) {
+        test->outcome = OUTCOME_INTERNAL_FAILURE;
+        return;
     }
     // The testresult we just received will have a pointer to the extra data in
     // the other process. Reset it here.
     test->res.extra = NULL;
 
+    // Lastly we get the extra data
     // @HACK: As a bit of a hack. I'm just sending the struct first, and then
     // some dynamic block of memory after. This works fine, but it might be
     // a bit brittle.
@@ -161,21 +193,20 @@ void test_receiveData(int fd, struct Test* test) {
             test->outcome = OUTCOME_INTERNAL_FAILURE;
             return;
         }
-        offset = 0;
-        while(test->res.extra_len - offset > 0) {
-            ssize_t ret = read(fd, test->res.extra + offset, test->res.extra_len - offset);
-            if(ret == 0)
-                break;
-
-            if(ret < 0) {
+        if(receiveAll(fd, test->res.extra, test->res.extra_len) != 0) {
                 test->outcome = OUTCOME_INTERNAL_FAILURE;
                 free(test->res.extra);
                 return;
-            }
-
-            offset += ret;
         }
     }
+}
+
+void test_shouldAssert() {
+    if(!test_sentAssertSignal) {
+        uint8_t assertBuf[1] = {1};
+        write_complete(test_fd, &assertBuf, 1);
+    }
+    test_sentAssertSignal = true;
 }
 
 void test_run(char* name, test_func func) {
@@ -194,7 +225,9 @@ void test_run(char* name, test_func func) {
         close(fds[0]);
 
         test_fd = fds[1];
-        func();
+
+        struct TestResult result = func();
+        sendResult(fds[1], &result);
 
         close(fds[1]);
 
@@ -208,7 +241,7 @@ void test_run(char* name, test_func func) {
         .outcome = OUTCOME_SUCCESS,
     };
 
-    test_receiveData(fds[0], &test);
+    receiveResult(fds[0], &test);
 
     int status;
     waitpid(pid, &status, 0);
@@ -238,7 +271,13 @@ uint32_t test_end() {
     while(test != NULL) {
         bool success;
         if(test->outcome == OUTCOME_SUCCESS) {
-            success = test->res.success;
+            if(!test->crashExpected) {
+                success = test->res.success;
+            } else {
+                success = false;
+            }
+        } else if(test->outcome == OUTCOME_ASSERT) {
+            success = test->crashExpected;
         } else {
             success = false;
         }
@@ -285,8 +324,10 @@ uint32_t test_end() {
                     // It's a test script, so who cares?
                     break;
             }
-        } else {
+        } else if(test->outcome == OUTCOME_ASSERT) {
             printf("\tBy crash during test\n");
+        } else {
+            printf("\tInternal framework error in test\n");
         }
         test = vector_getNext(&results, &index);
     }

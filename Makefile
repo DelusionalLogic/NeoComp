@@ -6,8 +6,8 @@ CC ?= gcc
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man/man1
-APPDIR ?= $(PREFIX)/share/applications
-ICODIR ?= $(PREFIX)/share/icons/hicolor/
+CFGDIR ?= /etc/neocomp
+ASTDIR ?= $(CFGDIR)/assets
 
 OBJDIR ?= obj
 SRCDIR ?= src
@@ -132,17 +132,17 @@ MAIN_DEPS_C = $(MAIN_OBJS_C:%.o=%.d)
 DEPS_C = $(OBJS_C:%.o=%.d)
 TEST_DEPS_C = $(TEST_OBJS_C:%.o=%.d)
 
-BINS = compton
-MANPAGES = man/compton.1
+BINS = neocomp
+MANPAGES = man/neocomp.1
 MANPAGES_HTML = $(addsuffix .html,$(MANPAGES))
 
 # === Recipes ===
-.DEFAULT_GOAL := compton
+.DEFAULT_GOAL := neocomp
 
 src/.clang_complete: Makefile
 	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
 
-compton: $(MAIN_OBJS_C) $(OBJS_C)
+neocomp: $(MAIN_OBJS_C) $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
 -include $(MAIN_DEPS_C) $(DEPS_C)
@@ -160,8 +160,9 @@ man/%.1.html: man/%.1.asciidoc
 docs: $(MANPAGES) $(MANPAGES_HTML)
 
 install: $(BINS) docs
-	@install -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)" "$(DESTDIR)$(APPDIR)"
-	@install -m755 $(BINS) "$(DESTDIR)$(BINDIR)"/
+	@install -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(MANDIR)" "$(DESTDIR)$(ASTDIR)"
+	@install -m755 $(BINS) "$(DESTDIR)$(BINDIR)"
+	@install -m755 assets/* "$(DESTDIR)$(ASTDIR)"
 ifneq "$(MANPAGES)" ""
 	@install -m644 $(MANPAGES) "$(DESTDIR)$(MANDIR)"/
 endif
@@ -171,14 +172,14 @@ ifneq "$(DOCDIR)" ""
 endif
 
 uninstall:
-	@rm -f "$(DESTDIR)$(BINDIR)/compton"
-	@rm -f $(addprefix "$(DESTDIR)$(MANDIR)"/, compton.1 compton-trans.1)
+	@rm -f "$(DESTDIR)$(BINDIR)/neocomp"
+	@rm -f $(addprefix "$(DESTDIR)$(MANDIR)"/, neocomp.1)
 ifneq "$(DOCDIR)" ""
 	@rm -f $(addprefix "$(DESTDIR)$(DOCDIR)"/, README.md)
 endif
 
 clean:
-	@rm -f $(OBJS_C) $(DEPS_C) $(MAIN_OBJS_C) $(MAIN_DEPS_C) compton $(MANPAGES) $(MANPAGES_HTML) .clang_complete
+	@rm -f $(OBJS_C) $(DEPS_C) $(MAIN_OBJS_C) $(MAIN_DEPS_C) neocomp $(MANPAGES) $(MANPAGES_HTML) .clang_complete
 	@rm -f test/test test/test.o
 
 version:

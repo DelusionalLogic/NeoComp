@@ -38,7 +38,11 @@ struct TestResultEqStr {
     int length;
 };
 
+struct TestResultAssert {
+};
+
 enum TestResultType {
+    TEST_NO,
     TEST_EQ,
     TEST_EQ_FLOAT,
     TEST_EQ_PTR,
@@ -47,11 +51,13 @@ enum TestResultType {
 };
 
 struct TestResult {
-    enum TestResultType type;
     void* extra;
     size_t extra_len;
     bool success;
+
+    enum TestResultType type;
     union {
+        struct TestResultAssert assert;
         struct TestResultEq eq;
         struct TestResultEqFlt eq_flt;
         struct TestResultEqPtr ptr_eq;
@@ -68,10 +74,12 @@ enum TestOutcome {
 
 struct Test {
     char* name;
+    bool crashExpected;
     enum TestOutcome outcome;
     struct TestResult res;
 };
 
+struct TestResult assertNo_internal();
 struct TestResult assertEqPtr_internal(char* name, void* value, void* expected);
 struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expected);
 struct TestResult assertEqFloat_internal(char* name, double value, double expected);
@@ -94,6 +102,9 @@ struct TestResult assertEqString_internal(char* name, char* var, char* value, si
 #define assertEqString(var, val, len) \
     return assertEqString_internal(#var, var, val, len)
 
+#define assertNo() \
+    return assertNo_internal()
+
 typedef struct TestResult (*test_func)();
 
 void test_run(char* name, test_func func);
@@ -106,6 +117,8 @@ struct TestName {
     char* will;
     char* when;
 };
+
+void test_shouldAssert();
 
 void test_parseName(char* name, struct TestName* res);
 

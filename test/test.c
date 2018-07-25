@@ -63,6 +63,19 @@ static struct TestResult vector__return_a_pointer_to_the_second_value__getting_i
     assertEq(*value, 2);
 }
 
+static struct TestResult vector__assert__getting_out_of_bounds() {
+    test_shouldAssert();
+
+    Vector vector;
+    vector_init(&vector, sizeof(char), 2);
+    vector_putListBack(&vector, "\0\2", 2);
+
+    char* value = vector_get(&vector, 2);
+
+    // Should never happen;
+    assertNo();
+}
+
 static struct TestResult vector__return_null__getting_out_of_bounds() {
     Vector vector;
     vector_init(&vector, sizeof(char), 2);
@@ -367,8 +380,13 @@ int main(int argc, char** argv) {
     TEST(vector__return_a_pointer_to_the_value__getting_an_existing_index);
     TEST(vector__return_a_pointer_to_the_first_value__getting_index_0);
     TEST(vector__return_a_pointer_to_the_second_value__getting_index_1);
-    TEST(vector__return_null__getting_out_of_bounds);
     TEST(vector__keep_data_linearly__storing);
+
+#ifdef NDEBUG
+    TEST(vector__return_null__getting_out_of_bounds);
+#else
+    TEST(vector__assert__getting_out_of_bounds);
+#endif
 
     TEST(vector__maintain_size__inserting_2_elements_into_size_2);
     TEST(vector__resize_to_4__inserting_3_elements_into_size_2);
