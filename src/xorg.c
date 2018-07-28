@@ -154,31 +154,41 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
     for(int i = 0; i < context->numConfigs; i++) {
         GLXFBConfig fbconfig = context->configs[i];
         XVisualInfo* visinfo = glXGetVisualFromFBConfig(context->display, fbconfig);
-        if (!visinfo || visinfo->visualid != visualid)
+        if (!visinfo || visinfo->visualid != visualid) {
+            printf_dbgf("Skipping config with wrong visualid");
             continue;
+        }
 
         // We don't want to use anything multisampled
         glXGetFBConfigAttrib(context->display, fbconfig, GLX_SAMPLES, &value);
-        if (value >= 2)
+        if (value >= 2) {
+            printf_dbgf("Skipping multisampled");
             continue;
+        }
 
         // We need to support pixmaps
         glXGetFBConfigAttrib(context->display, fbconfig, GLX_DRAWABLE_TYPE, &value);
-        if (!(value & GLX_PIXMAP_BIT))
+        if (!(value & GLX_PIXMAP_BIT)) {
+            printf_dbgf("Skipping missing pixmap support");
             continue;
+        }
 
         // We need to be able to bind pixmaps to textures
         glXGetFBConfigAttrib(context->display, fbconfig,
                 GLX_BIND_TO_TEXTURE_TARGETS_EXT,
                 &value);
-        if (!(value & GLX_TEXTURE_2D_BIT_EXT))
+        if (!(value & GLX_TEXTURE_2D_BIT_EXT)) {
+            printf_dbgf("Skipping Missing pixmap bind");
             continue;
+        }
 
         // We want RGBA textures
         glXGetFBConfigAttrib(context->display, fbconfig,
                 GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
-        if (value == false)
+        if (value == false) {
+            printf_dbgf("Skipping missing RGBA support");
             continue;
+        }
 
         selected = &context->configs[i];
         break;
