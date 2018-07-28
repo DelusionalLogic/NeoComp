@@ -181,7 +181,10 @@ glx_init(session_t *ps, bool need_render) {
   // we don't paint a region for more than one time, I think?
   if (need_render) {
     GLint val = 0;
-    glGetIntegerv(GL_STENCIL_BITS, &val);
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &val);
+    // @INCOMPLETE: We'd still be able to render to an offscreen buffer, and
+    // then later draw that to the default buffer. For now we'll just fail
+    // though
     if (!val) {
       printf_errf("(): Target window doesn't have stencil buffer.");
       goto glx_init_end;
