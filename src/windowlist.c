@@ -48,25 +48,18 @@ void windowlist_draw(session_t* ps, Vector* paints, float* z) {
     glx_mark(ps, 0, false);
 }
 
-void windowlist_drawoverlap(session_t* ps, win* head, win* overlap, float* z) {
-    glx_mark(ps, head->id, true);
-    (*z) = 1;
-    glEnable(GL_DEPTH_TEST);
-    for (win *w = head; w; w = w->next_trans) {
-        if(!win_overlap(overlap, w))
-            continue;
+void windowlist_findbehind(const Swiss* win_list, const Vector* paints, const win* overlap, const size_t overlap_index, Vector* overlaps) {
+    size_t index = overlap_index;
+    win_id* w_id = vector_getNext(paints, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_get(win_list, *w_id);
 
-        if(w->state == STATE_DESTROYING || w->state == STATE_HIDING
-                || w->state == STATE_ACTIVATING || w->state == STATE_DEACTIVATING
-                || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE) {
-            win_draw(ps, w, *z);
+        if(win_overlap(overlap, w)) {
+            vector_putBack(overlaps, w_id);
         }
 
-        // @HACK: This shouldn't be hardcoded. As it stands, it will probably break
-        // for more than 1k windows
-        (*z) -= .0001;
+        w_id = vector_getNext(paints, &index);
     }
-    glx_mark(ps, head->id, false);
 }
 
 void windowlist_updateStencil(session_t* ps, Vector* paints) {
@@ -203,12 +196,8 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
         shader_use(shadow_program);
 
-        {
-            {
-                Vector3 pos = vec3_from_vec2(&w->shadow_cache.border, 0.0);
-                draw_rect(w->face, shadow_type->mvp, pos, size);
-            }
-        }
+        Vector3 pos = vec3_from_vec2(&w->shadow_cache.border, 0.0);
+        draw_rect(w->face, shadow_type->mvp, pos, size);
 
         view = old_view;
 
@@ -308,7 +297,7 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
                     framebuffer_resetTarget(&blur->fbo);
                     framebuffer_targetRenderBuffer_stencil(&blur->fbo, &w->glx_blur_cache.stencil);
                     framebuffer_targetTexture(&blur->fbo, tex);
-                    framebuffer_bind(&blur->fbo);
+                    framebuffer_rebind(&blur->fbo);
 
                     glDepthMask(GL_TRUE);
 
@@ -326,8 +315,15 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
                     Matrix old_view = view;
                     view = mat4_orthogonal(glpos.x, glpos.x + size.x, glpos.y, glpos.y + size.y, -1, 1);
 
+                    Vector behind;
+                    vector_init(&behind, sizeof(win_id), index);
+
+                    windowlist_findbehind(&ps->win_list, paints, w, index, &behind);
+
                     float z = 0;
-                    windowlist_drawoverlap(ps, w->next_trans, w, &z);
+                    windowlist_draw(ps, &behind, &z);
+
+                    vector_kill(&behind);
 
                     Vector2 root_size = {{ps->root_width, ps->root_height}};
 
