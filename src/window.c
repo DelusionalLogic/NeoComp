@@ -24,7 +24,7 @@ static bool win_viewable(win* w) {
         || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
 }
 
-bool win_overlap(win* w1, win* w2) {
+bool win_overlap(const win* w1, const win* w2) {
     const Vector2 w1lpos = {{
         w1->a.x, w1->a.y,
     }};

@@ -240,7 +240,7 @@ typedef struct _win {
 
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
-bool win_overlap(win* w1, win* w2);
+bool win_overlap(const win* w1, const win* w2);
 bool win_covers(win* w);
 bool win_is_solid(win* w);
 
