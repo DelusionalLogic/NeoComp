@@ -111,7 +111,7 @@ static void setFreeStatus(Swiss* vector, size_t index, bool isFree) {
         vector->freelist[byte] |= (0x80 >> offset);
 }
 
-static bool getFreeStatus(Swiss* vector, size_t index) {
+static bool getFreeStatus(const Swiss* vector, size_t index) {
     size_t byte = index / SWISS_FREELIST_ELEM_SIZE;
     size_t offset = index % SWISS_FREELIST_ELEM_SIZE;
 
@@ -201,7 +201,7 @@ size_t swiss_indexOfPointer(Swiss* vector, void* data) {
     return (data - (void*)vector->data) / vector->elementSize;
 }
 
-void* swiss_get(Swiss* vector, const size_t count)
+void* swiss_get(const Swiss* vector, const size_t count)
 {
     assert(vector->elementSize != 0);
     assert(getFreeStatus(vector, count) == false);

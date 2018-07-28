@@ -24,7 +24,7 @@ void* vector_reserve(Vector* vector, size_t count);
 void vector_putBack(Vector* vector, const void* element);
 void vector_putListBack(Vector* vector, const void* list, const size_t count);
 
-void* vector_get(Vector* vector, const size_t count);
+void* vector_get(const Vector* vector, const size_t count);
 
 void vector_remove(Vector* vector, size_t count);
 void vector_clear(Vector* vector);
@@ -32,12 +32,12 @@ void vector_qsort(Vector* vector, int (*compar)(const void *, const void*));
 
 int vector_foreach(Vector* vector, int (*callback)(void* elem, void* userdata), void* userdata);
 
-void* vector_getFirst(Vector* vector, size_t* index);
-void* vector_getNext(Vector* vector, size_t* index);
-void* vector_getLast(Vector* vector, size_t* index);
-void* vector_getPrev(Vector* vector, size_t* index);
+void* vector_getFirst(const Vector* vector, size_t* index);
+void* vector_getNext(const Vector* vector, size_t* index);
+void* vector_getLast(const Vector* vector, size_t* index);
+void* vector_getPrev(const Vector* vector, size_t* index);
 
-int vector_size(Vector* vector);
+int vector_size(const Vector* vector);
 
 // Only defined for vectors of uint64 elements
 size_t vector_find_uint64(Vector* vector, uint64_t value);

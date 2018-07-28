@@ -25,7 +25,7 @@ void swiss_putListBack(Swiss* vector, const void* list, const size_t count);
 
 size_t swiss_indexOfPointer(Swiss* vector, void* data);
 
-void* swiss_get(Swiss* vector, const size_t count);
+void* swiss_get(const Swiss* vector, const size_t count);
 
 void swiss_remove(Swiss* vector, size_t count);
 void swiss_clear(Swiss* vector);

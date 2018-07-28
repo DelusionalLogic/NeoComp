@@ -69,7 +69,7 @@ void vector_putListBack(Vector* vector, const void* list, const size_t count)
     memcpy(dest, list, count * vector->elementSize);
 }
 
-void* vector_get(Vector* vector, const size_t count)
+void* vector_get(const Vector* vector, const size_t count)
 {
     assert(vector->elementSize != 0);
     assert(count < vector->size);
@@ -114,21 +114,21 @@ int vector_foreach(Vector* vector, int (*callback)(void* elem, void* userdata), 
     return true;
 }
 
-void* vector_getFirst(Vector* vector, size_t* index) {
+void* vector_getFirst(const Vector* vector, size_t* index) {
     *index = 0;
     if(*index >= vector_size(vector))
         return NULL;
     return vector_get(vector, *index);
 }
 
-void* vector_getNext(Vector* vector, size_t* index) {
+void* vector_getNext(const Vector* vector, size_t* index) {
     ++(*index);
     if(*index >= vector_size(vector))
         return NULL;
     return vector_get(vector, *index);
 }
 
-void* vector_getLast(Vector* vector, size_t* index) {
+void* vector_getLast(const Vector* vector, size_t* index) {
     *index = vector_size(vector);
     if(*index == 0)
         return NULL;
@@ -136,14 +136,14 @@ void* vector_getLast(Vector* vector, size_t* index) {
     return vector_get(vector, *index);
 }
 
-void* vector_getPrev(Vector* vector, size_t* index) {
+void* vector_getPrev(const Vector* vector, size_t* index) {
     if(*index == 0)
         return NULL;
     --(*index);
     return vector_get(vector, *index);
 }
 
-int vector_size(Vector* vector)
+int vector_size(const Vector* vector)
 {
     assert(vector->elementSize != 0);
     return vector->size;
