@@ -6,7 +6,7 @@
 
 /// Print out an error message with function name.
 #define printf_errf(format, ...) \
-  printf_err("%s(): " format,  __func__, ## __VA_ARGS__)
+  printf_err("%s(): " format ,  __func__, ## __VA_ARGS__)
 
 /// Print out an error message with function name, and quit with a
 /// specific exit code.
@@ -17,7 +17,7 @@
 
 /// Print out a debug message.
 #define printf_dbg(format, ...) \
-  printf(format, ## __VA_ARGS__); \
+  printf(format "\n", ## __VA_ARGS__); \
   fflush(stdout)
 
 /// Print out a debug message with function name.
