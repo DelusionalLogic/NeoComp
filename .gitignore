@@ -20,6 +20,7 @@ obj/
 .sw[a-z]
 .*.sw[a-z]
 *~
+compile_commands.json
 
 # Misc files
 man/*.html
