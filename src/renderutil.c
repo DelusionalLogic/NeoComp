@@ -21,15 +21,8 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
 
     glUniformMatrix4fv(mvp->gl_uniform, 1, GL_FALSE, root.m);
 
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, face->vertex);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, face->uv);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    face_bind(face);
     glDrawArrays(GL_TRIANGLES, 0, face->vertex_buffer.size / 3);
-    glDisableVertexAttribArray(1);
-    glDisableVertexAttribArray(0);
 }
 
 void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector4* color) {

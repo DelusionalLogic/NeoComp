@@ -229,14 +229,26 @@ void face_init_rects(struct face* asset, Vector* rects) {
 }
 
 void face_upload(struct face* asset) {
+    glGenVertexArrays(1, &asset->vao);
+
     glGenBuffers(1, &asset->vertex);
     glGenBuffers(1, &asset->uv);
 
+    glBindVertexArray(asset->vao);
+
+    glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, asset->vertex);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * asset->vertex_buffer.size, asset->vertex_buffer.data, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+    glEnableVertexAttribArray(1);
     glBindBuffer(GL_ARRAY_BUFFER, asset->uv);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * asset->uv_buffer.size, asset->uv_buffer.data, GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+}
+
+void face_bind(struct face* face) {
+    glBindVertexArray(face->vao);
 }
 
 void face_unload_file(struct face* asset) {
