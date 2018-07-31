@@ -361,7 +361,7 @@ void
 glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_width, ps->root_height);
 
-  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, 0, 1);
+  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, -.1, 1);
   view = ps->psglx->view;
 }
 

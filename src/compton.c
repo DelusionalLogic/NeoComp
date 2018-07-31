@@ -764,7 +764,7 @@ static void paint_root(session_t *ps) {
 
     struct face* face = assets_load("window.face");
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
-    Vector3 pos = {{0, 0, 0.000001}};
+    Vector3 pos = {{0, 0, 0}};
     draw_tex(face, &ps->root_texture.texture, &pos, &rootSize);
 }
 
