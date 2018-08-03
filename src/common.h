@@ -903,12 +903,16 @@ find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  size_t index;
-  win *w = swiss_getFirst(&ps->win_list, &index);
-  while(w != NULL) {
+  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+  struct SwissIterator it = {0};
+  swiss_getFirst(&ps->win_list, req_types, &it);
+  while(!it.done) {
+      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
       if (w->id == id && !w->destroyed)
           return w;
-      w = swiss_getNext(&ps->win_list, &index);
+
+      swiss_getNext(&ps->win_list, req_types, &it);
   }
 
   return NULL;
@@ -925,12 +929,16 @@ find_toplevel(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  size_t index;
-  win *w = swiss_getFirst(&ps->win_list, &index);
-  while(w != NULL) {
+  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+  struct SwissIterator it = {0};
+  swiss_getFirst(&ps->win_list, req_types, &it);
+  while(!it.done) {
+      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
       if (w->client_win == id && !w->destroyed)
           return w;
-      w = swiss_getNext(&ps->win_list, &index);
+
+      swiss_getNext(&ps->win_list, req_types, &it);
   }
 
   return NULL;

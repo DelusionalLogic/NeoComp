@@ -39,12 +39,17 @@ struct TestResult assertNo_internal() {
     return result;
 }
 
-struct TestResult assertEqPtr_internal(char* name, void* value, void* expected) {
+struct TestResult assertEqPtr_internal(char* name, bool inverse, void* value, void* expected) {
+    bool success = value == expected;
+
+    success = inverse ? !success : success;
+
     struct TestResult result = {
         .type = TEST_EQ_PTR,
-        .success = value == expected,
+        .success = success,
         .ptr_eq = {
             .name = name,
+            .inverse = inverse,
             .actual = value,
             .expected = expected,
         }
@@ -53,12 +58,17 @@ struct TestResult assertEqPtr_internal(char* name, void* value, void* expected) 
     return result;
 }
 
-struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expected) {
+struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, uint64_t expected) {
+    bool success = value == expected;
+
+    success = inverse ? !success : success;
+
     struct TestResult result = {
         .type = TEST_EQ,
-        .success = value == expected,
+        .success = true,
         .eq = {
             .name = name,
+            .inverse = inverse,
             .actual = value,
             .expected = expected,
         }
@@ -67,13 +77,18 @@ struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expecte
     return result;
 }
 
-struct TestResult assertEqFloat_internal(char* name, double value, double expected) {
+struct TestResult assertEqFloat_internal(char* name, bool inverse, double value, double expected) {
+    bool success = value == expected;
+
+    success = inverse ? !success : success;
+
     // @IMPROVEMENT: Maybe we shouldn't be doing == for floats.
     struct TestResult result = {
         .type = TEST_EQ_FLOAT,
-        .success = value == expected,
+        .success = true,
         .eq_flt = {
             .name = name,
+            .inverse = inverse,
             .actual = value,
             .expected = expected,
         }
@@ -82,7 +97,7 @@ struct TestResult assertEqFloat_internal(char* name, double value, double expect
     return result;
 }
 
-struct TestResult assertEqArray_internal(char* name, void* var, void* value, size_t size) {
+struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, void* value, size_t size) {
     struct TestResult result = {
         .type = TEST_EQ_ARRAY,
         .eq_arr = {
@@ -94,7 +109,7 @@ struct TestResult assertEqArray_internal(char* name, void* var, void* value, siz
     return result;
 }
 
-struct TestResult assertEqString_internal(char* name, char* var, char* value, size_t size) {
+struct TestResult assertEqString_internal(char* name, bool inverse, char* var, char* value, size_t size) {
     struct TestResult result = {
         .type = TEST_EQ_STRING,
         .eq_str = {
@@ -311,7 +326,12 @@ uint32_t test_end() {
                     printf("\tBy floating equality test on %s %f==%f\n", result.eq_flt.name, result.eq_flt.actual, result.eq_flt.expected);
                     break;
                 case TEST_EQ_PTR:
-                    printf("\tBy pointer equality test on %s %p==%p\n", result.ptr_eq.name, result.ptr_eq.actual, result.ptr_eq.expected);
+                    printf(
+                        "\tBy pointer equality test on %s %p%c=%p\n",
+                        result.ptr_eq.name, result.ptr_eq.actual,
+                        result.ptr_eq.inverse ? '!':'=',
+                        result.ptr_eq.expected
+                    );
                     break;
                 case TEST_EQ_ARRAY:
                     printf("\tBy array equality test on %s\n", result.eq_arr.name);

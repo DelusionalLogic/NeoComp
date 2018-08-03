@@ -4,248 +4,263 @@
 #include <string.h>
 #include <stdint.h>
 
-#define SWISS_FREELIST_ELEM_SIZE 8
+#define SWISS_FREELIST_BUCKET_SIZE (64)
+#define SWISS_FREELIST_BUCKET_SIZE_BYTES (64/8)
 
-static size_t freelist_getByteSize(size_t bits) {
-    return bits / SWISS_FREELIST_ELEM_SIZE + (bits % SWISS_FREELIST_ELEM_SIZE != 0);
+static size_t freelist_numBuckets(size_t elements) {
+    return elements / SWISS_FREELIST_BUCKET_SIZE + (elements % SWISS_FREELIST_BUCKET_SIZE != 0);
 }
 
 static void resize_real(Swiss* vector, size_t newSize) {
     assert(newSize != 0);
 
-    void* newMem = realloc(vector->data, newSize * vector->elementSize);
-    assert(newMem != NULL);
-    vector->data = newMem;
+    size_t newBucketCount = freelist_numBuckets(newSize);
+    size_t oldBucketCount = freelist_numBuckets(vector->capacity);
+    size_t newBuckets = newBucketCount - oldBucketCount;
 
-    size_t freeSize = freelist_getByteSize(newSize);
-    newMem = realloc(vector->freelist, freeSize);
-    assert(newMem != NULL);
-    vector->freelist = newMem;
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        void* newMem = realloc(vector->data[i], newSize * vector->componentSize[i]);
+        // If a component has no size (which is valid) the memory required for
+        // the array is 0, and realloc is allowed to return NULL.
+        if(vector->componentSize[i] != 0)
+            assert(newMem != NULL);
+        vector->data[i] = newMem;
 
-    // Set all the newly allocated words to the right value
-    size_t oldFreeSize = freelist_getByteSize(vector->maxSize);
-    size_t newFreeBytes = freeSize - oldFreeSize;
-    memset(vector->freelist + oldFreeSize, 0xFF, newFreeBytes);
+        newMem = realloc(vector->freelist[i], newBucketCount * SWISS_FREELIST_BUCKET_SIZE_BYTES);
+        assert(newMem != NULL);
+        vector->freelist[i] = newMem;
+
+        // Set all the newly allocated words to the right value
+        memset(&vector->freelist[i][oldBucketCount], 0x00, newBuckets * SWISS_FREELIST_BUCKET_SIZE_BYTES);
+    }
 
     // The end of the freelist might lie within a word, but in that case the
     // memset above will already have marked them as free, so we don't have to
     // do it here. Assuming all other functions correctly check the size value
     // of course.
 
-    vector->maxSize = newSize;
+    vector->capacity = newSize;
 }
 
-const uint8_t BITINDEX[] = {
-    0x07, 0x02, 0x06, 0x01, 0x03, 0x04, 0x05, 0x00,
-};
-const uint8_t DEBRUIJN = 0b00011101;
+static int findFirstSet(uint64_t value) {
+    return __builtin_clzll(value);
+}
 
-static size_t findFirstSet(uint8_t value) {
-    value |= value >> 1;
-    value |= value >> 2;
-    value |= value >> 4;
-    return BITINDEX[(uint8_t)(value * DEBRUIJN) >> 5];
+static uint64_t makeBucket(Swiss* index, enum ComponentType* types, size_t bucket) {
+    uint64_t finalKey = (~0ULL);
+
+    for(int i = 0; types[i] != COMPONENT_END; i++) {
+        uint64_t* freelist = index->freelist[types[i]];
+        finalKey &= freelist[bucket];
+    }
+
+    return finalKey;
 }
 
 // The start is the first index we care about, but we don't do sub-byte
 // positioning. If start is a mid-byte value, it will be rounded DOWN to the
 // byte it intersects, and we will start the search from there. It's just an
 // optimization after all.
-static size_t findNextFree(Swiss* vector, size_t start) {
-#if SWISS_FREELIST_ELEM_SIZE != 8
+static size_t findNextFree(Swiss* vector, enum ComponentType type, size_t start) {
+#if SWISS_FREELIST_BUCKET_SIZE != 64
 #error "findNextFree has to be made aware of the new size"
 #endif
-    size_t freeSize = freelist_getByteSize(vector->maxSize);
+    size_t numBuckets = freelist_numBuckets(vector->capacity);
+    uint64_t* freelist = vector->freelist[type];
 
-    for(int i = start / SWISS_FREELIST_ELEM_SIZE; i < freeSize; i++) {
-        uint8_t freeByte = vector->freelist[i];
+    for(int i = start / SWISS_FREELIST_BUCKET_SIZE; i < numBuckets; i++) {
+        uint64_t freeByte = freelist[i];
 
-        if(freeByte == 0)
+        if(freeByte == (~0ULL))
             continue;
 
-        size_t freeIndex = findFirstSet(freeByte) + i * 8;
-        if(freeIndex >= vector->maxSize)
+        int freeIndex = findFirstSet(~freeByte) + i * SWISS_FREELIST_BUCKET_SIZE;
+        if(freeIndex >= vector->capacity)
             return -1;
         return freeIndex;
     }
     return -1;
 }
 
-static size_t findNextUsed(Swiss* vector, size_t start) {
-#if SWISS_FREELIST_ELEM_SIZE != 8
+static size_t findNextUsed(Swiss* vector, enum ComponentType* types, size_t start) {
+#if SWISS_FREELIST_BUCKET_SIZE != 64
 #error "findNextUsed has to be made aware of the new size"
 #endif
-    size_t freeSize = freelist_getByteSize(vector->maxSize);
-    size_t firstByte = start / SWISS_FREELIST_ELEM_SIZE;
+    size_t firstBucket = start / SWISS_FREELIST_BUCKET_SIZE;
 
-    uint8_t mask = 0xFF00 >> (start % SWISS_FREELIST_ELEM_SIZE);
-    uint8_t value = vector->freelist[firstByte] | mask;
-    if(value != 0xFF) {
-        size_t index = findFirstSet(~value) + firstByte * 8;
-        if(index >= vector->maxSize)
+    uint64_t value = makeBucket(vector, types, firstBucket);
+
+    uint64_t mask = (~0ULL) >> (start % SWISS_FREELIST_BUCKET_SIZE);
+    value &= mask;
+    if(value != 0) {
+        size_t index = findFirstSet(value) + firstBucket * SWISS_FREELIST_BUCKET_SIZE;
+        if(index >= vector->capacity)
             return -1;
         return index;
     }
 
-    for(int i = firstByte + 1; i < freeSize; i++) {
-        value = vector->freelist[i];
+    size_t numBuckets = freelist_numBuckets(vector->capacity);
+    for(int i = firstBucket + 1; i < numBuckets; i++) {
+        value = makeBucket(vector, types, i);
 
-        if(value == 0xFF)
+        if(value == 0)
             continue;
 
-        size_t freeIndex = findFirstSet(~value) + i * 8;
-        if(freeIndex >= vector->maxSize)
+        size_t freeIndex = findFirstSet(~value) + i * SWISS_FREELIST_BUCKET_SIZE;
+        if(freeIndex >= vector->capacity)
             return -1;
         return freeIndex;
     }
     return -1;
 }
 
-static void setFreeStatus(Swiss* vector, size_t index, bool isFree) {
-    size_t byte = index / SWISS_FREELIST_ELEM_SIZE;
-    size_t offset = index % SWISS_FREELIST_ELEM_SIZE;
+static void setFreeStatus(Swiss* vector, enum ComponentType type, size_t index, bool isFree) {
+    size_t bucket = index / SWISS_FREELIST_BUCKET_SIZE;
+    size_t offset = index % SWISS_FREELIST_BUCKET_SIZE;
+    uint64_t* freelist = vector->freelist[type];
 
-    if(!isFree)
-        vector->freelist[byte] &= ~(0x80 >> offset);
-    else
-        vector->freelist[byte] |= (0x80 >> offset);
+    if(isFree) {
+        freelist[bucket] &= ~(0x1ULL << ((SWISS_FREELIST_BUCKET_SIZE - offset) - 1));
+    } else {
+        freelist[bucket] |= (0x1ULL << ((SWISS_FREELIST_BUCKET_SIZE - offset) - 1));
+    }
 }
 
-static bool getFreeStatus(const Swiss* vector, size_t index) {
-    size_t byte = index / SWISS_FREELIST_ELEM_SIZE;
-    size_t offset = index % SWISS_FREELIST_ELEM_SIZE;
+void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t size) {
+    assert(index->capacity == 0);
 
-    return vector->freelist[byte] & (0x80 >> offset);
+    index->componentSize[type] = size;
 }
 
-static size_t allocateNextFree(Swiss* vector) {
+void swiss_init(Swiss* index, size_t initialsize) {
+    swiss_setComponentSize(index, COMPONENT_META, sizeof(struct MetaComponent));
 
-    if(vector->firstFree == -1) {
+    index->capacity = 0;
+    index->firstFree = 0;
+
+    resize_real(index, initialsize);
+
+    assert(index->data != NULL);
+    assert(index->freelist != NULL);
+    assert(index->capacity != 0);
+}
+
+void swiss_kill(Swiss* index) {
+    assert(index->capacity != 0);
+
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        // Calling free on a NULL ptr isn't a problem, so  there's no reason to
+        // check
+        free(index->data[i]);
+        index->data[i] = NULL;
+
+        free(index->freelist[i]);
+        index->freelist[i] = NULL;
+
+        index->componentSize[i] = 0;
+    }
+    index->capacity = 0;
+}
+
+win_id swiss_allocate(Swiss* index) {
+    assert(index->capacity != 0);
+
+    if(index->firstFree == -1) {
         // Allocate space at the end of the array
+        assert(index->capacity != 0);
 
-        assert(vector->maxSize != 0);
+        size_t newSize = index->capacity * 2;
+        resize_real(index, newSize);
 
-        size_t newSize = vector->maxSize + 1;
-        size_t maxSize = vector->maxSize;
-        while(maxSize < newSize)
-            maxSize *= 2;
-        resize_real(vector, maxSize);
-
-        vector->firstFree = findNextFree(vector, maxSize);
+        index->firstFree = findNextFree(index, COMPONENT_META, newSize);
     }
 
-    size_t free = vector->firstFree;
+    win_id id = index->firstFree;
 
-    setFreeStatus(vector, free, false);
+    struct MetaComponent* component = swiss_addComponent(index, COMPONENT_META, id);
 
-    vector->firstFree = findNextFree(vector, free + 1);
-    return free;
+    index->firstFree = findNextFree(index, COMPONENT_META, id + 1);
+    index->size++;
+    return id;
 }
 
-void swiss_init(Swiss* vector, size_t elementsize, size_t initialsize)
-{
-    vector->elementSize = elementsize;
-    vector->maxSize = 0;
-    vector->firstFree = 2;
+void swiss_remove(Swiss* index, win_id id) {
+    assert(index->capacity != 0);
+    assert(swiss_hasComponent(index, COMPONENT_META, id) == true);
 
-    vector->data = NULL;
-    vector->freelist = NULL;
-    resize_real(vector, initialsize);
-
-    setFreeStatus(vector, 0, false);
-    setFreeStatus(vector, 1, false);
-
-    assert(vector->data != NULL);
-    assert(vector->freelist != NULL);
-    assert(vector->maxSize != 0);
-}
-
-void swiss_kill(Swiss* vector)
-{
-    assert(vector->elementSize != 0);
-    free(vector->data);
-    free(vector->freelist);
-    vector->data=(void*)0x72727272;
-    vector->freelist=(void*)0x72727272;
-}
-
-void* swiss_detach(Swiss* vector)
-{
-    vector->maxSize = 0;
-    vector->elementSize = 0;
-    uint8_t* oldDat = vector->data;
-    vector->data = NULL;
-    free(vector->freelist);
-    return oldDat;
-}
-
-void swiss_putBack(Swiss* vector, const void* element, size_t* index)
-{
-    assert(vector->elementSize != 0);
-
-    if(index == NULL) {
-        size_t placeholder = 0;
-        index = &placeholder;
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        swiss_removeComponent(index, i, id);
     }
 
-    *index = allocateNextFree(vector);
+    if(index->firstFree > id)
+        index->firstFree = id;
 
-    memcpy(vector->data + (*index) * vector->elementSize, element, vector->elementSize);
-    vector->size++;
+    index->size--;
 }
 
-size_t swiss_indexOfPointer(Swiss* vector, void* data) {
-    assert(data >= (void*)vector->data);
-    assert(data <= (void*)(vector->data + vector->elementSize * vector->maxSize));
+void* swiss_addComponent(Swiss* index, const enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
+    assert(swiss_hasComponent(index, type, id) == false);
 
-    return (data - (void*)vector->data) / vector->elementSize;
+    setFreeStatus(index, type, id, false);
+
+    return swiss_getComponent(index, type, id);
 }
 
-void* swiss_get(const Swiss* vector, const size_t count)
-{
-    assert(vector->elementSize != 0);
-    assert(getFreeStatus(vector, count) == false);
-    return vector->data + vector->elementSize * count;
+bool swiss_hasComponent(const Swiss* index, enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
+
+    size_t bucket = id / SWISS_FREELIST_BUCKET_SIZE;
+    size_t offset = id % SWISS_FREELIST_BUCKET_SIZE;
+    uint64_t* freelist = index->freelist[type];
+
+    uint64_t bit = freelist[bucket] & (1ULL << ((SWISS_FREELIST_BUCKET_SIZE - offset) - 1));
+
+    return bit != 0;
 }
 
-void swiss_remove(Swiss* vector, const size_t index) {
-    assert(vector->elementSize != 0);
-    assert(getFreeStatus(vector, index) == false);
+void swiss_removeComponent(Swiss* index, const enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
 
-    setFreeStatus(vector, index, true);
-    if(vector->firstFree > index)
-        vector->firstFree = index;
-    vector->size--;
+    setFreeStatus(index, type, id, true);
 }
 
-void swiss_clear(Swiss* vector)
-{
-    assert(vector->elementSize != 0);
-    vector->size = 0;
+void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
+    assert(swiss_hasComponent(index, type, id) == true);
 
-    size_t freeSize = freelist_getByteSize(vector->maxSize);
-    memset(vector->freelist, 0xFF, freeSize);
-
-    vector->firstFree = 0;
+    return index->data[type] + index->componentSize[type] * id;
 }
 
-void* swiss_getFirst(Swiss* vector, size_t* index) {
-    *index = 0;
-    if(*index >= swiss_size(vector))
-        return NULL;
-    return swiss_get(vector, *index);
-}
-
-void* swiss_getNext(Swiss* vector, size_t* index) {
-    *index = findNextUsed(vector, (*index)+1);
-    if(*index == -1) {
-        return NULL;
+void swiss_clear(Swiss* index) {
+    assert(index->capacity != 0);
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        size_t freeSize = freelist_numBuckets(index->capacity);
+        memset(index->freelist[i], 0x00, freeSize * SWISS_FREELIST_BUCKET_SIZE_BYTES);
     }
-    return swiss_get(vector, *index);
+
+    index->size = 0;
+    index->firstFree = 0;
 }
 
-int swiss_size(Swiss* vector)
-{
-    assert(vector->elementSize != 0);
-    return vector->size;
+int swiss_size(Swiss* index) {
+    assert(index->capacity != 0);
+    return index->size;
+}
+
+size_t swiss_indexOfPointer(Swiss* vector, enum ComponentType type, void* data) {
+    assert(data >= (void*)vector->data[type]);
+    assert(data <= (void*)(vector->data[type] + vector->componentSize[type] * vector->capacity));
+
+    return (data - (void*)vector->data[type]) / vector->componentSize[type];
+}
+
+void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it) {
+    it->id = findNextUsed(index, types, 0);
+    it->done = it->id == -1;
+}
+
+void swiss_getNext(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it) {
+    it->id = findNextUsed(index, types, it->id + 1);
+    it->done = it->id == -1;
 }

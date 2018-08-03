@@ -299,14 +299,17 @@ glx_destroy(session_t *ps) {
     return;
 
   // Free all GLX resources of windows
-  size_t index = 0;
-  struct _win* w = swiss_getFirst(&ps->win_list, &index);
-  while(w != NULL) {
+  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+  struct SwissIterator it = {0};
+  swiss_getFirst(&ps->win_list, req_types, &it);
+  while(!it.done) {
+      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
       blur_cache_delete(&w->glx_blur_cache);
       shadow_cache_delete(&w->shadow_cache);
-      w = swiss_getNext(&ps->win_list, &index);
-  }
 
+      swiss_getNext(&ps->win_list, req_types, &it);
+  }
 
   blur_destroy(&ps->psglx->blur);
 

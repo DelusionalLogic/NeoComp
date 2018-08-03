@@ -186,11 +186,13 @@ static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern
 static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 
 static void clear_cache_win_leaders(session_t *ps) {
-    size_t index;
-    win *w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
         w->cache_leader = None;
-        w = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
 }
 
@@ -216,13 +218,15 @@ static bool group_is_focused(session_t *ps, Window leader) {
     if (!leader)
         return false;
 
-    size_t index;
-    win *w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
         if (win_get_leader(ps, w) == leader && !w->destroyed
                 && win_is_focused_real(ps, w))
             return true;
-        w = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
 
     return false;
@@ -830,7 +834,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
     size_t index;
     win_id* w_id = vector_getLast(&ps->order, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
 
@@ -980,7 +984,7 @@ paint_all(session_t *ps, Vector* paints) {
       size_t index;
       win_id* w_id = vector_getFirst(paints, &index);
       while(w_id != NULL) {
-          struct _win* w = swiss_get(&ps->win_list, *w_id);
+          struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
           win_postdraw(ps, w, z);
           z += .0001;
           w_id = vector_getNext(paints, &index);
@@ -1009,7 +1013,7 @@ wid_get_prop_wintype(session_t *ps, Window wid) {
 }
 
 static void map_win(session_t *ps, win_id wid) {
-  struct _win* w = swiss_get(&ps->win_list, wid);
+  struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
   assert(w != NULL);
   // Unmap overlay window if it got mapped but we are currently not
   // in redirected state.
@@ -1495,9 +1499,9 @@ add_win(session_t *ps, Window id) {
   }
 
   // Allocate and initialize the new win structure
-  win_id slot;
-  swiss_putBack(&ps->win_list, &win_def, &slot);
-  win* new = swiss_get(&ps->win_list, slot);
+  win_id slot = swiss_allocate(&ps->win_list);
+  win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
+  memcpy(new, &win_def, sizeof(win_def));
 
 #ifdef DEBUG_EVENTS
   printf_dbgf("(%#010lx): %p\n", id, new);
@@ -1594,7 +1598,7 @@ add_win(session_t *ps, Window id) {
 #endif
 
   if (IsViewable == map_state) {
-      map_win(ps, swiss_indexOfPointer(&ps->win_list, new));
+      map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, new));
   }
 
   return true;
@@ -1602,7 +1606,7 @@ add_win(session_t *ps, Window id) {
 
 static void
 restack_win(session_t *ps, win *w, Window new_above) {
-    win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
+    win_id w_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     struct _win* w_above = find_win(ps, new_above);
 
@@ -1613,7 +1617,7 @@ restack_win(session_t *ps, win *w, Window new_above) {
     if(w_above == NULL)
         return;
 
-    win_id above_id = swiss_indexOfPointer(&ps->win_list, w_above);
+    win_id above_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_above);
 
     size_t w_loc = 0;
     size_t above_loc = 0;
@@ -1760,7 +1764,7 @@ circulate_win(session_t *ps, XCirculateEvent *ce) {
 
     if (!w) return;
 
-    size_t w_loc = vector_find_uint64(&ps->order, swiss_indexOfPointer(&ps->win_list, w));
+    size_t w_loc = vector_find_uint64(&ps->order, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
     size_t new_loc;
     if (ce->place == PlaceOnTop) {
         new_loc = vector_size(&ps->order) - 1;
@@ -1775,7 +1779,7 @@ circulate_win(session_t *ps, XCirculateEvent *ce) {
 }
 
 static void finish_destroy_win(session_t *ps, win_id wid) {
-    struct _win* w = swiss_get(&ps->win_list, wid);
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     if (w == ps->active_win)
         ps->active_win = NULL;
 
@@ -1788,14 +1792,16 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
     vector_remove(&ps->order, order_index);
 
     // Unhook the window from the legacy linked list
-    size_t index = 0;
-    struct _win* p = swiss_getFirst(&ps->win_list, &index);
-    while(p != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* p = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
         if (p->next == wid) {
             p->next = w->next;
             break;
         }
-        p = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
 
     swiss_remove(&ps->win_list, wid);
@@ -2034,13 +2040,18 @@ static void win_set_focused(session_t *ps, win *w) {
             ps->active_leader = None;
 
             //Update the focused state of all other windows lead by leader
-            size_t index = 0;
-            win* t = swiss_getFirst(&ps->win_list, &index);
-            while(t != NULL) {
+            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
-                t = swiss_getNext(&ps->win_list, &index);
+
+                swiss_getNext(&ps->win_list, req_types, &it);
             }
+
         }
 
         win_update_focused(ps, old_active);
@@ -2063,9 +2074,11 @@ static void win_set_focused(session_t *ps, win *w) {
             ps->active_leader = leader;
 
             //Update the focused state of all other windows lead by old leader
-            size_t index = 0;
-            win* t = swiss_getFirst(&ps->win_list, &index);
-            while(t != NULL) {
+            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
                 if (win_get_leader(ps, t) == active_leader_old)
                     win_update_focused(ps, t);
@@ -2073,7 +2086,7 @@ static void win_set_focused(session_t *ps, win *w) {
                 if (win_get_leader(ps, t) == leader)
                     win_update_focused(ps, t);
 
-                t = swiss_getNext(&ps->win_list, &index);
+                swiss_getNext(&ps->win_list, req_types, &it);
             }
         }
     }
@@ -2135,9 +2148,12 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
       ps->active_leader = cache_leader;
 
       //Update the focused state of all other windows lead by leader
-      size_t prev_index = 0;
-      win* t = swiss_getFirst(&ps->win_list, &prev_index);
-      while(t != NULL) {
+
+      static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+      struct SwissIterator it = {0};
+      swiss_getFirst(&ps->win_list, req_types, &it);
+      while(!it.done) {
+          win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
           if (win_get_leader(ps, t) == cache_leader_old)
               win_update_focused(ps, t);
@@ -2145,7 +2161,7 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
           if (win_get_leader(ps, t) == cache_leader)
               win_update_focused(ps, t);
 
-          t = swiss_getNext(&ps->win_list, &prev_index);
+          swiss_getNext(&ps->win_list, req_types, &it);
       }
     }
     // Otherwise, at most the window itself is affected
@@ -2391,15 +2407,17 @@ opts_init_track_focus(session_t *ps) {
 
     if (!ps->o.use_ewmh_active_win) {
         // Start listening to FocusChange events
-        size_t index = 0;
-        win* w = swiss_getFirst(&ps->win_list, &index);
-        while(w != NULL) {
+        static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+        struct SwissIterator it = {0};
+        swiss_getFirst(&ps->win_list, req_types, &it);
+        while(!it.done) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
             if (IsViewable == w->a.map_state)
                 XSelectInput(ps->dpy, w->id,
                         determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
 
-            w = swiss_getNext(&ps->win_list, &index);
+            swiss_getNext(&ps->win_list, req_types, &it);
         }
 
         // Recheck focus
@@ -2415,12 +2433,15 @@ opts_set_no_fading_openclose(session_t *ps, bool newval) {
     if (newval != ps->o.no_fading_openclose) {
         ps->o.no_fading_openclose = newval;
 
-        size_t index = 0;
-        win* w = swiss_getFirst(&ps->win_list, &index);
-        while(w != NULL) {
+        static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+        struct SwissIterator it = {0};
+        swiss_getFirst(&ps->win_list, req_types, &it);
+        while(!it.done) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
             win_determine_fade(ps, w);
 
-            w = swiss_getNext(&ps->win_list, &index);
+            swiss_getNext(&ps->win_list, req_types, &it);
         }
 
         ps->skip_poll = true;
@@ -2612,7 +2633,7 @@ static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
 static void ev_map_notify(session_t *ps, XMapEvent *ev) {
     win *w = find_win(ps, ev->window);
     if(w != NULL) {
-        map_win(ps, swiss_indexOfPointer(&ps->win_list, w));
+        map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
     }
 }
 
@@ -4273,9 +4294,12 @@ redir_start(session_t *ps) {
     // Must call XSync() here
     XSync(ps->dpy, False);
 
-    size_t index = 0;
-    win* w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
         // If the window was mapped, then we need to do the mapping again
         if(w->a.map_state == IsViewable) {
             if(!wd_bind(&w->drawable)) {
@@ -4289,7 +4313,7 @@ redir_start(session_t *ps) {
             }
         }
 
-        w = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
 
     ps->redirected = true;
@@ -4453,14 +4477,17 @@ redir_stop(session_t *ps) {
     // Destroy all Pictures as they expire once windows are unredirected
     // If we don't destroy them here, looks like the resources are just
     // kept inaccessible somehow
-    size_t index = 0;
-    win* w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
         if(w->a.map_state == IsViewable) {
             wd_unbind(&w->drawable);
         }
 
-        w = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
 
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
@@ -4710,7 +4737,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // First pass
   get_cfg(ps, argc, argv, true);
 
-  swiss_init(&ps->win_list, sizeof(struct _win), 512);
+  swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
+  swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
 
@@ -4919,15 +4947,18 @@ void session_destroy(session_t *ps) {
 
   // Free window linked list
   {
-    size_t index = 0;
-    win* w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
         if (IsViewable == w->a.map_state && !w->destroyed)
             win_ev_stop(ps, w);
 
         wd_delete(&w->drawable);
 
-        w = swiss_getNext(&ps->win_list, &index);
+        swiss_getNext(&ps->win_list, req_types, &it);
     }
   }
 
@@ -5021,7 +5052,7 @@ void session_run(session_t *ps) {
     win *t;
 
     Vector paints;
-    vector_init(&paints, sizeof(win_id), ps->win_list.maxSize);
+    vector_init(&paints, sizeof(win_id), swiss_size(&ps->win_list));
 
     t = paint_preprocess(ps, &paints);
 
@@ -5090,22 +5121,25 @@ void session_run(session_t *ps) {
             size_t index;
             win_id* w_id = vector_getFirst(&paints, &index);
             while(w_id != NULL) {
-                win_update(ps, swiss_get(&ps->win_list, *w_id), delta);
+                win_update(ps, swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id), delta);
                 w_id = vector_getNext(&paints, &index);
             }
         }
 
         {
-            size_t index;
-            struct _win* w = swiss_getFirst(&ps->win_list, &index);
-            while(w != NULL) {
+            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
                 if(w->state == STATE_DESTROYED) {
-                    win_id w_id = swiss_indexOfPointer(&ps->win_list, w);
-                    finish_destroy_win(ps, w_id);
-                    size_t paints_slot = vector_find_uint64(&paints, w_id);
+                    finish_destroy_win(ps, it.id);
+                    size_t paints_slot = vector_find_uint64(&paints, it.id);
                     vector_remove(&paints, paints_slot);
                 }
-                w = swiss_getNext(&ps->win_list, &index);
+
+                swiss_getNext(&ps->win_list, req_types, &it);
             }
         }
 

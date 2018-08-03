@@ -11,18 +11,21 @@ extern Vector results;
 
 struct TestResultEq {
     char* name;
+    bool inverse;
     uint64_t actual;
     uint64_t expected;
 };
 
 struct TestResultEqFlt {
     char* name;
+    bool inverse;
     double actual;
     double expected;
 };
 
 struct TestResultEqPtr {
     char* name;
+    bool inverse;
     void* actual;
     void* expected;
 };
@@ -80,27 +83,33 @@ struct Test {
 };
 
 struct TestResult assertNo_internal();
-struct TestResult assertEqPtr_internal(char* name, void* value, void* expected);
-struct TestResult assertEq_internal(char* name, uint64_t value, uint64_t expected);
-struct TestResult assertEqFloat_internal(char* name, double value, double expected);
-struct TestResult assertEqArray_internal(char* name, void* var, void* value, size_t size);
-struct TestResult assertEqString_internal(char* name, char* var, char* value, size_t size);
+struct TestResult assertEqPtr_internal(char* name, bool inverse, void* value, void* expected);
+struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, uint64_t expected);
+struct TestResult assertEqFloat_internal(char* name, bool inverse, double value, double expected);
+struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, void* value, size_t size);
+struct TestResult assertEqString_internal(char* name, bool inverse, char* var, char* value, size_t size);
 
-#define assertEq(var, val)                  \
-    return _Generic((var),                  \
+#define GET_ASSERT_FUNCTION(var)            \
+    _Generic((var),                         \
             void*: assertEqPtr_internal,    \
             char*: assertEqPtr_internal,    \
             uint64_t: assertEq_internal,    \
             char: assertEq_internal,        \
             float: assertEqFloat_internal,  \
             double: assertEqFloat_internal  \
-            )(#var, var, val)
+            )                               \
+
+#define assertEq(var, val)                  \
+    return GET_ASSERT_FUNCTION(var)(#var, false, var, val)
+
+#define assertNotEq(var, val)               \
+    return GET_ASSERT_FUNCTION(var)(#var, true, var, val)
 
 #define assertEqArray(var, val, len) \
-    return assertEqArray_internal(#var, var, val, len)
+    return assertEqArray_internal(#var, false, var, val, len)
 
 #define assertEqString(var, val, len) \
-    return assertEqString_internal(#var, var, val, len)
+    return assertEqString_internal(#var, false, var, val, len)
 
 #define assertNo() \
     return assertNo_internal()

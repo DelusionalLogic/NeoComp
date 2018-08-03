@@ -78,8 +78,6 @@ enum WindowState {
     STATE_DESTROYED,
 };
 
-typedef uint64_t win_id;
-
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
   /// Pointer to the next structure in the linked list.

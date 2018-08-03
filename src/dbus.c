@@ -468,15 +468,20 @@ cdbus_apdarg_wids(session_t *ps, DBusMessage *msg, const void *data) {
   // Build the array
   {
     cdbus_window_t *pcur = arr;
-    size_t index = 0;
-    struct _win* w = swiss_getFirst(&ps->win_list, &index);
-    while(w != NULL) {
+
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
       if (!w->destroyed) {
         *pcur = w->id;
         ++pcur;
         assert(pcur <= arr + swiss_size(&ps->win_list));
       }
-      w = swiss_getNext(&ps->win_list, &index);
+
+      swiss_getNext(&ps->win_list, req_types, &it);
     }
     assert(pcur == arr + swiss_size(&ps->win_list));
   }
@@ -795,7 +800,7 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
 
   // next
   if (!strcmp("next", target)) {
-      struct _win* next = swiss_get(&ps->win_list, w->next);
+    struct _win* next = swiss_getComponent(&ps->win_list, COMPONENT_MUD, w->next);
     cdbus_reply_wid(ps, msg, (w->next ? next->id: 0));
     return true;
   }

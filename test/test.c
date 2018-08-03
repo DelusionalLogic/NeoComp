@@ -370,6 +370,203 @@ static struct TestResult convert_xrects_to_relative_rect__translate_y_coordinate
     assertEq(rect->pos.y, 1);
 }
 
+static struct TestResult swiss__be_empty__initialized() {
+    Swiss swiss = {0};
+    swiss_init(&swiss, 1);
+
+    assertEq(swiss.size, 0);
+}
+
+static struct TestResult swiss__grow__allocating() {
+    Swiss swiss = {0};
+    swiss_init(&swiss, 1);
+
+    swiss_allocate(&swiss);
+
+    assertEq(swiss.size, 1);
+}
+
+static struct TestResult swiss__shrink__removing_item() {
+    Swiss swiss = {0};
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+
+    swiss_remove(&swiss, id);
+
+    assertEq(swiss.size, 0);
+}
+
+static struct TestResult swiss__save__adding_a_component() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+
+    char* component = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+
+    assertNotEq(component, 0);
+}
+
+static struct TestResult swiss__find_the_component__getting_existing_component() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+    char* component = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+    *component = 'a';
+
+    component = swiss_getComponent(&swiss, COMPONENT_MUD, id);
+
+    assertEq(*component, 'a');
+}
+
+static struct TestResult swiss__say_there_isnt_a_component__checking_an_entity_without_component() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+
+    // @CLEANUP: We can't assert on bools right now
+    uint64_t has = swiss_hasComponent(&swiss, COMPONENT_MUD, id);
+
+    assertEq(has, false);
+}
+
+static struct TestResult swiss__say_there_is_a_component__checking_an_entity_with_component() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+    char* component = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+
+    // @CLEANUP: We can't assert on bools right now
+    uint64_t has = swiss_hasComponent(&swiss, COMPONENT_MUD, id);
+
+    assertEq(has, true);
+}
+
+static struct TestResult swiss__say_there_isnt_a_component__checking_a_removed_component() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 1);
+    win_id id = swiss_allocate(&swiss);
+
+    char* component = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+    swiss_removeComponent(&swiss, COMPONENT_MUD, id);
+
+    // @CLEANUP: We can't assert on bools right now
+    uint64_t has = swiss_hasComponent(&swiss, COMPONENT_MUD, id);
+
+    assertEq(has, false);
+}
+
+static struct TestResult swiss__double_capacity__allocating_past_end() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 2);
+
+    swiss_allocate(&swiss);
+    swiss_allocate(&swiss);
+    swiss_allocate(&swiss);
+
+    assertEq(swiss.capacity, 4);
+}
+
+static struct TestResult swiss__iterate_components_in_order_abcdef__iterating_forward_over_abcdef() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_init(&swiss, 6);
+
+    // Insert the string
+    char* str = "abcdef";
+    for(char* c = str; *c != '\0'; c++) {
+        win_id id = swiss_allocate(&swiss);
+        char* ch = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        *ch = *c;
+    }
+
+    //Read it out to a char array
+    char order[6];
+    enum ComponentType query[] = { COMPONENT_MUD, 0 };
+    size_t count = 0;
+    struct SwissIterator it;
+    swiss_getFirst(&swiss, query, &it);
+    while(!it.done) {
+        order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
+        swiss_getNext(&swiss, query, &it);
+    }
+
+    assertEqString(order, "abcdef", 6);
+}
+
+static struct TestResult swiss__skip_entities_missing_components__iterating_forward() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_setComponentSize(&swiss, COMPONENT_SHADOW, sizeof(char));
+    swiss_init(&swiss, 9);
+
+    // Insert the string
+    char* str = "a_b_cde_f";
+    for(char* c = str; *c != '\0'; c++) {
+        win_id id = swiss_allocate(&swiss);
+
+        char* ch = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        *ch = *c;
+
+        if(*c != '_') {
+            // It doesn't matter what's in this component
+            swiss_addComponent(&swiss, COMPONENT_SHADOW, id);
+        }
+    }
+
+    //Read it out to a char array, hopefully skipping all the _'s
+    char order[6];
+    enum ComponentType query[] = { COMPONENT_MUD, COMPONENT_SHADOW, 0 };
+    size_t count = 0;
+    struct SwissIterator it;
+    swiss_getFirst(&swiss, query, &it);
+    while(!it.done) {
+        order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
+        swiss_getNext(&swiss, query, &it);
+    }
+
+    assertEqString(order, "abcdef", 6);
+}
+
+static struct TestResult swiss__include_entities_with_components_not_required__iterating_forward() {
+    Swiss swiss = {0};
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
+    swiss_setComponentSize(&swiss, COMPONENT_SHADOW, sizeof(char));
+    swiss_init(&swiss, 9);
+
+    // Insert the string
+    char* str = "a_b_cde_f";
+    for(char* c = str; *c != '\0'; c++) {
+        win_id id = swiss_allocate(&swiss);
+
+        char* ch = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        *ch = *c;
+
+        if(*c != '_') {
+            // It doesn't matter what's in this component
+            swiss_addComponent(&swiss, COMPONENT_SHADOW, id);
+        }
+    }
+
+    //Read it out to a char array
+    char order[9];
+    enum ComponentType query[] = { COMPONENT_MUD, 0 };
+    size_t count = 0;
+    struct SwissIterator it;
+    swiss_getFirst(&swiss, query, &it);
+    while(!it.done) {
+        order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
+        swiss_getNext(&swiss, query, &it);
+    }
+
+    assertEqString(order, "a_b_cde_f", 9);
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
 
@@ -412,6 +609,23 @@ int main(int argc, char** argv) {
     TEST(convert_xrects_to_relative_rect__keep_all_rects__converting);
     TEST(convert_xrects_to_relative_rect__keep_x_coordinate__converting);
     TEST(convert_xrects_to_relative_rect__translate_y_coordinate__converting);
+
+    TEST(swiss__be_empty__initialized);
+    TEST(swiss__grow__allocating);
+    TEST(swiss__shrink__removing_item);
+
+    TEST(swiss__save__adding_a_component);
+    TEST(swiss__find_the_component__getting_existing_component);
+
+    TEST(swiss__say_there_isnt_a_component__checking_an_entity_without_component);
+    TEST(swiss__say_there_is_a_component__checking_an_entity_with_component);
+    TEST(swiss__say_there_isnt_a_component__checking_a_removed_component);
+
+    TEST(swiss__double_capacity__allocating_past_end);
+
+    TEST(swiss__iterate_components_in_order_abcdef__iterating_forward_over_abcdef);
+    TEST(swiss__skip_entities_missing_components__iterating_forward);
+    TEST(swiss__include_entities_with_components_not_required__iterating_forward);
 
     return test_end();
 }

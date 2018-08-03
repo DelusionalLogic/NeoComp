@@ -29,7 +29,7 @@ void windowlist_draw(session_t* ps, Vector* paints, float* z) {
     size_t index;
     win_id* w_id = vector_getFirst(paints, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         w->z = *z;
 
         zone_enter_extra(&ZONE_paint_window, "%s", w->name);
@@ -52,7 +52,7 @@ void windowlist_findbehind(const Swiss* win_list, const Vector* paints, const wi
     size_t index = overlap_index;
     win_id* w_id = vector_getNext(paints, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(win_list, *w_id);
+        struct _win* w = swiss_getComponent(win_list, COMPONENT_MUD, *w_id);
 
         if(win_overlap(overlap, w)) {
             vector_putBack(overlaps, w_id);
@@ -87,7 +87,7 @@ void windowlist_updateStencil(session_t* ps, Vector* paints) {
     size_t index;
     win_id* w_id = vector_getLast(paints, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
@@ -125,7 +125,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     size_t index;
     win_id* w_id = vector_getFirst(paints, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         if(win_viewable(w) && ps->redirected) {
             Vector2 size = {{w->widthb, w->heightb}};
 
@@ -162,7 +162,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     w_id = vector_getFirst(&shadow_updates, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
 
         Vector2 size = {{w->widthb, w->heightb}};
         shadow_cache_resize(&w->shadow_cache, &size);
@@ -232,7 +232,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     w_id = vector_getFirst(&shadow_updates, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
 
         framebuffer_resetTarget(&framebuffer);
         framebuffer_targetTexture(&framebuffer, &w->shadow_cache.effect);
@@ -282,7 +282,7 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
     size_t index;
     win_id* w_id = vector_getLast(paints, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_get(&ps->win_list, *w_id);
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
 
         Vector2 pos = {{w->a.x, w->a.y}};
         Vector2 size = {{w->widthb, w->heightb}};
