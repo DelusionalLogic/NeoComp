@@ -462,7 +462,6 @@ static struct TestResult swiss__say_there_isnt_a_component__checking_a_removed_c
 
 static struct TestResult swiss__double_capacity__allocating_past_end() {
     Swiss swiss = {0};
-    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 2);
 
     swiss_allocate(&swiss);
