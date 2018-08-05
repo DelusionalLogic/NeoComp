@@ -12,29 +12,29 @@ extern Vector results;
 struct TestResultEq {
     char* name;
     bool inverse;
-    uint64_t actual;
-    uint64_t expected;
+    const uint64_t actual;
+    const uint64_t expected;
 };
 
 struct TestResultEqFlt {
     char* name;
     bool inverse;
-    double actual;
-    double expected;
+    const double actual;
+    const double expected;
 };
 
 struct TestResultEqBool {
     char* name;
     bool inverse;
-    bool actual;
-    bool expected;
+    const bool actual;
+    const bool expected;
 };
 
 struct TestResultEqPtr {
     char* name;
     bool inverse;
-    void* actual;
-    void* expected;
+    const void* actual;
+    const void* expected;
 };
 
 struct TestResultEqArr {
@@ -43,8 +43,8 @@ struct TestResultEqArr {
 
 struct TestResultEqStr {
     char* name;
-    size_t actual;
-    size_t expected;
+    const size_t actual;
+    const size_t expected;
     int length;
 };
 
@@ -92,12 +92,12 @@ struct Test {
 };
 
 struct TestResult assertStatic_internal(bool result);
-struct TestResult assertEqPtr_internal(char* name, bool inverse, void* value, void* expected);
+struct TestResult assertEqPtr_internal(char* name, bool inverse, const void* value, const void* expected);
 struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, uint64_t expected);
 struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bool expected);
 struct TestResult assertEqFloat_internal(char* name, bool inverse, double value, double expected);
-struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, void* value, size_t size);
-struct TestResult assertEqString_internal(char* name, bool inverse, char* var, char* value, size_t size);
+struct TestResult assertEqArray_internal(char* name, bool inverse, const void* var, const void* value, size_t size);
+struct TestResult assertEqString_internal(char* name, bool inverse, const char* var, const char* value, size_t size);
 
 #define GET_ASSERT_FUNCTION(var)            \
     _Generic((var),                         \

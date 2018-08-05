@@ -683,7 +683,6 @@ struct TestResult fading__set_new_head_duration__adding_with_filled_up_buffer() 
     for(int i = 0; i < FADE_KEYFRAMES - 1; i++) {
         fade_keyframe(&fade, 10, 100);
     }
-    uint64_t oldSize = fade_size(&fade);
 
     fade_keyframe(&fade, 10, 100);
 

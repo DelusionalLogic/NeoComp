@@ -9,7 +9,7 @@ Vector results;
 int test_fd;
 static bool test_sentAssertSignal = false;
 
-void write_complete(int fd, void* buf, size_t size) {
+void write_complete(int fd, const void* buf, size_t size) {
     size_t written = 0;
     while(size - written > 0) {
         ssize_t ret = write(fd, buf + written, size - written);
@@ -39,7 +39,7 @@ struct TestResult assertStatic_internal(bool success) {
     return result;
 }
 
-struct TestResult assertEqPtr_internal(char* name, bool inverse, void* value, void* expected) {
+struct TestResult assertEqPtr_internal(char* name, bool inverse, const void* value, const void* expected) {
     bool success = value == expected;
 
     success = inverse ? !success : success;
@@ -117,7 +117,7 @@ struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bo
     return result;
 }
 
-struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, void* value, size_t size) {
+struct TestResult assertEqArray_internal(char* name, bool inverse, const void* var, const void* value, size_t size) {
     struct TestResult result = {
         .type = TEST_EQ_ARRAY,
         .eq_arr = {
@@ -129,7 +129,7 @@ struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, vo
     return result;
 }
 
-struct TestResult assertEqString_internal(char* name, bool inverse, char* var, char* value, size_t size) {
+struct TestResult assertEqString_internal(char* name, bool inverse, const char* var, const char* value, size_t size) {
     struct TestResult result = {
         .type = TEST_EQ_STRING,
         .eq_str = {
