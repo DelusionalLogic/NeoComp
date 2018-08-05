@@ -33,6 +33,10 @@ struct WindowDrawable {
     };
 };
 
+struct FocusChangedComponent {
+    double newOpacity;
+};
+
 /// A structure representing margins around a rectangle.
 typedef struct {
   int top;
@@ -62,6 +66,11 @@ struct Fading {
 
     // The current animated value
     double value;
+};
+
+
+struct FadesOpacityComponent {
+    struct Fading fade;
 };
 
 extern const char* const StateNames[];
@@ -157,7 +166,6 @@ typedef struct _win {
   // Focus-related members
   /// Whether the window is to be considered focused.
   bool focused;
-  bool focus_changed;
   /// Override value of window focus state. Set by D-Bus method calls.
   switch_t focused_force;
 
@@ -182,7 +190,6 @@ typedef struct _win {
   // Opacity-related members
 
   // Current window opacity.
-  struct Fading opacity_fade;
   double opacity;
 
   bool skipFade;
@@ -242,7 +249,11 @@ bool win_overlap(const win* w1, const win* w2);
 bool win_covers(win* w);
 bool win_is_solid(win* w);
 
-void win_start_opacity(win* w, double opacity, double duration);
+void fade_keyframe(struct Fading* fade, double opacity, double duration);
+
+void fade_init(struct Fading* fade, double value);
+// @CLEANUP: Should this be here?
+bool fade_done(struct Fading* fade);
 
 void win_draw(struct _session_t* ps, win* w, float z);
 void win_postdraw(struct _session_t* ps, win* w, float z);

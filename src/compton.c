@@ -49,6 +49,7 @@ DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(fetch_prop);
+DECLARE_ZONE(update_fade);
 
 // From the header {{{
 
@@ -1100,7 +1101,8 @@ static void map_win(session_t *ps, win_id wid) {
   w->in_openclose = true;
 
   w->state = STATE_WAITING;
-  w->focus_changed = true;
+  if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
+      swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
 
   /* if any configure events happened while
      the window was unmapped, then configure
@@ -1119,6 +1121,7 @@ static void map_win(session_t *ps, win_id wid) {
 
 static void unmap_win(session_t *ps, win *w) {
     if (!w || IsUnmapped == w->a.map_state) return;
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     free_fence(ps, &w->fence);
 
@@ -1131,7 +1134,8 @@ static void unmap_win(session_t *ps, win *w) {
     // Fading out
     w->state = STATE_HIDING;
 
-    win_start_opacity(w, 0, ps->o.opacity_fade_time);
+    struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, wid);
+    fade_keyframe(&fo->fade, 0, ps->o.opacity_fade_time);
 
     w->in_openclose = true;
 
@@ -1501,6 +1505,7 @@ add_win(session_t *ps, Window id) {
   // Allocate and initialize the new win structure
   win_id slot = swiss_allocate(&ps->win_list);
   win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
+  swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
   memcpy(new, &win_def, sizeof(win_def));
 
 #ifdef DEBUG_EVENTS
@@ -1983,13 +1988,16 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
  */
 static void win_update_focused(session_t *ps, win *w) {
     bool oldFocused = w->focused;
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     // If the window has forced focus we don't need any further calculation
     if (UNSET != w->focused_force) {
         w->focused = w->focused_force;
 
-        if(w->focused != oldFocused)
-            w->focus_changed = true;
+        if(w->focused != oldFocused) {
+            if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
+                swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
+        }
 
         return;
     }
@@ -2015,8 +2023,10 @@ static void win_update_focused(session_t *ps, win *w) {
         w->focused = true;
     }
 
-    if(w->focused != oldFocused)
-        w->focus_changed = true;
+    if(w->focused != oldFocused) {
+        if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
+            swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
+    }
 }
 
 /**
@@ -3899,7 +3909,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   for (i = 0; i < NUM_WINTYPES; ++i) {
     ps->o.wintype_fade[i] = false;
     ps->o.wintype_shadow[i] = false;
-    ps->o.wintype_opacity[i] = 100.0;
+    ps->o.wintype_opacity[i] = -1.0;
   }
 
   // Enforce LC_NUMERIC locale "C" here to make sure dots are recognized
@@ -4670,7 +4680,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .no_fading_destroyed_argb = false,
       .fade_blacklist = NULL,
 
-      .wintype_opacity = { 0.0 },
+      .wintype_opacity = { -1.0 },
       .inactive_opacity = 100.0,
       .inactive_opacity_override = false,
       .active_opacity = 100.0,
@@ -4737,7 +4747,10 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // First pass
   get_cfg(ps, argc, argv, true);
 
+  swiss_clearComponentSizes(&ps->win_list);
   swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -5043,6 +5056,97 @@ void session_destroy(session_t *ps) {
     ps_g = NULL;
 }
 
+void calculate_window_opacity(session_t* ps, Swiss* em) {
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(em, req_types, &it);
+    while(!it.done) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+
+        // Try obeying window type opacity firstly
+        if(ps->o.wintype_opacity[w->window_type] != -1.0) {
+            f->newOpacity = ps->o.wintype_opacity[w->window_type];
+            swiss_getNext(em, req_types, &it);
+            continue;
+        }
+
+        f->newOpacity = 100.0;
+
+        if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING) {
+            void* val;
+            if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
+                f->newOpacity = (double)(long)val;
+                swiss_getNext(em, req_types, &it);
+                continue;
+            }
+        }
+
+        // Respect inactive_opacity in some cases
+        if (ps->o.inactive_opacity && !w->focused
+                && (f->newOpacity == 100.0 || ps->o.inactive_opacity_override)) {
+            f->newOpacity = ps->o.inactive_opacity;
+        }
+
+        // Respect active_opacity only when the window is physically focused
+        if (f->newOpacity == 100.0 && ps->o.active_opacity && win_is_focused_real(ps, w)) {
+            f->newOpacity = ps->o.active_opacity;
+        }
+
+        swiss_getNext(em, req_types, &it);
+    }
+}
+
+// @CLEANUP: This shouldn't be here
+bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
+    bool skip_poll = false;
+    static const enum ComponentType req_types[] = {
+        COMPONENT_FADES_OPACITY,
+        0,
+    };
+    struct SwissIterator it = {0};
+    swiss_getFirst(em, req_types, &it);
+    while(!it.done) {
+        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+
+        fo->fade.value = fo->fade.keyframes[fo->fade.head].target;
+
+        if(!fade_done(&fo->fade)) {
+            // @CLEANUP: Maybe a while loop?
+            for(size_t i = fo->fade.head; i != fo->fade.tail; ) {
+                // Increment before the body to skip head and process tail
+                i = (i+1) % FADE_KEYFRAMES;
+
+                struct FadeKeyframe* keyframe = &fo->fade.keyframes[i];
+                if(!keyframe->ignore){
+                    keyframe->time += dt;
+                } else {
+                    keyframe->ignore = false;
+                }
+
+                double x = keyframe->time / keyframe->duration;
+                if(x >= 1.0) {
+                    // We're done, clean out the time and set this as the head
+                    keyframe->time = 0.0;
+                    keyframe->duration = -1;
+                    fo->fade.head = i;
+
+                    // Force the value. We are still going to blend it with stuff
+                    // on top of this
+                    fo->fade.value = keyframe->target;
+                } else {
+                    double t = bezier_getSplineValue(&curve, x);
+                    fo->fade.value = lerp(fo->fade.value, keyframe->target, t);
+                }
+            }
+            skip_poll = true;
+        }
+
+        swiss_getNext(em, req_types, &it);
+    }
+    return skip_poll;
+}
+
 /**
  * Do the actual work.
  *
@@ -5088,7 +5192,7 @@ void session_run(session_t *ps) {
             exit(1);
         }
 
-        double delta = timeDiff(&lastTime, &currentTime);
+        double dt = timeDiff(&lastTime, &currentTime);
 
 
         ps->skip_poll = false;
@@ -5117,11 +5221,72 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update);
 
+        calculate_window_opacity(ps, &ps->win_list);
+
+        {
+            static const enum ComponentType req_types[] = {
+                COMPONENT_MUD,
+                COMPONENT_FOCUS_CHANGE,
+                COMPONENT_FADES_OPACITY,
+                0,
+            };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+                struct FocusChangedComponent* f = swiss_getComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
+                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+                if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE
+                        && w->state != STATE_DESTROYING && w->state != STATE_DESTROYED) {
+                    if(w->focused) {
+                        w->state = STATE_ACTIVATING;
+                    } else {
+                        w->state = STATE_DEACTIVATING;
+                    }
+                    fade_keyframe(&fo->fade, f->newOpacity, ps->o.opacity_fade_time);
+                }
+
+                swiss_removeComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
+                swiss_getNext(&ps->win_list, req_types, &it);
+            }
+        }
+
+        zone_enter(&ZONE_update_fade);
+        {
+            static const enum ComponentType req_types[] = {
+                COMPONENT_MUD,
+                COMPONENT_FADES_OPACITY,
+                0,
+            };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+                if(!fade_done(&fo->fade)) {
+                    // If the fade isn't done, then damage the blur of everyone above
+                    for (win *t = w->prev_trans; t; t = t->prev_trans) {
+                        if(win_overlap(w, t))
+                            t->glx_blur_cache.damaged = true;
+                    }
+                }
+                swiss_getNext(&ps->win_list, req_types, &it);
+            }
+        }
+
+        if(do_win_fade(ps, dt, &ps->win_list)) {
+            ps->skip_poll = true;
+        }
+
+        zone_leave(&ZONE_update_fade);
+
         {
             size_t index;
             win_id* w_id = vector_getFirst(&paints, &index);
             while(w_id != NULL) {
-                win_update(ps, swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id), delta);
+                win_update(ps, swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id), dt);
                 w_id = vector_getNext(&paints, &index);
             }
         }

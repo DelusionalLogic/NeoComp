@@ -16,7 +16,6 @@
 #include "shadow.h"
 
 DECLARE_ZONE(update_window);
-DECLARE_ZONE(update_fade);
 
 static bool win_viewable(win* w) {
     return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
@@ -61,60 +60,46 @@ static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vecto
     return glpos;
 }
 
-void win_start_opacity(win* w, double opacity, double duration) {
+void fade_init(struct Fading* fade, double value) {
+    fade->head = 0;
+    fade->tail = 0;
+    fade->keyframes[0].target = value;
+    fade->keyframes[0].time = 0;
+    fade->keyframes[0].duration = -1;
+
+    fade->value = value;
+}
+
+void fade_keyframe(struct Fading* fade, double opacity, double duration) {
     // Fast path for skipping fading
     if(duration == 0) {
-        w->opacity_fade.head = 0;
-        w->opacity_fade.tail = 0;
-        w->opacity_fade.keyframes[0].target = opacity;
-        w->opacity_fade.keyframes[0].time = 0;
-        w->opacity_fade.keyframes[0].duration = -1;
+        fade->head = 0;
+        fade->tail = 0;
+        fade->keyframes[0].target = opacity;
+        fade->keyframes[0].time = 0;
+        fade->keyframes[0].duration = -1;
+        return;
     }
 
-    size_t nextIndex = (w->opacity_fade.tail + 1) % FADE_KEYFRAMES;
-    if(nextIndex == w->opacity_fade.head) {
+    size_t nextIndex = (fade->tail + 1) % FADE_KEYFRAMES;
+    if(nextIndex == fade->head) {
         printf("Warning: Shoving something off the opacity animation\n");
-        w->opacity_fade.head = (w->opacity_fade.head + 1) % FADE_KEYFRAMES;
+        fade->head = (fade->head + 1) % FADE_KEYFRAMES;
+        //The head has nothing to be blended into.
+        fade->keyframes[fade->head].duration = -1;
+        fade->keyframes[fade->head].time = 0;
     }
 
-    struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[nextIndex];
+    struct FadeKeyframe* keyframe = &fade->keyframes[nextIndex];
     keyframe->target = opacity;
     keyframe->duration = duration;
     keyframe->time = 0;
     keyframe->ignore = true;
-    w->opacity_fade.tail = nextIndex;
+    fade->tail = nextIndex;
 }
 
 bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
-}
-
-static double calc_opacity(session_t *ps, win *w) {
-    double opacity = 100.0;
-
-    // Try obeying window type opacity firstly
-    opacity = ps->o.wintype_opacity[w->window_type];
-    if(opacity != 100.0)
-        return opacity;
-
-    if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING) {
-        void* val;
-        if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
-            return (double)(long)val;
-        }
-    }
-
-    // Respect inactive_opacity in some cases
-    if (ps->o.inactive_opacity && false == w->focused
-            && (100.0 == opacity || ps->o.inactive_opacity_override)) {
-        opacity = ps->o.inactive_opacity;
-    }
-
-    // Respect active_opacity only when the window is physically focused
-    if (100.0 == opacity && ps->o.active_opacity && win_is_focused_real(ps, w)) {
-        opacity = ps->o.active_opacity;
-    }
-    return opacity;
 }
 
 void win_update(session_t* ps, win* w, double dt) {
@@ -125,73 +110,10 @@ void win_update(session_t* ps, win* w, double dt) {
         w->stencil_damaged = true;
     }
 
-    if(w->focus_changed) {
-        if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE
-                && w->state != STATE_DESTROYING && w->state != STATE_DESTROYED) {
-            if(w->focused) {
-                w->state = STATE_ACTIVATING;
-            } else {
-                w->state = STATE_DEACTIVATING;
-            }
-            double opacity = calc_opacity(ps, w);
-            win_start_opacity(w, opacity, ps->o.opacity_fade_time);
-        }
-        w->focus_changed = false;
-    }
-
     zone_enter(&ZONE_update_window);
-    w->opacity_fade.value = w->opacity_fade.keyframes[w->opacity_fade.head].target;
 
-    if(!fade_done(&w->opacity_fade)) {
-        zone_enter(&ZONE_update_fade);
-
-        // If we aren't redirected we just want to skip animations
-        if(!ps->redirected) {
-            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[w->opacity_fade.tail];
-            // We're done, clean out the time and set this as the head
-            keyframe->time = 0.0;
-            w->opacity_fade.head = w->opacity_fade.tail;
-            w->opacity_fade.value = keyframe->target;
-        }
-
-        // @CLEANUP: Maybe a while loop?
-        for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
-            // Increment before the body to skip head and process tail
-            i = (i+1) % FADE_KEYFRAMES;
-
-            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
-            if(!keyframe->ignore){
-                keyframe->time += dt;
-            } else {
-                keyframe->ignore = false;
-            }
-
-            double x = keyframe->time / keyframe->duration;
-            if(x >= 1.0) {
-                // We're done, clean out the time and set this as the head
-                keyframe->time = 0.0;
-                keyframe->duration = -1;
-                w->opacity_fade.head = i;
-
-                // Force the value. We are still going to blend it with stuff
-                // on top of this
-                w->opacity_fade.value = keyframe->target;
-            } else {
-                double t = bezier_getTForX(&ps->curve, x);
-                w->opacity_fade.value = lerp(w->opacity_fade.value, keyframe->target, t);
-            }
-        }
-        ps->skip_poll = true;
-
-        // If the fade isn't done, then damage the blur of everyone above
-        for (win *t = w->prev_trans; t; t = t->prev_trans) {
-            if(win_overlap(w, t))
-                t->glx_blur_cache.damaged = true;
-        }
-        zone_leave(&ZONE_update_fade);
-    }
-
-    if(fade_done(&w->opacity_fade)) {
+    struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
+    if(fade_done(&fo->fade)) {
         if(w->state == STATE_ACTIVATING) {
             w->state = STATE_ACTIVE;
 
@@ -218,7 +140,7 @@ void win_update(session_t* ps, win* w, double dt) {
             ps->idling = false;
         }
     }
-    w->opacity = w->opacity_fade.value;
+    w->opacity = fo->fade.value;
 
     zone_leave(&ZONE_update_window);
 }
@@ -287,6 +209,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
 }
 
 static void win_draw_debug(session_t* ps, win* w, float z) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct face* face = assets_load("window.face");
     Vector2 scale = {{1, 1}};
 
@@ -301,14 +224,18 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
     }
 
     {
+        // @HACK @CLEANUP: we need a better way to debugdraw components that
+        // might not be there. Maybe query if they are there and add some
+        // custom panel or something?
+        struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, wid);
         Vector2 barSize = {{200, 25}};
         Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
         Vector4 bgColor = {{.1, .1, .1, .4}};
-        for(size_t i = w->opacity_fade.head; i != w->opacity_fade.tail; ) {
+        for(size_t i = fo->fade.head; i != fo->fade.tail; ) {
             // Increment before the body to skip head and process tail
             i = (i+1) % FADE_KEYFRAMES;
 
-            struct FadeKeyframe* keyframe = &w->opacity_fade.keyframes[i];
+            struct FadeKeyframe* keyframe = &fo->fade.keyframes[i];
 
             double x = keyframe->time / keyframe->duration;
 
@@ -382,8 +309,9 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
     }
 
     {
+        struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, wid);
         char* text;
-        asprintf(&text, "fade-status: %d", fade_done(&w->opacity_fade));
+        asprintf(&text, "fade-status: %d", fade_done(&fo->fade));
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);

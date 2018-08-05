@@ -23,6 +23,13 @@ struct TestResultEqFlt {
     double expected;
 };
 
+struct TestResultEqBool {
+    char* name;
+    bool inverse;
+    bool actual;
+    bool expected;
+};
+
 struct TestResultEqPtr {
     char* name;
     bool inverse;
@@ -45,9 +52,10 @@ struct TestResultAssert {
 };
 
 enum TestResultType {
-    TEST_NO,
+    TEST_STATIC,
     TEST_EQ,
     TEST_EQ_FLOAT,
+    TEST_EQ_BOOL,
     TEST_EQ_PTR,
     TEST_EQ_ARRAY,
     TEST_EQ_STRING,
@@ -63,6 +71,7 @@ struct TestResult {
         struct TestResultAssert assert;
         struct TestResultEq eq;
         struct TestResultEqFlt eq_flt;
+        struct TestResultEqBool eq_bool;
         struct TestResultEqPtr ptr_eq;
         struct TestResultEqArr eq_arr;
         struct TestResultEqStr eq_str;
@@ -82,9 +91,10 @@ struct Test {
     struct TestResult res;
 };
 
-struct TestResult assertNo_internal();
+struct TestResult assertStatic_internal(bool result);
 struct TestResult assertEqPtr_internal(char* name, bool inverse, void* value, void* expected);
 struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, uint64_t expected);
+struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bool expected);
 struct TestResult assertEqFloat_internal(char* name, bool inverse, double value, double expected);
 struct TestResult assertEqArray_internal(char* name, bool inverse, void* var, void* value, size_t size);
 struct TestResult assertEqString_internal(char* name, bool inverse, char* var, char* value, size_t size);
@@ -93,6 +103,7 @@ struct TestResult assertEqString_internal(char* name, bool inverse, char* var, c
     _Generic((var),                         \
             void*: assertEqPtr_internal,    \
             char*: assertEqPtr_internal,    \
+            bool: assertEqBool_internal,    \
             uint64_t: assertEq_internal,    \
             char: assertEq_internal,        \
             float: assertEqFloat_internal,  \
@@ -112,7 +123,10 @@ struct TestResult assertEqString_internal(char* name, bool inverse, char* var, c
     return assertEqString_internal(#var, false, var, val, len)
 
 #define assertNo() \
-    return assertNo_internal()
+    return assertStatic_internal(false)
+
+#define assertYes() \
+    return assertStatic_internal(true)
 
 typedef struct TestResult (*test_func)();
 

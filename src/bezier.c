@@ -48,7 +48,7 @@ void bezier_init(struct Bezier* bezier, double aX1, double aY1, double aX2, doub
 }
 
 double bezier_getSplineValue(struct Bezier* bezier, double aX) {
-    if (bezier->x1 == bezier->y2 && bezier->x2 == bezier->y2)
+    if (bezier->x1 == bezier->y1 && bezier->x2 == bezier->y2)
         return aX;
 
     return bezier_calculate(bezier, bezier_getTForX(bezier, aX), bezier->y1, bezier->y2);

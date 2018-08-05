@@ -371,14 +371,16 @@ static struct TestResult convert_xrects_to_relative_rect__translate_y_coordinate
 }
 
 static struct TestResult swiss__be_empty__initialized() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_init(&swiss, 1);
 
     assertEq(swiss.size, 0);
 }
 
 static struct TestResult swiss__grow__allocating() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_init(&swiss, 1);
 
     swiss_allocate(&swiss);
@@ -387,7 +389,8 @@ static struct TestResult swiss__grow__allocating() {
 }
 
 static struct TestResult swiss__shrink__removing_item() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
 
@@ -397,7 +400,8 @@ static struct TestResult swiss__shrink__removing_item() {
 }
 
 static struct TestResult swiss__save__adding_a_component() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
@@ -408,7 +412,8 @@ static struct TestResult swiss__save__adding_a_component() {
 }
 
 static struct TestResult swiss__find_the_component__getting_existing_component() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
@@ -421,7 +426,8 @@ static struct TestResult swiss__find_the_component__getting_existing_component()
 }
 
 static struct TestResult swiss__say_there_isnt_a_component__checking_an_entity_without_component() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
@@ -433,7 +439,8 @@ static struct TestResult swiss__say_there_isnt_a_component__checking_an_entity_w
 }
 
 static struct TestResult swiss__say_there_is_a_component__checking_an_entity_with_component() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
@@ -446,7 +453,8 @@ static struct TestResult swiss__say_there_is_a_component__checking_an_entity_wit
 }
 
 static struct TestResult swiss__say_there_isnt_a_component__checking_a_removed_component() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
@@ -461,7 +469,8 @@ static struct TestResult swiss__say_there_isnt_a_component__checking_a_removed_c
 }
 
 static struct TestResult swiss__double_capacity__allocating_past_end() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_init(&swiss, 2);
 
     swiss_allocate(&swiss);
@@ -472,7 +481,8 @@ static struct TestResult swiss__double_capacity__allocating_past_end() {
 }
 
 static struct TestResult swiss__iterate_components_in_order_abcdef__iterating_forward_over_abcdef() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_init(&swiss, 6);
 
@@ -499,7 +509,8 @@ static struct TestResult swiss__iterate_components_in_order_abcdef__iterating_fo
 }
 
 static struct TestResult swiss__skip_entities_missing_components__iterating_forward() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_setComponentSize(&swiss, COMPONENT_SHADOW, sizeof(char));
     swiss_init(&swiss, 9);
@@ -533,7 +544,8 @@ static struct TestResult swiss__skip_entities_missing_components__iterating_forw
 }
 
 static struct TestResult swiss__include_entities_with_components_not_required__iterating_forward() {
-    Swiss swiss = {0};
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
     swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(char));
     swiss_setComponentSize(&swiss, COMPONENT_SHADOW, sizeof(char));
     swiss_init(&swiss, 9);
@@ -564,6 +576,272 @@ static struct TestResult swiss__include_entities_with_components_not_required__i
     }
 
     assertEqString(order, "a_b_cde_f", 9);
+}
+
+struct TestResult bezier__not_crash__initializing_bezier_curve() {
+    struct Bezier b;
+
+    bezier_init(&b, 0, 1, 0, 1);
+
+    assertYes();
+}
+
+#define NUMSAMPLES 10
+struct TestResult bezier__get_identical_y_for_x__querying_on_linear_curve() {
+    struct Bezier b;
+    bezier_init(&b, .2, .2, .8, .8);
+
+    const double samples[NUMSAMPLES] = {.1, .2, .3, .4, .5, .6, .7, .9, 1.0};
+    double results[NUMSAMPLES];
+
+    for(int i = 0; i < 10; i++) {
+        results[i] = bezier_getSplineValue(&b, samples[i]);
+    }
+
+    assertEqArray(results, samples, NUMSAMPLES);
+}
+#undef NUMSAMPLES
+
+struct TestResult bezier__get_0_for_0__querying_on_nonlinear_curve() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+
+    double v = bezier_getSplineValue(&b, .0);
+
+    assertEq(v, .0);
+}
+
+struct TestResult bezier__get_1_for_1__querying_on_nonlinear_curve() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+
+    double v = bezier_getSplineValue(&b, 1.0);
+
+    assertEq(v, 1.0);
+}
+
+uint64_t fade_size(struct Fading* fade) {
+    int64_t diff = fade->tail - fade->head;
+    uint64_t size;
+    if(diff < 0)
+        size = FADE_KEYFRAMES + diff;
+    else
+        size = diff;
+    return size;
+}
+
+struct TestResult fading__be_empty__initialized() {
+    struct Fading fade;
+
+    fade_init(&fade, 100.0);
+
+    assertEq(fade_size(&fade), 0);
+}
+
+struct TestResult fading__have_initial_value__initialized() {
+    struct Fading fade;
+
+    fade_init(&fade, 100.0);
+
+    assertEq(fade.value, 100.0);
+}
+
+struct TestResult fading__be_done__initialized() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    assertEq(fade_done(&fade), true);
+}
+
+struct TestResult fading__grow__adding_a_keyframe() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade_size(&fade), 1);
+}
+
+struct TestResult fading__maintain_size__adding_with_filled_up_buffer() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    for(int i = 0; i < FADE_KEYFRAMES - 1; i++) {
+        fade_keyframe(&fade, 10, 100);
+    }
+    uint64_t oldSize = fade_size(&fade);
+
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade_size(&fade), oldSize);
+}
+
+struct TestResult fading__set_new_head_duration__adding_with_filled_up_buffer() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    for(int i = 0; i < FADE_KEYFRAMES - 1; i++) {
+        fade_keyframe(&fade, 10, 100);
+    }
+    uint64_t oldSize = fade_size(&fade);
+
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade.keyframes[fade.head].duration, -1);
+}
+
+struct TestResult fading__use_the_first_keyframe_slot__adding_the_first_keyframe() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade.tail, 1);
+}
+
+struct TestResult fading__set_keyframe_ignore__adding_a_keyframe() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade.keyframes[1].ignore, true);
+}
+
+struct TestResult fading__not_be_done__keyframe_remaining() {
+    struct Fading fade;
+    fade_init(&fade, 100.0);
+    fade_keyframe(&fade, 10, 100);
+
+    assertEq(fade_done(&fade), false);
+}
+
+struct TestResult win_fade__return_false__theres_nothing_to_update() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 2);
+
+    bool skip_poll = do_win_fade(&b, .1, &swiss);
+
+    assertEq(skip_poll, false);
+}
+
+struct TestResult win_fade__return_false__all_fades_are_done() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 2);
+    {
+        win_id wid = swiss_allocate(&swiss);
+        struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+        fade_init(&fo->fade, 100.0);
+    }
+
+    bool skip_poll = do_win_fade(&b, .1, &swiss);
+
+    assertEq(skip_poll, false);
+}
+
+struct TestResult win_fade__unignore_keyframes__a_fade_is_running() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+    fade_init(&fo->fade, 100.0);
+    fade_keyframe(&fo->fade, 50.0, 100.0);
+    fo->fade.keyframes[1].ignore = true;
+
+    do_win_fade(&b, 10.0, &swiss);
+
+    assertEq(fo->fade.keyframes[1].ignore, false);
+}
+
+struct TestResult win_fade__progress_unignored_keyframes__a_fade_is_running() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+    fade_init(&fo->fade, 100.0);
+    fade_keyframe(&fo->fade, 50.0, 100.0);
+    fo->fade.keyframes[1].ignore = false;
+
+    do_win_fade(&b, 10.0, &swiss);
+
+    assertEq(fo->fade.keyframes[1].time, 10.0);
+}
+
+struct TestResult win_fade__remove_completed_keyframes__a_fade_is_running() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+    fade_init(&fo->fade, 100.0);
+    fade_keyframe(&fo->fade, 50.0, 100.0);
+    fo->fade.keyframes[1].ignore = false;
+
+    do_win_fade(&b, 100.0, &swiss);
+
+    assertEq(fade_size(&fo->fade), 0);
+}
+
+struct TestResult win_fade__set_a_keyframe_duration__keyframe_becomes_head() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+    fade_init(&fo->fade, 100.0);
+    fade_keyframe(&fo->fade, 50.0, 100.0);
+    fo->fade.keyframes[1].ignore = false;
+
+    do_win_fade(&b, 50.0, &swiss);
+
+    assertEq(fo->fade.keyframes[fo->fade.head].duration, -1);
+}
+
+struct TestResult win_fade__skip_keyframes_superseded_by_others__a_fade_is_running() {
+    struct Bezier b;
+    bezier_init(&b, .1, .5, .2, 1.2);
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct FadesOpacityComponent* fo = swiss_addComponent(&swiss, COMPONENT_FADES_OPACITY, wid);
+    fade_init(&fo->fade, 100.0);
+    fade_keyframe(&fo->fade, 50.0, 100.0);
+    fade_keyframe(&fo->fade, 75.0, 50.0);
+    fo->fade.keyframes[1].ignore = false;
+    fo->fade.keyframes[2].ignore = false;
+
+    do_win_fade(&b, 50.0, &swiss);
+
+    assertEq(fade_done(&fo->fade), true);
 }
 
 int main(int argc, char** argv) {
@@ -625,6 +903,29 @@ int main(int argc, char** argv) {
     TEST(swiss__iterate_components_in_order_abcdef__iterating_forward_over_abcdef);
     TEST(swiss__skip_entities_missing_components__iterating_forward);
     TEST(swiss__include_entities_with_components_not_required__iterating_forward);
+
+    TEST(bezier__not_crash__initializing_bezier_curve);
+    TEST(bezier__get_identical_y_for_x__querying_on_linear_curve);
+    TEST(bezier__get_0_for_0__querying_on_nonlinear_curve);
+    TEST(bezier__get_1_for_1__querying_on_nonlinear_curve);
+
+    TEST(fading__be_empty__initialized);
+    TEST(fading__have_initial_value__initialized);
+    TEST(fading__grow__adding_a_keyframe);
+    TEST(fading__maintain_size__adding_with_filled_up_buffer);
+    TEST(fading__set_new_head_duration__adding_with_filled_up_buffer);
+    TEST(fading__be_done__initialized);
+    TEST(fading__not_be_done__keyframe_remaining);
+    TEST(fading__use_the_first_keyframe_slot__adding_the_first_keyframe);
+    TEST(fading__set_keyframe_ignore__adding_a_keyframe);
+
+    TEST(win_fade__return_false__theres_nothing_to_update);
+    TEST(win_fade__return_false__all_fades_are_done);
+    TEST(win_fade__unignore_keyframes__a_fade_is_running);
+    TEST(win_fade__progress_unignored_keyframes__a_fade_is_running);
+    TEST(win_fade__remove_completed_keyframes__a_fade_is_running);
+    TEST(win_fade__skip_keyframes_superseded_by_others__a_fade_is_running);
+    TEST(win_fade__set_a_keyframe_duration__keyframe_becomes_head);
 
     return test_end();
 }

@@ -30,10 +30,10 @@ void sendResult(int fd, struct TestResult* result) {
     write_complete(fd, result->extra, result->extra_len);
 }
 
-struct TestResult assertNo_internal() {
+struct TestResult assertStatic_internal(bool success) {
     struct TestResult result = {
-        .type = TEST_NO,
-        .success = false,
+        .type = TEST_STATIC,
+        .success = success,
     };
 
     return result;
@@ -65,7 +65,7 @@ struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, ui
 
     struct TestResult result = {
         .type = TEST_EQ,
-        .success = true,
+        .success = success,
         .eq = {
             .name = name,
             .inverse = inverse,
@@ -85,8 +85,28 @@ struct TestResult assertEqFloat_internal(char* name, bool inverse, double value,
     // @IMPROVEMENT: Maybe we shouldn't be doing == for floats.
     struct TestResult result = {
         .type = TEST_EQ_FLOAT,
-        .success = true,
+        .success = success,
         .eq_flt = {
+            .name = name,
+            .inverse = inverse,
+            .actual = value,
+            .expected = expected,
+        }
+    };
+
+    return result;
+}
+
+struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bool expected) {
+    bool success = value == expected;
+
+    success = inverse ? !success : success;
+
+    // @IMPROVEMENT: Maybe we shouldn't be doing == for floats.
+    struct TestResult result = {
+        .type = TEST_EQ_BOOL,
+        .success = success,
+        .eq_bool = {
             .name = name,
             .inverse = inverse,
             .actual = value,
@@ -319,11 +339,17 @@ uint32_t test_end() {
             struct TestResult result = test->res;
 
             switch(result.type) {
+                case TEST_STATIC:
+                    printf("\tBy static assertion\n");
+                    break;
                 case TEST_EQ:
                     printf("\tBy equality test on %s %ld==%ld\n", result.eq.name, result.eq.actual, result.eq.expected);
                     break;
                 case TEST_EQ_FLOAT:
                     printf("\tBy floating equality test on %s %f==%f\n", result.eq_flt.name, result.eq_flt.actual, result.eq_flt.expected);
+                    break;
+                case TEST_EQ_BOOL:
+                    printf("\tBy boolean equality test on %s %d==%d\n", result.eq_bool.name, result.eq_bool.actual, result.eq_bool.expected);
                     break;
                 case TEST_EQ_PTR:
                     printf(

@@ -19,11 +19,13 @@ static void resize_real(Swiss* vector, size_t newSize) {
     size_t newBuckets = newBucketCount - oldBucketCount;
 
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
-        void* newMem = realloc(vector->data[i], newSize * vector->componentSize[i]);
+        void* newMem = NULL;
         // If a component has no size (which is valid) the memory required for
-        // the array is 0, and realloc is allowed to return NULL.
-        if(vector->componentSize[i] != 0)
+        // the array is 0.
+        if(vector->componentSize[i] != 0) {
+            newMem = realloc(vector->data[i], newSize * vector->componentSize[i]);
             assert(newMem != NULL);
+        }
         vector->data[i] = newMem;
 
         newMem = realloc(vector->freelist[i], newBucketCount * SWISS_FREELIST_BUCKET_SIZE_BYTES);
@@ -126,6 +128,14 @@ static void setFreeStatus(Swiss* vector, enum ComponentType type, size_t index, 
     }
 }
 
+void swiss_clearComponentSizes(Swiss* index) {
+    assert(index->capacity == 0);
+
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        index->componentSize[i] = 0;
+    }
+}
+
 void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t size) {
     assert(index->capacity == 0);
 
@@ -135,8 +145,12 @@ void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t 
 void swiss_init(Swiss* index, size_t initialsize) {
     swiss_setComponentSize(index, COMPONENT_META, sizeof(struct MetaComponent));
 
+    index->size = 0;
     index->capacity = 0;
     index->firstFree = 0;
+
+    memset(index->data, 0x00, sizeof(uint8_t*) * NUM_COMPONENT_TYPES);
+    memset(index->freelist, 0x00, sizeof(uint64_t*) * NUM_COMPONENT_TYPES);
 
     resize_real(index, initialsize);
 

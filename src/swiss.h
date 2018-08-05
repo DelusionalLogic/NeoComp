@@ -31,10 +31,13 @@ struct MetaComponent {
 };
 
 enum ComponentType {
-	COMPONENT_END,
     COMPONENT_META, // Special component used for bookkeeping
+	COMPONENT_END = COMPONENT_META,
     COMPONENT_MUD, // The goal is to eliminate this one
-	COMPONENT_SHADOW, // Right now this is only used for testing
+    COMPONENT_SHADOW, // Right now this is only used for testing
+    COMPONENT_OPACITY,
+    COMPONENT_FOCUS_CHANGE,
+    COMPONENT_FADES_OPACITY,
     NUM_COMPONENT_TYPES,
 };
 
@@ -49,6 +52,7 @@ typedef struct {
     uint8_t* data[NUM_COMPONENT_TYPES];
 } Swiss;
 
+void swiss_clearComponentSizes(Swiss* index);
 void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t size);
 void swiss_init(Swiss* index, size_t initialSize);
 
