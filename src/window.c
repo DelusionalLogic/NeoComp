@@ -17,12 +17,6 @@
 
 DECLARE_ZONE(update_window);
 
-static bool win_viewable(win* w) {
-    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
-        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
-        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
-}
-
 bool win_overlap(const win* w1, const win* w2) {
     const Vector2 w1lpos = {{
         w1->a.x, w1->a.y,
@@ -407,7 +401,7 @@ void win_draw(session_t* ps, win* w, float z) {
 
     win_drawcontents(ps, w, z);
 
-    /* win_draw_debug(ps, w, z); */
+    win_draw_debug(ps, w, z);
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
@@ -415,11 +409,9 @@ void win_postdraw(session_t* ps, win* w, float z) {
     Vector2 size = {{w->widthb, w->heightb}};
     Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
 
-    if(win_viewable(w)) {
-        // Painting shadow
-        if (w->shadow) {
-            win_paint_shadow(ps, w, &glPos, &size, w->z);
-        }
+    // Painting shadow
+    if (w->shadow) {
+        win_paint_shadow(ps, w, &glPos, &size, w->z);
     }
 }
 

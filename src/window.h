@@ -237,9 +237,6 @@ typedef struct _win {
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;
 
-  bool shadow_damaged;
-  struct glx_shadow_cache shadow_cache;
-
   struct WindowDrawable drawable;
 } win;
 

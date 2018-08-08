@@ -48,7 +48,7 @@ static int findFirstSet(uint64_t value) {
     return __builtin_clzll(value);
 }
 
-static uint64_t makeBucket(Swiss* index, enum ComponentType* types, size_t bucket) {
+static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, const size_t bucket) {
     uint64_t finalKey = (~0ULL);
 
     for(int i = 0; types[i] != COMPONENT_END; i++) {
@@ -63,7 +63,7 @@ static uint64_t makeBucket(Swiss* index, enum ComponentType* types, size_t bucke
 // positioning. If start is a mid-byte value, it will be rounded DOWN to the
 // byte it intersects, and we will start the search from there. It's just an
 // optimization after all.
-static size_t findNextFree(Swiss* vector, enum ComponentType type, size_t start) {
+static size_t findNextFree(const Swiss* vector, const enum ComponentType type, const size_t start) {
 #if SWISS_FREELIST_BUCKET_SIZE != 64
 #error "findNextFree has to be made aware of the new size"
 #endif
@@ -84,7 +84,7 @@ static size_t findNextFree(Swiss* vector, enum ComponentType type, size_t start)
     return -1;
 }
 
-static size_t findNextUsed(Swiss* vector, enum ComponentType* types, size_t start) {
+static size_t findNextUsed(const Swiss* vector, const enum ComponentType* types, const size_t start) {
 #if SWISS_FREELIST_BUCKET_SIZE != 64
 #error "findNextUsed has to be made aware of the new size"
 #endif
@@ -108,7 +108,7 @@ static size_t findNextUsed(Swiss* vector, enum ComponentType* types, size_t star
         if(value == 0)
             continue;
 
-        size_t freeIndex = findFirstSet(~value) + i * SWISS_FREELIST_BUCKET_SIZE;
+        size_t freeIndex = findFirstSet(value) + i * SWISS_FREELIST_BUCKET_SIZE;
         if(freeIndex >= vector->capacity)
             return -1;
         return freeIndex;
@@ -129,16 +129,12 @@ static void setFreeStatus(Swiss* vector, enum ComponentType type, size_t index, 
 }
 
 void swiss_clearComponentSizes(Swiss* index) {
-    assert(index->capacity == 0);
-
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
         index->componentSize[i] = 0;
     }
 }
 
 void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t size) {
-    assert(index->capacity == 0);
-
     index->componentSize[type] = size;
 }
 

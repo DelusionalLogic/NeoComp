@@ -4,5 +4,4 @@
 
 void windowlist_draw(session_t* ps, Vector* paints, float* z);
 void windowlist_updateStencil(session_t* ps, Vector* paints);
-void windowlist_updateShadow(session_t* ps, Vector* paints);
 void windowlist_updateBlur(session_t* ps, Vector* paints);

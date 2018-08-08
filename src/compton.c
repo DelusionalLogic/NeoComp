@@ -1505,7 +1505,12 @@ add_win(session_t *ps, Window id) {
   // Allocate and initialize the new win structure
   win_id slot = swiss_allocate(&ps->win_list);
   win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
-  swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
+
+  {
+      struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
+      fade_init(&fo->fade, 100.0);
+  }
+
   memcpy(new, &win_def, sizeof(win_def));
 
 #ifdef DEBUG_EVENTS
@@ -1570,7 +1575,8 @@ add_win(session_t *ps, Window id) {
   // @PERFORMANCE @MEMORY: Theres no reason so have a shadow cache for windows
   // that don't have a shadow. But to make it easy to program i'll just have it
   // for all windows for now
-  if(shadow_cache_init(&new->shadow_cache) != 0){
+  struct glx_shadow_cache* shadow = swiss_addComponent(&ps->win_list, COMPONENT_SHADOW, slot);
+  if(shadow_cache_init(shadow) != 0){
       printf_errf("Failed initializing window shadow");
 
       blur_cache_delete(&new->glx_blur_cache);
@@ -1585,7 +1591,7 @@ add_win(session_t *ps, Window id) {
   if(renderbuffer_stencil_init(&new->stencil, NULL) != 0){
       printf_errf("Failed initializing window stencil");
 
-      shadow_cache_delete(&new->shadow_cache);
+      shadow_cache_delete(shadow);
       blur_cache_delete(&new->glx_blur_cache);
       wd_delete(&new->drawable);
       free(new);
@@ -2838,13 +2844,15 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
 
 static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
+	win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     fetch_shaped_window_face(ps, w);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
     w->stencil_damaged = true;
+
     //The shadow is damaged because the outline (and therefore the inner clip) has changed.
-    w->shadow_damaged = true;
+	swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 /**
@@ -4751,6 +4759,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -5135,7 +5144,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
                     // on top of this
                     fo->fade.value = keyframe->target;
                 } else {
-                    double t = bezier_getSplineValue(&curve, x);
+                    double t = bezier_getSplineValue(curve, x);
                     fo->fade.value = lerp(fo->fade.value, keyframe->target, t);
                 }
             }
@@ -5276,7 +5285,7 @@ void session_run(session_t *ps) {
             }
         }
 
-        if(do_win_fade(ps, dt, &ps->win_list)) {
+        if(do_win_fade(&ps->curve, dt, &ps->win_list)) {
             ps->skip_poll = true;
         }
 

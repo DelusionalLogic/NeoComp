@@ -34,7 +34,8 @@ enum ComponentType {
     COMPONENT_META, // Special component used for bookkeeping
     COMPONENT_END = COMPONENT_META,
     COMPONENT_MUD, // The goal is to eliminate this one
-    COMPONENT_SHADOW, // Right now this is only used for testing
+    COMPONENT_SHADOW_DAMAGED,
+    COMPONENT_SHADOW,
     COMPONENT_OPACITY,
     COMPONENT_FOCUS_CHANGE,
     COMPONENT_FADES_OPACITY,

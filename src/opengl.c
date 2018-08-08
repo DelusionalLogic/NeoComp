@@ -298,6 +298,19 @@ glx_destroy(session_t *ps) {
   if (!ps->psglx)
     return;
 
+  {
+    static const enum ComponentType req_types[] = { COMPONENT_SHADOW, 0 };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+        shadow_cache_delete(shadow);
+
+        swiss_getNext(&ps->win_list, req_types, &it);
+    }
+  }
+
   // Free all GLX resources of windows
   static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
   struct SwissIterator it = {0};
@@ -306,7 +319,6 @@ glx_destroy(session_t *ps) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
       blur_cache_delete(&w->glx_blur_cache);
-      shadow_cache_delete(&w->shadow_cache);
 
       swiss_getNext(&ps->win_list, req_types, &it);
   }

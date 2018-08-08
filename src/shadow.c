@@ -67,7 +67,12 @@ void win_calc_shadow(session_t* ps, win* w) {
 
 void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size, float z) {
     glx_mark(ps, w->id, true);
-    struct glx_shadow_cache* cache = &w->shadow_cache;
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
+        return;
+    }
+
+    struct glx_shadow_cache* cache = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, wid);
 
     glEnable(GL_BLEND);
 
@@ -114,3 +119,174 @@ void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* 
 
     glDisable(GL_BLEND);
 }
+
+static bool win_viewable(win* w) {
+    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
+        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
+        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
+}
+
+void windowlist_updateShadow(session_t* ps, Vector* paints) {
+    Vector shadow_updates;
+    vector_init(&shadow_updates, sizeof(win_id), paints->size);
+
+
+    // @HACK: For legacy reasons we assume the shadow is damaged if the size of
+    // the window has changed. we should move over to manually damaging it when
+    // we change size
+    {
+        static const enum ComponentType req_types[] = {
+            COMPONENT_MUD,
+            COMPONENT_SHADOW,
+            0
+        };
+        struct SwissIterator it = {0};
+        swiss_getFirst(&ps->win_list, req_types, &it);
+        while(!it.done) {
+            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+            if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+                swiss_getNext(&ps->win_list, req_types, &it);
+                continue;
+            }
+
+            if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id))
+                    swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
+
+            swiss_getNext(&ps->win_list, req_types, &it);
+        }
+    }
+
+    struct Framebuffer framebuffer;
+    if(!framebuffer_init(&framebuffer)) {
+        printf("Couldn't create framebuffer for shadow\n");
+        return;
+    }
+    framebuffer_resetTarget(&framebuffer);
+    framebuffer_bind(&framebuffer);
+
+    Vector blurDatas;
+    vector_init(&blurDatas, sizeof(struct TextureBlurData), ps->win_list.size);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_STENCIL_TEST);
+
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+
+    static const enum ComponentType req_types[] = {
+        COMPONENT_MUD,
+        COMPONENT_SHADOW_DAMAGED,
+        COMPONENT_SHADOW,
+        0
+    };
+    struct SwissIterator it = {0};
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+        Vector2 size = {{w->widthb, w->heightb}};
+        shadow_cache_resize(shadow, &size);
+
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, &shadow->texture);
+        framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
+        framebuffer_rebind(&framebuffer);
+
+        Matrix old_view = view;
+        view = mat4_orthogonal(0, shadow->texture.size.x, 0, shadow->texture.size.y, -1, 1);
+
+        glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
+
+        glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
+        assert(w->drawable.bound);
+        texture_bind(&w->drawable.texture, GL_TEXTURE0);
+
+        struct shader_program* shadow_program = assets_load("shadow.shader");
+        if(shadow_program->shader_type_info != &shadow_info) {
+            printf_errf("Shader was not a shadow shader\n");
+            framebuffer_delete(&framebuffer);
+            view = old_view;
+            return;
+        }
+        struct Shadow* shadow_type = shadow_program->shader_type;
+
+        shader_set_future_uniform_bool(shadow_type->flip, w->drawable.texture.flipped);
+        shader_set_future_uniform_sampler(shadow_type->tex_scr, 0);
+
+        shader_use(shadow_program);
+
+        Vector3 pos = vec3_from_vec2(&shadow->border, 0.0);
+        draw_rect(w->face, shadow_type->mvp, pos, size);
+
+        view = old_view;
+
+        // Do the blur
+        struct TextureBlurData blurData = {
+            .depth = &shadow->stencil,
+            .tex = &shadow->texture,
+            .swap = &shadow->effect,
+        };
+        vector_putBack(&blurDatas, &blurData);
+
+        swiss_getNext(&ps->win_list, req_types, &it);
+    }
+
+    glDisable(GL_STENCIL_TEST);
+
+    textures_blur(&blurDatas, &framebuffer, 3, false);
+
+    vector_kill(&blurDatas);
+
+    framebuffer_resetTarget(&framebuffer);
+    if(framebuffer_bind(&framebuffer) != 0) {
+        printf("Failed binding framebuffer to clip shadow\n");
+    }
+
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+    glStencilMask(0xFF);
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+    glEnable(GL_STENCIL_TEST);
+
+    swiss_getFirst(&ps->win_list, req_types, &it);
+    while(!it.done) {
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, &shadow->effect);
+        framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
+        if(framebuffer_rebind(&framebuffer) != 0) {
+            printf("Failed binding framebuffer to clip shadow\n");
+            return;
+        }
+
+        Matrix old_view = view;
+        view = mat4_orthogonal(0, shadow->effect.size.x, 0, shadow->effect.size.y, -1, 1);
+        glViewport(0, 0, shadow->effect.size.x, shadow->effect.size.y);
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        draw_tex(w->face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
+
+        view = old_view;
+
+        swiss_removeComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
+        swiss_getNext(&ps->win_list, req_types, &it);
+    }
+
+    glDisable(GL_STENCIL_TEST);
+
+    vector_kill(&shadow_updates);
+    framebuffer_delete(&framebuffer);
+}
+
