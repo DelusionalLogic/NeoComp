@@ -119,7 +119,6 @@ void win_update(session_t* ps, win* w, double dt) {
 
             w->in_openclose = false;
 
-            free_region(ps, &w->border_size);
             if(ps->redirected)
                 wd_unbind(&w->drawable);
 

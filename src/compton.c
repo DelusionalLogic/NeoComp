@@ -222,7 +222,7 @@ static bool group_is_focused(session_t *ps, Window leader) {
     swiss_getFirst(&ps->win_list, req_types, &it);
     while(!it.done) {
         win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-        if (win_get_leader(ps, w) == leader && !w->destroyed
+        if (win_get_leader(ps, w) == leader && w->state != STATE_DESTROYING
                 && win_is_focused_real(ps, w))
             return true;
         swiss_getNext(&ps->win_list, req_types, &it);
@@ -1055,8 +1055,6 @@ static void unmap_win(session_t *ps, win *w) {
     if (!w || IsUnmapped == w->a.map_state) return;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    free_fence(ps, &w->fence);
-
     // Set focus out
     if(ps->active_win == w)
         ps->active_win = NULL;
@@ -1367,7 +1365,6 @@ win_recheck_client(session_t *ps, win *w) {
 static bool
 add_win(session_t *ps, Window id) {
   const static win win_def = {
-    .next = -1,
     .prev_trans = NULL,
     .next_trans = NULL,
 
@@ -1375,16 +1372,13 @@ add_win(session_t *ps, Window id) {
     .face = NULL,
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
-    .pictfmt = NULL,
     .damaged = false,
     .damage = None,
-    .border_size = None,
     .flags = 0,
     .need_configure = false,
     .queue_configure = { },
     .widthb = 0,
     .heightb = 0,
-    .destroyed = false,
     .to_paint = false,
     .in_openclose = false,
 
@@ -1408,8 +1402,6 @@ add_win(session_t *ps, Window id) {
     .cache_oparule = NULL,
 
     .opacity = 0.0,
-	.fadeTime = 0.0,
-	.fadeDuration = -1.0,
 
     .fade = false,
     .fade_force = UNSET,
@@ -1480,9 +1472,6 @@ add_win(session_t *ps, Window id) {
   new->a.map_state = IsUnmapped;
 
   if (InputOutput == new->a.class) {
-      // Get window picture format
-      new->pictfmt = XRenderFindVisualFormat(ps->dpy, new->a.visual);
-
       // Create Damage for window
       set_ignore_next(ps);
       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
@@ -1643,7 +1632,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
         || w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
       factor_change = true;
-      free_region(ps, &w->border_size);
     }
 
     w->a.x = ce->x;
@@ -1730,26 +1718,11 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
     size_t order_index = vector_find_uint64(&ps->order, wid);
     vector_remove(&ps->order, order_index);
 
-    // Unhook the window from the legacy linked list
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* p = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-        if (p->next == wid) {
-            p->next = w->next;
-            break;
-        }
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
-
     swiss_remove(&ps->win_list, wid);
 }
 
 static void destroy_win(session_t *ps, struct _win* w) {
     if (w) {
-        w->destroyed = true;
-
         // You can only destroy a window that is already hiding or invisible
         assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
 
@@ -4829,7 +4802,7 @@ void session_destroy(session_t *ps) {
     while(!it.done) {
         win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
-        if (IsViewable == w->a.map_state && !w->destroyed)
+        if (IsViewable == w->a.map_state && w->state != STATE_DESTROYING)
             win_ev_stop(ps, w);
 
         wd_delete(&w->drawable);

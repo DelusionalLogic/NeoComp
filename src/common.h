@@ -936,7 +936,7 @@ find_toplevel(session_t *ps, Window id) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
       struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
 
-      if (client->id == id && !w->destroyed)
+      if (client->id == id && w->state != STATE_DESTROYING)
           return w;
 
       swiss_getNext(&ps->win_list, req_types, &it);

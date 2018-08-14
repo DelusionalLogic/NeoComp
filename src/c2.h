@@ -105,8 +105,6 @@ struct _c2_l {
         C2_L_POVREDIR,
         C2_L_PFOCUSED,
         C2_L_PWMWIN,
-        C2_L_PBSHAPED,
-        C2_L_PROUNDED,
         C2_L_PCLIENT,
         C2_L_PWINDOWTYPE,
         C2_L_PLEADER,

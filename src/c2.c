@@ -53,8 +53,6 @@ const static c2_predef_t C2_PREDEFS[] = {
     [C2_L_POVREDIR    ] = { "override_redirect" , C2_L_TCARDINAL  , 0  },
     [C2_L_PFOCUSED    ] = { "focused"           , C2_L_TCARDINAL  , 0  },
     [C2_L_PWMWIN      ] = { "wmwin"             , C2_L_TCARDINAL  , 0  },
-    [C2_L_PBSHAPED    ] = { "bounding_shaped"   , C2_L_TCARDINAL  , 0  },
-    [C2_L_PROUNDED    ] = { "rounded_corners"   , C2_L_TCARDINAL  , 0  },
     [C2_L_PCLIENT     ] = { "client"            , C2_L_TWINDOW    , 0  },
     [C2_L_PWINDOWTYPE ] = { "window_type"       , C2_L_TSTRING    , 0  },
     [C2_L_PLEADER     ] = { "leader"            , C2_L_TWINDOW    , 0  },
@@ -1277,7 +1275,6 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                         case C2_L_POVREDIR: tgt = w->a.override_redirect;   break;
                         case C2_L_PFOCUSED: tgt = win_is_focused_real(ps, w); break;
                         case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
-                        case C2_L_PBSHAPED: tgt = w->bounding_shaped;       break;
                         case C2_L_PCLIENT: {
                             struct HasClientComponent* client = swiss_godComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wad);
                             tgt = client != NULL ? client->id : None;

@@ -97,8 +97,6 @@ enum WindowState {
 
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
-  /// Pointer to the next structure in the linked list.
-  size_t next;
   /// Pointer to the next higher window to paint.
   struct _win *prev_trans;
   /// Pointer to the next lower window to paint.
@@ -116,16 +114,11 @@ typedef struct _win {
   /// Xinerama screen this window is on.
   int xinerama_scr;
 
-  /// Window visual pict format;
-  XRenderPictFormat *pictfmt;
   /// Whether the window has been damaged at least once.
   bool damaged;
-  /// X Sync fence of drawable.
-  XSyncFence fence;
   /// Damage of the window.
   Damage damage;
-  /// Bounding shape of the window.
-  XserverRegion border_size;
+
   /// Window flags. Definitions above.
   int_fast16_t flags;
   /// Whether there's a pending <code>ConfigureNotify</code> happening
@@ -135,18 +128,17 @@ typedef struct _win {
   XConfigureEvent queue_configure;
   /// Cached width/height of the window including border.
   int widthb, heightb;
-  /// Whether the window has been destroyed.
-  bool destroyed;
-  /// Whether the window is bounding-shaped.
-  bool bounding_shaped;
   /// Whether this window is to be painted.
   bool to_paint;
   /// Whether the window is painting excluded.
   bool paint_excluded;
   /// Whether the window is unredirect-if-possible excluded.
   bool unredir_if_possible_excluded;
+
+  // @CLEANUP: This should be replaced by a check on state
   /// Whether this window is in open/close state.
   bool in_openclose;
+
   /// Is fullscreen
   bool fullscreen;
   /// Is solid;
@@ -188,18 +180,10 @@ typedef struct _win {
   const c2_lptr_t *cache_pblst;
   const c2_lptr_t *cache_uipblst;
 
-  // Opacity-related members
-
   // Current window opacity.
   double opacity;
 
-  bool skipFade;
-  double fadeTime;
-  double fadeDuration;
-
-  // Fading-related members
   /// Do not fade if it's false. Change on window type change.
-  /// Used by fading blacklist in the future.
   bool fade;
   /// Fade state on last paint.
   bool fade_last;
