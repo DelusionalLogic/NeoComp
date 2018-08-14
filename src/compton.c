@@ -162,10 +162,6 @@ static bool wid_get_children(session_t *ps, Window w,
     return true;
 }
 
-static bool __attribute__((pure)) win_has_frame(const win *w) {
-    return w->a.border_width;
-}
-
 static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
     if (!pxmap) return false;
 
@@ -1689,9 +1685,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       w->a.width = ce->width;
       w->a.height = ce->height;
       w->a.border_width = ce->border_width;
-
-      if(w->a.border_width == 0)
-          w->has_frame = win_has_frame(w);
 
       calc_win_size(ps, w);
     }

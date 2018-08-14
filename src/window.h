@@ -152,9 +152,6 @@ typedef struct _win {
   /// Is solid;
   bool solid;
 
-  /// Has frame
-  bool has_frame;
-
   // Client window related members
   /// Type of the window.
   wintype_t window_type;
