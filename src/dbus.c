@@ -469,14 +469,15 @@ cdbus_apdarg_wids(session_t *ps, DBusMessage *msg, const void *data) {
   {
     cdbus_window_t *pcur = arr;
 
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+    static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, 0 };
     struct SwissIterator it = {0};
     swiss_getFirst(&ps->win_list, req_types, &it);
     while(!it.done) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+      struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
 
       if (!w->destroyed) {
-        *pcur = w->id;
+        *pcur = window->id;
         ++pcur;
         assert(pcur <= arr + swiss_size(&ps->win_list));
       }

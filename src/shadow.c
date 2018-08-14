@@ -66,7 +66,7 @@ void win_calc_shadow(session_t* ps, win* w) {
 }
 
 void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size, float z) {
-    glx_mark(ps, w->id, true);
+    glx_mark(ps, 0, true);
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
         return;

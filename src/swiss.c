@@ -242,6 +242,15 @@ void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_
     return index->data[type] + index->componentSize[type] * id;
 }
 
+void* swiss_godComponent(const Swiss* index, const enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
+
+    if(!swiss_hasComponent(index, type, id))
+        return NULL;
+
+    return index->data[type] + index->componentSize[type] * id;
+}
+
 void swiss_clear(Swiss* index) {
     assert(index->capacity != 0);
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {

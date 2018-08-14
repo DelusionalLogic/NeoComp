@@ -1235,7 +1235,16 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
         bool *pres, bool *perr) {
     assert(pleaf);
 
-    const Window wid = (pleaf->tgt_onframe ? w->client_win: w->id);
+    win_id wad = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wad);
+
+    Window wid;
+    if(pleaf->tgt_onframe) {
+        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wad);
+        wid = client->id;
+    } else {
+        wid = window->id;
+    }
 
     // Return if wid is missing
     if (!pleaf->predef && !wid)
@@ -1269,7 +1278,11 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                         case C2_L_PFOCUSED: tgt = win_is_focused_real(ps, w); break;
                         case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
                         case C2_L_PBSHAPED: tgt = w->bounding_shaped;       break;
-                        case C2_L_PCLIENT:  tgt = w->client_win;            break;
+                        case C2_L_PCLIENT: {
+                            struct HasClientComponent* client = swiss_godComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wad);
+                            tgt = client != NULL ? client->id : None;
+                            break;
+                        }
                         case C2_L_PLEADER:  tgt = w->leader;                break;
                         default:            *perr = true; assert(0);        break;
                     }

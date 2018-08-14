@@ -140,7 +140,7 @@ void win_update(session_t* ps, win* w, double dt) {
 }
 
 static void win_drawcontents(session_t* ps, win* w, float z) {
-    glx_mark(ps, w->id, true);
+    glx_mark(ps, 0, true);
 
     glEnable(GL_BLEND);
 
@@ -199,7 +199,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
         draw_rect(w->face, global_type->mvp, winpos, rectSize);
     }
 
-    glx_mark(ps, w->id, false);
+    glx_mark(ps, 0, false);
 }
 
 static void win_draw_debug(session_t* ps, win* w, float z) {

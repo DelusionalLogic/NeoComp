@@ -37,6 +37,14 @@ struct FocusChangedComponent {
     double newOpacity;
 };
 
+struct TracksWindowComponent {
+    Window id;
+};
+
+struct HasClientComponent {
+    Window id;
+};
+
 /// A structure representing margins around a rectangle.
 typedef struct {
   int top;
@@ -97,8 +105,6 @@ typedef struct _win {
   struct _win *next_trans;
 
   // Core members
-  /// ID of the top-level frame window.
-  Window id;
   /// Window attributes.
   XWindowAttributes a;
   float z;
@@ -150,8 +156,6 @@ typedef struct _win {
   bool has_frame;
 
   // Client window related members
-  /// ID of the top-level client window of the window.
-  Window client_win;
   /// Type of the window.
   wintype_t window_type;
   /// Whether it looks like a WM window. We consider a window WM window if
@@ -206,9 +210,6 @@ typedef struct _win {
   switch_t fade_force;
   /// Callback to be called after fading completed.
   void (*fade_callback) (struct _session_t *ps, struct _win *w);
-
-  /// Frame extents. Acquired from _NET_FRAME_EXTENTS.
-  margin_t frame_extents;
 
   // Shadow-related members
   /// Whether a window has shadow. Calculated.

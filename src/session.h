@@ -10,7 +10,6 @@
 #include "renderbuffer.h"
 #include "swiss.h"
 #include "vector.h"
-#include "dbus.h"
 #include "winprop.h"
 
 #include <X11/extensions/Xinerama.h>
@@ -34,10 +33,6 @@ typedef void (*f_BindTexImageEXT) (Display *display, GLXDrawable drawable, int b
 typedef void (*f_ReleaseTexImageEXT) (Display *display, GLXDrawable drawable, int buffer);
 
 typedef void (*f_CopySubBuffer) (Display *dpy, GLXDrawable drawable, int x, int y, int width, int height);
-
-winprop_t
-wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
-    long length, Atom rtype, int rformat);
 
 
 #define CGLX_SESSION_INIT { .context = NULL }
@@ -208,10 +203,6 @@ typedef struct _options_t {
   bool wintype_focus[NUM_WINTYPES];
   /// Whether to try to detect WM windows and mark them as focused.
   bool mark_wmwin_focused;
-  /// Whether to mark override-redirect windows as focused.
-  bool mark_ovredir_focused;
-  /// Whether to use EWMH _NET_ACTIVE_WINDOW to find active window.
-  bool use_ewmh_active_win;
   /// A list of windows always to be considered focused.
   c2_lptr_t *focus_blacklist;
   /// Whether to do window grouping with <code>WM_TRANSIENT_FOR</code>.
@@ -396,3 +387,7 @@ typedef struct _session_t {
     char *dbus_service;
 #endif
 } session_t;
+
+winprop_t
+wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
+    long length, Atom rtype, int rformat);

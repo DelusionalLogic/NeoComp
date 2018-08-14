@@ -903,14 +903,14 @@ find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+  static const enum ComponentType req_types[] = { COMPONENT_TRACKS_WINDOW, 0 };
   struct SwissIterator it = {0};
   swiss_getFirst(&ps->win_list, req_types, &it);
   while(!it.done) {
-      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+      struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
 
-      if (w->id == id && !w->destroyed)
-          return w;
+      if (w->id == id)
+          return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
       swiss_getNext(&ps->win_list, req_types, &it);
   }
@@ -929,13 +929,14 @@ find_toplevel(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
-  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
+  static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_HAS_CLIENT, 0 };
   struct SwissIterator it = {0};
   swiss_getFirst(&ps->win_list, req_types, &it);
   while(!it.done) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+      struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
 
-      if (w->client_win == id && !w->destroyed)
+      if (client->id == id && !w->destroyed)
           return w;
 
       swiss_getNext(&ps->win_list, req_types, &it);

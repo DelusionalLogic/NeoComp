@@ -9,8 +9,6 @@
 struct _session_t;
 
 struct Atoms {
-  // Atom of _NET_FRAME_EXTENTS</code>.
-  Atom atom_frame_extents;
   // Property atom to identify top-level frame window. Currently WM_STATE.
   Atom atom_client;
   // Atom of property WM_NAME.

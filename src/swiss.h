@@ -34,6 +34,8 @@ enum ComponentType {
     COMPONENT_META, // Special component used for bookkeeping
     COMPONENT_END = COMPONENT_META,
     COMPONENT_MUD, // The goal is to eliminate this one
+    COMPONENT_TRACKS_WINDOW,
+    COMPONENT_HAS_CLIENT,
     COMPONENT_SHADOW_DAMAGED,
     COMPONENT_SHADOW,
     COMPONENT_OPACITY,
@@ -68,6 +70,7 @@ void swiss_removeComponent(Swiss* index, const enum ComponentType type, win_id i
 
 // Avoid using this
 void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_id id);
+void* swiss_godComponent(const Swiss* index, const enum ComponentType type, win_id id);
 
 void swiss_clear(Swiss* vector);
 int swiss_size(Swiss* vector);

@@ -7,7 +7,6 @@ Atom get_atom(struct _session_t* ps, const char* atom_name) {
 }
 
 void atoms_get(struct _session_t* ps, struct Atoms* atoms) {
-    ps->atoms.atom_frame_extents = get_atom(ps, "_NET_FRAME_EXTENTS");
     ps->atoms.atom_client = get_atom(ps, "WM_STATE");
     ps->atoms.atom_name = XA_WM_NAME;
     ps->atoms.atom_name_ewmh = get_atom(ps, "_NET_WM_NAME");

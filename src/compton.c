@@ -25,6 +25,7 @@
 #include "shadow.h"
 #include "xtexture.h"
 #include "timer.h"
+#include "timeout.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -136,13 +137,16 @@ static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *s
 
 // Stop listening for events
 static void win_ev_stop(session_t *ps, win *w) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
+    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
     // Will get BadWindow if the window is destroyed
     set_ignore_next(ps);
-    XSelectInput(ps->dpy, w->id, 0);
+    XSelectInput(ps->dpy, window->id, 0);
 
-    if (w->client_win) {
+    if (client->id) {
         set_ignore_next(ps);
-        XSelectInput(ps->dpy, w->client_win, 0);
+        XSelectInput(ps->dpy, client->id, 0);
     }
 }
 
@@ -159,9 +163,7 @@ static bool wid_get_children(session_t *ps, Window w,
 }
 
 static bool __attribute__((pure)) win_has_frame(const win *w) {
-    return w->a.border_width
-        || w->frame_extents.top || w->frame_extents.left
-        || w->frame_extents.right || w->frame_extents.bottom;
+    return w->a.border_width;
 }
 
 static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
@@ -265,21 +267,11 @@ static int win_get_prop_str(session_t *ps, win *w, char **tgt,
 static int win_get_name(session_t *ps, win *w) {
     int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
 
-#ifdef DEBUG_WINDATA
-    printf_dbgf("(%#010lx): client = %#010lx, name = \"%s\", "
-            "ret = %d\n", w->id, w->client_win, w->name, ret);
-#endif
-
     return ret;
 }
 
 static int win_get_role(session_t *ps, win *w) {
     int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
-
-#ifdef DEBUG_WINDATA
-    printf_dbgf("(%#010lx): client = %#010lx, role = \"%s\", "
-            "ret = %d\n", w->id, w->client_win, w->role, ret);
-#endif
 
     return ret;
 }
@@ -556,13 +548,15 @@ void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vecto
 
 }
 
-static void fetch_shaped_window_face(session_t* ps, struct _win* w) {
+static void fetch_shaped_window_face(session_t* ps, win_id wid) {
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     if(w->face != NULL)
         face_unload_file(w->face);
 
     Vector2 extents = {{w->a.width, w->a.height}};
 
-    XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, w->id, ShapeBounding);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
+    XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, window->id, ShapeBounding);
 
     int rect_count;
     XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &rect_count);
@@ -613,8 +607,6 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
   if (WIN_EVMODE_FRAME == mode
       || ((w = find_win(ps, wid)) && IsViewable == w->a.map_state)) {
     evmask |= PropertyChangeMask;
-    if (ps->o.track_focus && !ps->o.use_ewmh_active_win)
-      evmask |= FocusChangeMask;
   }
 
   // Check if it's a mapped client window
@@ -633,17 +625,18 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
  * @return struct _win object of the found window, NULL if not found
  */
 static win * find_toplevel2(session_t *ps, Window wid) {
+    struct _win* w = find_win(ps, wid);
 
     // We traverse through its ancestors to find out the frame
-    while (wid && wid != ps->root) {
+    while (wid && wid != ps->root && w == NULL) {
         Window troot;
         Window parent;
         Window *tchildren;
         unsigned tnchildren;
 
         // XQueryTree probably fails if you run compton when X is somehow
-        // initializing (like add it in .xinitrc). In this case
-        // just leave it alone.
+        // initializing (like add it in .xinitrc). In this case just leave it
+        // alone.
         if (!XQueryTree(ps->dpy, wid, &troot, &parent, &tchildren,
                     &tnchildren)) {
             wid = 0;
@@ -653,9 +646,10 @@ static win * find_toplevel2(session_t *ps, Window wid) {
         cxfree(tchildren);
 
         wid = parent;
+        w = find_win(ps, wid);
     }
 
-    return find_win(ps, wid);
+    return w;
 }
 
 /**
@@ -665,36 +659,10 @@ static win * find_toplevel2(session_t *ps, Window wid) {
  * @param ps current session
  * @return struct _win of currently focused window, NULL if not found
  */
-static win *
-recheck_focus(session_t *ps) {
-  // Use EWMH _NET_ACTIVE_WINDOW if enabled
-  if (ps->o.use_ewmh_active_win) {
+static win * recheck_focus(session_t *ps) {
+    // Use EWMH _NET_ACTIVE_WINDOW if enabled
     update_ewmh_active_win(ps);
     return ps->active_win;
-  }
-
-  // Determine the currently focused window so we can apply appropriate
-  // opacity on it
-  Window wid = 0;
-  int revert_to;
-
-  XGetInputFocus(ps->dpy, &wid, &revert_to);
-
-  win *w = find_win_all(ps, wid);
-
-#ifdef DEBUG_EVENTS
-  print_timestamp(ps);
-  printf_dbgf("(): %#010lx (%#010lx \"%s\") focused.\n", wid,
-      (w ? w->id: None), (w ? w->name: NULL));
-#endif
-
-  // And we set the focus state here
-  if (w) {
-    win_set_focused(ps, w);
-    return w;
-  }
-
-  return NULL;
 }
 
 static bool
@@ -799,29 +767,6 @@ find_client_win(session_t *ps, Window w) {
   cxfree(children);
 
   return ret;
-}
-
-/**
- * Retrieve frame extents from a window.
- */
-static void
-get_frame_extents(session_t *ps, win *w, Window client) {
-  cmemzero_one(&w->frame_extents);
-
-  winprop_t prop = wid_get_prop(ps, client, ps->atoms.atom_frame_extents,
-    4L, XA_CARDINAL, 32);
-
-  if (4 == prop.nitems) {
-    const long * const extents = prop.data.p32;
-    w->frame_extents.left = extents[0];
-    w->frame_extents.right = extents[1];
-    w->frame_extents.top = extents[2];
-    w->frame_extents.bottom = extents[3];
-
-    w->has_frame = win_has_frame(w);
-
-  }
-  free_winprop(&prop);
 }
 
 static win *
@@ -1015,10 +960,11 @@ wid_get_prop_wintype(session_t *ps, Window wid) {
 
 static void map_win(session_t *ps, win_id wid) {
   struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+  struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
   assert(w != NULL);
   // Unmap overlay window if it got mapped but we are currently not
   // in redirected state.
-  if (ps->overlay && w->id == ps->overlay && !ps->redirected) {
+  if (ps->overlay && window->id == ps->overlay && !ps->redirected) {
     XUnmapWindow(ps->dpy, ps->overlay);
     XFlush(ps->dpy);
   }
@@ -1036,22 +982,14 @@ static void map_win(session_t *ps, win_id wid) {
 
   // Call XSelectInput() before reading properties so that no property
   // changes are lost
-  XSelectInput(ps->dpy, w->id, determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
+  XSelectInput(ps->dpy, window->id, determine_evmask(ps, window->id, WIN_EVMODE_FRAME));
 
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
 
-  // Detect client window here instead of in add_win() as the client
-  // window should have been prepared at this point
-  if (!w->client_win) {
-    win_recheck_client(ps, w);
-  }
-  else {
-    // Re-mark client window here
-    win_mark_client(ps, w, w->client_win);
-  }
+  win_recheck_client(ps, w);
 
-  assert(w->client_win);
+  assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
   // @HACK: We need to save the old state here before recheck focus might
   // change it. It kinda sucks, but such is life.
@@ -1155,16 +1093,14 @@ static void unmap_win(session_t *ps, win *w) {
  */
 static void
 win_determine_fade(session_t *ps, win *w) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
   // To prevent it from being overwritten by last-paint value if the window is
   // unmapped on next frame, write w->fade_last as well
   if (UNSET != w->fade_force)
     w->fade_last = w->fade = w->fade_force;
   else if (ps->o.no_fading_openclose && w->in_openclose)
     w->fade_last = w->fade = false;
-  else if (ps->o.no_fading_destroyed_argb && w->destroyed
-      && !w->solid && w->client_win && w->client_win != w->id) {
-    w->fade_last = w->fade = false;
-  }
   // Ignore other possible causes of fading state changes after window
   // gets unmapped
   else if (IsViewable != w->a.map_state) {
@@ -1308,16 +1244,18 @@ calc_win_size(session_t *ps, win *w) {
 static void
 win_upd_wintype(session_t *ps, win *w) {
   const wintype_t wtype_old = w->window_type;
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
   // Detect window type here
-  w->window_type = wid_get_prop_wintype(ps, w->client_win);
+  w->window_type = wid_get_prop_wintype(ps, client->id);
 
   // Conform to EWMH standard, if _NET_WM_WINDOW_TYPE is not present, take
   // override-redirect windows or windows without WM_TRANSIENT_FOR as
   // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
   if (WINTYPE_UNKNOWN == w->window_type) {
     if (w->a.override_redirect
-        || !wid_has_prop(ps, w->client_win, ps->atoms.atom_transient))
+        || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
       w->window_type = WINTYPE_NORMAL;
     else
       w->window_type = WINTYPE_DIALOG;
@@ -1337,7 +1275,10 @@ win_upd_wintype(session_t *ps, win *w) {
  */
 static void
 win_mark_client(session_t *ps, win *w, Window client) {
-  w->client_win = client;
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+  struct HasClientComponent* clientComponent = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+
+  clientComponent->id = client;
 
   // If the window isn't mapped yet, stop here, as the function will be
   // called in map_win()
@@ -1351,9 +1292,6 @@ win_mark_client(session_t *ps, win *w, Window client) {
   XFlush(ps->dpy);
 
   win_upd_wintype(ps, w);
-
-  // Get frame widths. The window is in damaged area already.
-  get_frame_extents(ps, w, client);
 
   // Get window group
   if (ps->o.track_leader)
@@ -1379,15 +1317,15 @@ win_mark_client(session_t *ps, win *w, Window client) {
  * @param ps current session
  * @param w struct _win of the parent window
  */
-static void
-win_unmark_client(session_t *ps, win *w) {
-  Window client = w->client_win;
+static void win_unmark_client(session_t *ps, win *w) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
-  w->client_win = None;
+    // Recheck event mask
+    XSelectInput(ps->dpy, client->id,
+            determine_evmask(ps, client, WIN_EVMODE_UNKNOWN));
 
-  // Recheck event mask
-  XSelectInput(ps->dpy, client,
-      determine_evmask(ps, client, WIN_EVMODE_UNKNOWN));
+    swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 }
 
 /**
@@ -1401,11 +1339,14 @@ win_recheck_client(session_t *ps, win *w) {
   // Initialize wmwin to false
   w->wmwin = false;
 
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+  struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
+
   // Look for the client window
 
   // Always recursively look for a window with WM_STATE, as Fluxbox
   // sets override-redirect flags on all frame windows.
-  Window cw = find_client_win(ps, w->id);
+  Window cw = find_client_win(ps, window->id);
 #ifdef DEBUG_CLIENTWIN
   if (cw)
     printf_dbgf("(%#010lx): client %#010lx\n", w->id, cw);
@@ -1413,7 +1354,7 @@ win_recheck_client(session_t *ps, win *w) {
   // Set a window's client window to itself if we couldn't find a
   // client window
   if (!cw) {
-    cw = w->id;
+    cw = window->id;
     w->wmwin = !w->a.override_redirect;
 #ifdef DEBUG_CLIENTWIN
     printf_dbgf("(%#010lx): client self (%s)\n", w->id,
@@ -1421,9 +1362,9 @@ win_recheck_client(session_t *ps, win *w) {
 #endif
   }
 
-  // Unmark the old one
-  if (w->client_win && w->client_win != cw)
-    win_unmark_client(ps, w);
+  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid)) {
+      win_unmark_client(ps, w);
+  }
 
   // Mark the new one
   win_mark_client(ps, w, cw);
@@ -1436,7 +1377,6 @@ add_win(session_t *ps, Window id) {
     .prev_trans = NULL,
     .next_trans = NULL,
 
-    .id = None,
     .a = { },
     .face = NULL,
     .state = STATE_INVISIBLE,
@@ -1454,7 +1394,6 @@ add_win(session_t *ps, Window id) {
     .to_paint = false,
     .in_openclose = false,
 
-    .client_win = None,
     .window_type = WINTYPE_UNKNOWN,
     .wmwin = false,
     .leader = None,
@@ -1481,8 +1420,6 @@ add_win(session_t *ps, Window id) {
     .fade = false,
     .fade_force = UNSET,
     .fade_callback = NULL,
-
-    .frame_extents = MARGIN_INIT,
 
     .shadow = false,
 
@@ -1511,6 +1448,9 @@ add_win(session_t *ps, Window id) {
       fade_init(&fo->fade, 100.0);
   }
 
+  struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
+  window->id = id;
+
   memcpy(new, &win_def, sizeof(win_def));
 
 #ifdef DEBUG_EVENTS
@@ -1523,8 +1463,6 @@ add_win(session_t *ps, Window id) {
   }
 
   // Fill structure
-  new->id = id;
-
   set_ignore_next(ps);
   if (!XGetWindowAttributes(ps->dpy, id, &new->a)
       || IsUnviewable == new->a.map_state) {
@@ -1535,12 +1473,12 @@ add_win(session_t *ps, Window id) {
     return false;
   }
 
-  fetch_shaped_window_face(ps, new);
+  fetch_shaped_window_face(ps, slot);
 
   // Notify compton when the shape of a window changes
   if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
       // It will stop when the window is destroyed
-      XShapeSelectInput(ps->dpy, new->id, ShapeNotifyMask);
+      XShapeSelectInput(ps->dpy, id, ShapeNotifyMask);
   }
 
   // Delay window mapping
@@ -1559,7 +1497,7 @@ add_win(session_t *ps, Window id) {
 
   calc_win_size(ps, new);
 
-  if(!wd_init(&new->drawable, &ps->psglx->xcontext, new->id)) {
+  if(!wd_init(&new->drawable, &ps->psglx->xcontext, id)) {
       printf_errf("Failed initializing window drawable");
       free(new);
       return false;
@@ -1995,6 +1933,7 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
 static void win_update_focused(session_t *ps, win *w) {
     bool oldFocused = w->focused;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
 
     // If the window has forced focus we don't need any further calculation
     if (UNSET != w->focused_force) {
@@ -2016,10 +1955,7 @@ static void win_update_focused(session_t *ps, win *w) {
         w->focused = true;
     else if(ps->active_win == w)
         w->focused = true;
-    else if(ps->o.mark_ovredir_focused
-            && w->id == w->client_win && !w->wmwin) {
-        w->focused = true;
-    } else if(IsViewable == w->a.map_state
+    else if(IsViewable == w->a.map_state
             && win_match(ps, w, ps->o.focus_blacklist, &w->cache_fcblst)) {
         w->focused = true;
     } else if (ps->o.track_leader && ps->active_leader
@@ -2127,19 +2063,17 @@ static void win_set_focused(session_t *ps, win *w) {
 static void
 win_update_leader(session_t *ps, win *w) {
   Window leader = None;
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
   // Read the leader properties
   if (ps->o.detect_transient && !leader)
-    leader = wid_get_prop_window(ps, w->client_win, ps->atoms.atom_transient);
+    leader = wid_get_prop_window(ps, client->id, ps->atoms.atom_transient);
 
   if (ps->o.detect_client_leader && !leader)
-    leader = wid_get_prop_window(ps, w->client_win, ps->atoms.atom_client_leader);
+    leader = wid_get_prop_window(ps, client->id, ps->atoms.atom_client_leader);
 
   win_set_leader(ps, w, leader);
-
-#ifdef DEBUG_LEADER
-  printf_dbgf("(%#010lx): client %#010lx, leader %#010lx, cache %#010lx\n", w->id, w->client_win, w->leader, win_get_leader(ps, w));
-#endif
 }
 
 /**
@@ -2190,31 +2124,39 @@ win_set_leader(session_t *ps, win *w, Window nleader) {
   }
 }
 
-/**
- * Internal function of win_get_leader().
- */
-static Window
-win_get_leader_raw(session_t *ps, win *w, int recursions) {
-  // Rebuild the cache if needed
-  if (!w->cache_leader && (w->client_win || w->leader)) {
-    // Leader defaults to client window
-    if (!(w->cache_leader = w->leader))
-      w->cache_leader = w->client_win;
+static Window win_get_leader_raw(session_t *ps, win *w, int recursions) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    // If the leader of this window isn't itself, look for its ancestors
-    if (w->cache_leader && w->cache_leader != w->client_win) {
-      win *wp = find_toplevel(ps, w->cache_leader);
-      if (wp) {
-        // Dead loop?
-        if (recursions > WIN_GET_LEADER_MAX_RECURSION)
-          return None;
+    // Rebuild the cache
+    if (!w->cache_leader) {
+        bool hasClient = swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+        if(w->leader != None) {
+            w->cache_leader = w->leader;
 
-        w->cache_leader = win_get_leader_raw(ps, wp, recursions + 1);
-      }
+            // If we a lead by our own client, we're done
+            if(hasClient) {
+                struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+                if(w->leader == client->id) {
+                    return w->leader;
+                }
+            }
+
+            // Find the leader of the window we are lead by, recursively.
+            win *wp = find_toplevel(ps, w->leader);
+            if (wp) {
+                // Dead loop?
+                if (recursions > WIN_GET_LEADER_MAX_RECURSION)
+                    return None;
+
+                w->cache_leader = win_get_leader_raw(ps, wp, recursions + 1);
+            }
+        } else if(hasClient) {
+            struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+            w->cache_leader = client->id;
+        }
     }
-  }
 
-  return w->cache_leader;
+    return w->cache_leader;
 }
 
 /**
@@ -2306,12 +2248,13 @@ win_get_prop_str(session_t *ps, win *w, char **tgt,
   int ret = -1;
   char *prop_old = *tgt;
 
-  // Can't do anything if there's no client window
-  if (!w->client_win)
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
+  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid))
     return false;
 
-  // Get the property
-  ret = func_wid_get_prop_str(ps, w->client_win, tgt);
+  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+  ret = func_wid_get_prop_str(ps, client->id, tgt);
 
   // Return -1 if func_wid_get_prop_str() failed, 0 if the property
   // doesn't change, 1 if it changes
@@ -2338,9 +2281,12 @@ win_get_class(session_t *ps, win *w) {
   char **strlst = NULL;
   int nstr = 0;
 
-  // Can't do anything if there's no client window
-  if (!w->client_win)
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
+  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid))
     return false;
+
+
 
   // Free and reset old strings
   free(w->class_instance);
@@ -2348,8 +2294,8 @@ win_get_class(session_t *ps, win *w) {
   w->class_instance = NULL;
   w->class_general = NULL;
 
-  // Retrieve the property string list
-  if (!wid_get_text_prop(ps, w->client_win, ps->atoms.atom_class, &strlst, &nstr))
+  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+  if (!wid_get_text_prop(ps, client->id, ps->atoms.atom_class, &strlst, &nstr))
     return false;
 
   // Copy the strings if successful
@@ -2363,7 +2309,7 @@ win_get_class(session_t *ps, win *w) {
 #ifdef DEBUG_WINDATA
   printf_dbgf("(%#010lx): client = %#010lx, "
       "instance = \"%s\", general = \"%s\"\n",
-      w->id, w->client_win, w->class_instance, w->class_general);
+      w->id, client->id, w->class_instance, w->class_general);
 #endif
 
   return true;
@@ -2420,25 +2366,6 @@ opts_init_track_focus(session_t *ps) {
         return;
 
     ps->o.track_focus = true;
-
-    if (!ps->o.use_ewmh_active_win) {
-        // Start listening to FocusChange events
-        static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-        struct SwissIterator it = {0};
-        swiss_getFirst(&ps->win_list, req_types, &it);
-        while(!it.done) {
-            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-            if (IsViewable == w->a.map_state)
-                XSelectInput(ps->dpy, w->id,
-                        determine_evmask(ps, w->id, WIN_EVMODE_FRAME));
-
-            swiss_getNext(&ps->win_list, req_types, &it);
-        }
-
-        // Recheck focus
-        recheck_focus(ps);
-    }
 }
 
 /**
@@ -2480,8 +2407,6 @@ static const char *
 ev_name(session_t *ps, XEvent *ev) {
   static char buf[128];
   switch (ev->type & 0x7f) {
-    CASESTRRET(FocusIn);
-    CASESTRRET(FocusOut);
     CASESTRRET(CreateNotify);
     CASESTRRET(ConfigureNotify);
     CASESTRRET(DestroyNotify);
@@ -2519,9 +2444,6 @@ ev_name(session_t *ps, XEvent *ev) {
 static Window
 ev_window(session_t *ps, XEvent *ev) {
   switch (ev->type) {
-    case FocusIn:
-    case FocusOut:
-      return ev->xfocus.window;
     case CreateNotify:
       return ev->xcreatewindow.window;
     case ConfigureNotify:
@@ -2595,35 +2517,6 @@ ev_focus_report(XFocusChangeEvent* ev) {
 
 // === Events ===
 
-/**
- * Determine whether we should respond to a <code>FocusIn/Out</code>
- * event.
- */
-/*
-inline static bool
-ev_focus_accept(XFocusChangeEvent *ev) {
-  return NotifyNormal == ev->mode || NotifyUngrab == ev->mode;
-}
-*/
-
-static inline void
-ev_focus_in(session_t *ps, XFocusChangeEvent *ev) {
-#ifdef DEBUG_EVENTS
-  ev_focus_report(ev);
-#endif
-
-  recheck_focus(ps);
-}
-
-inline static void
-ev_focus_out(session_t *ps, XFocusChangeEvent *ev) {
-#ifdef DEBUG_EVENTS
-  ev_focus_report(ev);
-#endif
-
-  recheck_focus(ps);
-}
-
 inline static void
 ev_create_notify(session_t *ps, XCreateWindowEvent *ev) {
   assert(ev->parent == ps->root);
@@ -2661,45 +2554,60 @@ static void ev_unmap_notify(session_t *ps, XUnmapEvent *ev) {
 }
 
 static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
-#ifdef DEBUG_EVENTS
-  printf_dbg("  { new_parent: %#010lx, override_redirect: %d }\n",
-      ev->parent, ev->override_redirect);
-#endif
 
-  if (ev->parent == ps->root) {
-    add_win(ps, ev->window);
-  } else {
+    // If a window is reparented to the root then we only have to add it.
+    if (ev->parent == ps->root) {
+        add_win(ps, ev->window);
+        return;
+    }
+
+    // If reparented anywhere else, we remove it. (We don't care about subwindows)
     win *w = find_win(ps, ev->window);
     destroy_win(ps, w);
 
     // Reset event mask in case something wrong happens
-    XSelectInput(ps->dpy, ev->window,
-        determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
+    XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
 
-    // Check if the window is an undetected client window
-    // Firstly, check if it's a known client window
-    if (!find_toplevel(ps, ev->window)) {
-      // If not, look for its frame window
-      win *w_top = find_toplevel2(ps, ev->parent);
-      // If found, and the client window has not been determined, or its
-      // frame may not have a correct client, continue
-      if (w_top && (!w_top->client_win
-            || w_top->client_win == w_top->id)) {
-        // If it has WM_STATE, mark it the client window
-        if (wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
-          w_top->wmwin = false;
-          win_unmark_client(ps, w_top);
-          win_mark_client(ps, w_top, ev->window);
-        }
-        // Otherwise, watch for WM_STATE on it
-        else {
-          XSelectInput(ps->dpy, ev->window,
-              determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN)
-              | PropertyChangeMask);
-        }
-      }
+    // We just destroyed the window, so it shouldn't be found
+    assert(!find_toplevel(ps, ev->window));
+
+    // Find our new frame
+    win *w_frame = find_toplevel2(ps, ev->parent);
+
+    assert(w_frame != NULL);
+    if(w_frame == NULL) {
+        printf_errf("New parent for %d doesn't have a parent frame", ev->window);
+        return;
     }
-  }
+
+    win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
+    struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
+
+    // If the frame already has a client window, then we are done
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
+        // The client ID might be set to our id, in which case we don't
+        // ACTUALLY have a client. So the client id has to be different from
+        // our id before we are done
+        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
+        if(client->id != window_frame->id)
+            return;
+    }
+
+    // If it has WM_STATE, mark it the client window
+    if (wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
+        w_frame->wmwin = false;
+
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame))
+            win_unmark_client(ps, w_frame);
+
+        win_mark_client(ps, w_frame, ev->window);
+    } else { // Otherwise, watch for WM_STATE on it
+        XSelectInput(
+            ps->dpy,
+            ev->window,
+            determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN) | PropertyChangeMask
+        );
+    }
 }
 
 inline static void
@@ -2719,8 +2627,13 @@ update_ewmh_active_win(session_t *ps) {
   Window wid = wid_get_prop_window(ps, ps->root, ps->atoms.atom_ewmh_active_win);
   win *w = find_win_all(ps, wid);
 
+  if(w == NULL) {
+      printf_errf("Window with the id %d was not found", wid);
+      return;
+  }
+
   // Mark the window focused. No need to unfocus the previous one.
-  if (w) win_set_focused(ps, w);
+  win_set_focused(ps, w);
 }
 
 inline static void
@@ -2735,8 +2648,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #endif
 
   if (ps->root == ev->window) {
-    if (ps->o.track_focus && ps->o.use_ewmh_active_win
-        && ps->atoms.atom_ewmh_active_win == ev->atom) {
+    if (ps->o.track_focus && ps->atoms.atom_ewmh_active_win == ev->atom) {
       update_ewmh_active_win(ps);
     }
     else {
@@ -2753,23 +2665,37 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     return;
   }
 
-  // If WM_STATE changes
+  // WM_STATE
   if (ev->atom == ps->atoms.atom_client) {
-    // Check whether it could be a client window
-    if (!find_toplevel(ps, ev->window)) {
-      // Reset event mask anyway
-      XSelectInput(ps->dpy, ev->window,
-          determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
+      // We don't care about WM_STATE changes if this is already a client
+      // window
+      if (find_toplevel(ps, ev->window) == NULL) {
 
-      win *w_top = find_toplevel2(ps, ev->window);
-      // Initialize client_win as early as possible
-      if (w_top && (!w_top->client_win || w_top->client_win == w_top->id)
-          && wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
-        w_top->wmwin = false;
-        win_unmark_client(ps, w_top);
-        win_mark_client(ps, w_top, ev->window);
+          // Reset event
+          XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
+
+          win *w_frame = find_toplevel2(ps, ev->window);
+          assert(w_frame != NULL);
+
+          win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
+          struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
+
+
+          // wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
+          if(ev->state == PropertyNewValue) {
+              if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
+                  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
+                  if(client->id != window_frame->id) {
+                      w_frame->wmwin = false;
+                      win_unmark_client(ps, w_frame);
+                      win_mark_client(ps, w_frame, ev->window);
+                  }
+              } else {
+                  w_frame->wmwin = false;
+                  win_mark_client(ps, w_frame, ev->window);
+              }
+          }
       }
-    }
   }
 
   // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
@@ -2778,14 +2704,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     win *w = NULL;
     if ((w = find_toplevel(ps, ev->window)))
       win_upd_wintype(ps, w);
-  }
-
-  // If frame extents property changes
-  if (ev->atom == ps->atoms.atom_frame_extents) {
-    win *w = find_toplevel(ps, ev->window);
-    if (w) {
-      get_frame_extents(ps, w, ev->window);
-    }
   }
 
   // If name changes
@@ -2863,38 +2781,6 @@ static void ev_screen_change_notify(session_t *ps, XRRScreenChangeNotifyEvent __
         cxinerama_upd_scrs(ps);
 }
 
-#if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
-/**
- * Get a window's name from window ID.
- */
-static bool
-ev_window_name(session_t *ps, Window wid, char **name) {
-  bool to_free = false;
-
-  *name = "";
-  if (wid) {
-    *name = "(Failed to get title)";
-    if (ps->root == wid)
-      *name = "(Root window)";
-    else if (ps->overlay == wid)
-      *name = "(Overlay)";
-    else {
-      win *w = find_win(ps, wid);
-      if (!w)
-        w = find_toplevel(ps, wid);
-
-      if (w && w->name)
-        *name = w->name;
-      else if (!(w && w->client_win
-            && (to_free = wid_get_name(ps, w->client_win, name))))
-          to_free = wid_get_name(ps, wid, name);
-    }
-  }
-
-  return to_free;
-}
-#endif
-
 static void
 ev_handle(session_t *ps, XEvent *ev) {
   if ((ev->type & 0x7f) != KeymapNotify) {
@@ -2921,12 +2807,6 @@ ev_handle(session_t *ps, XEvent *ev) {
 #endif
 
   switch (ev->type) {
-    case FocusIn:
-      ev_focus_in(ps, (XFocusChangeEvent *)ev);
-      break;
-    case FocusOut:
-      ev_focus_out(ps, (XFocusChangeEvent *)ev);
-      break;
     case CreateNotify:
       ev_create_notify(ps, (XCreateWindowEvent *)ev);
       break;
@@ -3083,9 +2963,6 @@ usage(int ret) {
     "--fade-exclude condition\n"
     "  Exclude conditions for fading.\n"
     "\n"
-    "--mark-ovredir-focused\n"
-    "  Mark windows that have no WM frame as active.\n"
-    "\n"
     "--no-fading-openclose\n"
     "  Do not fade on window open/close.\n"
     "\n"
@@ -3115,10 +2992,6 @@ usage(int ret) {
     "\n"
     "--paint-on-overlay\n"
     "  Painting on X Composite overlay window.\n"
-    "\n"
-    "--use-ewmh-active-win\n"
-    "  Use _NET_WM_ACTIVE_WINDOW on the root window to determine which\n"
-    "  window is focused instead of using FocusIn/Out events.\n"
     "\n"
     "--respect-prop-shadow\n"
     "  Respect _COMPTON_SHADOW. This a prototype-level feature, which\n"
@@ -3718,9 +3591,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   config_lookup_float(&cfg, "inactive-dim", &ps->o.inactive_dim);
   // --mark-wmwin-focused
   lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
-  // --mark-ovredir-focused
-  lcfg_lookup_bool(&cfg, "mark-ovredir-focused",
-      &ps->o.mark_ovredir_focused);
   // --xinerama-shadow-crop
   lcfg_lookup_bool(&cfg, "xinerama-shadow-crop",
       &ps->o.xinerama_shadow_crop);
@@ -3730,9 +3600,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --vsync
   if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
     exit(1);
-  // --use-ewmh-active-win
-  lcfg_lookup_bool(&cfg, "use-ewmh-active-win",
-      &ps->o.use_ewmh_active_win);
   // --unredir-if-possible
   lcfg_lookup_bool(&cfg, "unredir-if-possible",
       &ps->o.unredir_if_possible);
@@ -3828,7 +3695,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "inactive-dim", required_argument, NULL, 261 },
     { "mark-wmwin-focused", no_argument, NULL, 262 },
     { "shadow-exclude", required_argument, NULL, 263 },
-    { "mark-ovredir-focused", no_argument, NULL, 264 },
     { "no-fading-openclose", no_argument, NULL, 265 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
     { "detect-rounded-corners", no_argument, NULL, 267 },
@@ -3994,7 +3860,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --shadow-exclude
         condlst_add(ps, &ps->o.shadow_blacklist, optarg);
         break;
-      P_CASEBOOL(264, mark_ovredir_focused);
       P_CASEBOOL(265, no_fading_openclose);
       P_CASEBOOL(268, detect_client_opacity);
       case 270:
@@ -4002,7 +3867,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         if (!parse_vsync(ps, optarg))
           exit(1);
         break;
-      P_CASEBOOL(276, use_ewmh_active_win);
       P_CASEBOOL(277, respect_prop_shadow);
       P_CASEBOOL(278, unredir_if_possible);
       case 279:
@@ -4662,7 +4526,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .config_file = NULL,
       .display = NULL,
       .mark_wmwin_focused = false,
-      .mark_ovredir_focused = false,
       .fork_after_register = false,
       .synchronize = false,
       .blur_level = 0,
@@ -4704,7 +4567,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .opacity_rules = NULL,
 
       .wintype_focus = { false },
-      .use_ewmh_active_win = false,
       .focus_blacklist = NULL,
       .detect_transient = false,
       .detect_client_leader = false,
@@ -4757,6 +4619,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   swiss_clearComponentSizes(&ps->win_list);
   swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_TRACKS_WINDOW, sizeof(struct TracksWindowComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
@@ -5082,7 +4946,7 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
 
         f->newOpacity = 100.0;
 
-        if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING) {
+        if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING && w->state != STATE_DESTROYING) {
             void* val;
             if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
                 f->newOpacity = (double)(long)val;
