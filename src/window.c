@@ -127,12 +127,6 @@ void win_update(session_t* ps, win* w, double dt) {
         } else if(w->state == STATE_DESTROYING) {
             w->state = STATE_DESTROYED;
         }
-        void (*old_callback) (session_t *ps, win *w) = w->fade_callback;
-        w->fade_callback = NULL;
-        if(old_callback != NULL) {
-            old_callback(ps, w);
-            ps->idling = false;
-        }
     }
     w->opacity = fo->fade.value;
 

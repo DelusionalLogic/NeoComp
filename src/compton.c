@@ -852,8 +852,6 @@ paint_preprocess(session_t *ps, Vector* paints) {
                 t->next_trans = w;
             t = w;
             vector_putBack(paints, w_id);
-        } else {
-            assert(w->fade_callback == NULL);
         }
 
         if (!destroyed) {
@@ -1415,7 +1413,6 @@ add_win(session_t *ps, Window id) {
 
     .fade = false,
     .fade_force = UNSET,
-    .fade_callback = NULL,
 
     .shadow = false,
 

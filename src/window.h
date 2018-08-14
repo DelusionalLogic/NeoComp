@@ -205,8 +205,6 @@ typedef struct _win {
   bool fade_last;
   /// Override value of window fade state. Set by D-Bus method calls.
   switch_t fade_force;
-  /// Callback to be called after fading completed.
-  void (*fade_callback) (struct _session_t *ps, struct _win *w);
 
   // Shadow-related members
   /// Whether a window has shadow. Calculated.
