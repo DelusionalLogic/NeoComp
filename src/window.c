@@ -106,29 +106,6 @@ void win_update(session_t* ps, win* w, double dt) {
 
     zone_enter(&ZONE_update_window);
 
-    struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
-    if(fade_done(&fo->fade)) {
-        if(w->state == STATE_ACTIVATING) {
-            w->state = STATE_ACTIVE;
-
-            w->in_openclose = false;
-        } else if(w->state == STATE_DEACTIVATING) {
-            w->state = STATE_INACTIVE;
-        } else if(w->state == STATE_HIDING) {
-            w->damaged = false;
-
-            w->in_openclose = false;
-
-            if(ps->redirected)
-                wd_unbind(&w->drawable);
-
-            w->state = STATE_INVISIBLE;
-        } else if(w->state == STATE_DESTROYING) {
-            w->state = STATE_DESTROYED;
-        }
-    }
-    w->opacity = fo->fade.value;
-
     zone_leave(&ZONE_update_window);
 }
 

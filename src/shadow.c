@@ -146,13 +146,14 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
             struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
             struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
 
-            if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE
+                    || w->state == STATE_DESTROYING) {
                 swiss_getNext(&ps->win_list, req_types, &it);
                 continue;
             }
 
             if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id))
-                    swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
+                swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
 
             swiss_getNext(&ps->win_list, req_types, &it);
         }

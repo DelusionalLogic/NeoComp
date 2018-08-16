@@ -1602,7 +1602,7 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     }
 
     // GLX root change callback
-	glx_on_root_change(ps);
+    glx_on_root_change(ps);
 
     return;
   }
@@ -1722,19 +1722,18 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
 }
 
 static void destroy_win(session_t *ps, struct _win* w) {
-    if (w) {
-        // You can only destroy a window that is already hiding or invisible
-        assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
+    // You can only destroy a window that is already hiding or invisible
+    assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
 
-        w->state = STATE_DESTROYING;
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    w->state = STATE_DESTROYING;
 
 #ifdef CONFIG_DBUS
-        // Send D-Bus signal
-        if (ps->o.dbus) {
-            cdbus_ev_win_destroyed(ps, w);
-        }
-#endif
+    // Send D-Bus signal
+    if (ps->o.dbus) {
+        cdbus_ev_win_destroyed(ps, w);
     }
+#endif
 }
 
 static inline void
@@ -2499,6 +2498,9 @@ ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
 
 static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
     win *w = find_win(ps, ev->window);
+    if(w == NULL)
+        return;
+
     destroy_win(ps, w);
 }
 
@@ -2725,7 +2727,7 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
 
 static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
-	win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     fetch_shaped_window_face(ps, w);
     // We need to mark some damage
@@ -2733,7 +2735,7 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     w->stencil_damaged = true;
 
     //The shadow is damaged because the outline (and therefore the inner clip) has changed.
-	swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
+    swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 /**
@@ -5108,6 +5110,7 @@ void session_run(session_t *ps) {
                             t->glx_blur_cache.damaged = true;
                     }
                 }
+                w->opacity = fo->fade.value;
                 swiss_getNext(&ps->win_list, req_types, &it);
             }
         }
@@ -5126,6 +5129,41 @@ void session_run(session_t *ps) {
                 w_id = vector_getNext(&paints, &index);
             }
         }
+
+        // Update state when fading complete
+        {
+            static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_FADES_OPACITY, 0 };
+            struct SwissIterator it = {0};
+            swiss_getFirst(&ps->win_list, req_types, &it);
+            while(!it.done) {
+                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+                if(fade_done(&fo->fade)) {
+                    if(w->state == STATE_ACTIVATING) {
+                        w->state = STATE_ACTIVE;
+
+                        w->in_openclose = false;
+                    } else if(w->state == STATE_DEACTIVATING) {
+                        w->state = STATE_INACTIVE;
+                    } else if(w->state == STATE_HIDING) {
+                        w->damaged = false;
+
+                        w->in_openclose = false;
+
+                        if(ps->redirected)
+                            wd_unbind(&w->drawable);
+
+                        w->state = STATE_INVISIBLE;
+                    } else if(w->state == STATE_DESTROYING) {
+                        w->state = STATE_DESTROYED;
+                    }
+                }
+
+                swiss_getNext(&ps->win_list, req_types, &it);
+            }
+        }
+
 
         {
             static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
