@@ -15,8 +15,6 @@
 #include "renderutil.h"
 #include "shadow.h"
 
-DECLARE_ZONE(update_window);
-
 bool win_overlap(const win* w1, const win* w2) {
     const Vector2 w1lpos = {{
         w1->a.x, w1->a.y,
@@ -77,7 +75,7 @@ void fade_keyframe(struct Fading* fade, double opacity, double duration) {
 
     size_t nextIndex = (fade->tail + 1) % FADE_KEYFRAMES;
     if(nextIndex == fade->head) {
-        printf("Warning: Shoving something off the opacity animation\n");
+        printf_dbgf("Warning: Shoving something off the opacity animation\n");
         fade->head = (fade->head + 1) % FADE_KEYFRAMES;
         //The head has nothing to be blended into.
         fade->keyframes[fade->head].duration = -1;
@@ -96,21 +94,12 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
-void win_update(session_t* ps, win* w, double dt) {
-    Vector2 size = {{w->widthb, w->heightb}};
-
-    if(!vec2_eq(&w->stencil.size, &size)) {
-        renderbuffer_resize(&w->stencil, &size);
-        w->stencil_damaged = true;
-    }
-
-    zone_enter(&ZONE_update_window);
-
-    zone_leave(&ZONE_update_window);
-}
-
 static void win_drawcontents(session_t* ps, win* w, float z) {
     glx_mark(ps, 0, true);
+
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, wid);
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
 
     glEnable(GL_BLEND);
 
@@ -132,7 +121,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
     struct Global* global_type = global_program->shader_type;
 
     shader_set_future_uniform_bool(global_type->invert, w->invert_color);
-    shader_set_future_uniform_bool(global_type->flip, w->drawable.texture.flipped);
+    shader_set_future_uniform_bool(global_type->flip, textured->texture.flipped);
     shader_set_future_uniform_float(global_type->opacity, (float)(w->opacity / 100.0));
     shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
@@ -147,7 +136,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
     shader_use(global_program);
 
     // Bind texture
-    texture_bind(&w->drawable.texture, GL_TEXTURE0);
+    texture_bind(&textured->texture, GL_TEXTURE0);
 
 #ifdef DEBUG_GLX
     printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
@@ -155,9 +144,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
 
     // Painting
     {
-        Vector2 rectPos = {{w->a.x, w->a.y}};
-        Vector2 rectSize = {{w->widthb, w->heightb}};
-        Vector2 glRectPos = X11_rectpos_to_gl(ps, &rectPos, &rectSize);
+        Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
         Vector3 winpos = vec3_from_vec2(&glRectPos, z);
 
 #ifdef DEBUG_GLX
@@ -166,7 +153,7 @@ static void win_drawcontents(session_t* ps, win* w, float z) {
 
         /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
         /* draw_colored_rect(w->face, &winpos, &rectSize, &color); */
-        draw_rect(w->face, global_type->mvp, winpos, rectSize);
+        draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
     }
 
     glx_mark(ps, 0, false);
@@ -248,6 +235,19 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
 
     {
         char* text;
+        asprintf(&text, "WID: %#010lx", wid);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
+    {
+        char* text;
         asprintf(&text, "State: %s", StateNames[w->state]);
 
         Vector2 size = {{0}};
@@ -288,19 +288,6 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
 
     {
         char* text;
-        asprintf(&text, "leader: %#010lx", w->leader);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen.y -= size.y;
-
-        text_draw(&debug_font, text, &pen, &scale);
-
-        free(text);
-    }
-
-    {
-        char* text;
         asprintf(&text, "focused: %d", w->focused);
 
         Vector2 size = {{0}};
@@ -312,9 +299,10 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         free(text);
     }
 
-    {
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, wid)) {
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, wid);
         char* text;
-        asprintf(&text, "depth: %d", w->drawable.xtexture.depth);
+        asprintf(&text, "depth: %d", bindsTexture->drawable.xtexture.depth);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
@@ -351,13 +339,46 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         free(text);
     }
 
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
+        char* text;
+        asprintf(&text, "Has shadow");
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw(&debug_font, text, &pen, &scale);
+
+        free(text);
+    }
+
+    {
+        char* text;
+        Vector3 color = {{.2, .9, .3}};
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid)) {
+            asprintf(&text, "REDRAW");
+            color = (Vector3){{.9, .1, .2}};
+        } else {
+            asprintf(&text, "STABLE");
+        }
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen.y -= size.y;
+
+        text_draw_colored(&debug_font, text, &pen, &scale, &color);
+
+        free(text);
+    }
+
     glEnable(GL_DEPTH_TEST);
 }
 
 void win_draw(session_t* ps, win* w, float z) {
-    Vector2 pos = {{w->a.x, w->a.y}};
-    Vector2 size = {{w->widthb, w->heightb}};
-    Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+
+    Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
     // Blur the backbuffer behind the window to make transparent areas blurred.
     // @PERFORMANCE: We are also blurring things that are opaque.. Are we?
@@ -366,22 +387,23 @@ void win_draw(session_t* ps, win* w, float z) {
 
         glEnable(GL_BLEND);
         glDepthMask(GL_FALSE);
-        draw_tex(w->face, &w->glx_blur_cache.texture[0], &dglPos, &size);
+        draw_tex(w->face, &w->glx_blur_cache.texture[0], &dglPos, &physical->size);
     }
 
     win_drawcontents(ps, w, z);
 
-    win_draw_debug(ps, w, z);
+    /* win_draw_debug(ps, w, z); */
 }
 
 void win_postdraw(session_t* ps, win* w, float z) {
-    Vector2 pos = {{w->a.x, w->a.y}};
-    Vector2 size = {{w->widthb, w->heightb}};
-    Vector2 glPos = X11_rectpos_to_gl(ps, &pos, &size);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+
+    Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
     // Painting shadow
     if (w->shadow) {
-        win_paint_shadow(ps, w, &glPos, &size, w->z);
+        win_paint_shadow(ps, w, &glPos, &physical->size, w->z);
     }
 }
 

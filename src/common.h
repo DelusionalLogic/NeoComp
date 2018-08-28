@@ -723,16 +723,15 @@ normalize_d(double d) {
 /**
  * Parse a VSync option argument.
  */
-static inline bool
-parse_vsync(session_t *ps, const char *str) {
-  for (vsync_t i = 0; VSYNC_STRS[i]; ++i)
-    if (!strcasecmp(str, VSYNC_STRS[i])) {
-      ps->o.vsync = i;
-      return true;
-    }
+static inline bool parse_vsync(session_t *ps, const char *str) {
+    for (vsync_t i = 0; VSYNC_STRS[i]; ++i)
+        if (!strcasecmp(str, VSYNC_STRS[i])) {
+            ps->o.vsync = i;
+            return true;
+        }
 
-  printf_errf("(\"%s\"): Invalid vsync argument.", str);
-  return false;
+    printf_errf("(\"%s\"): Invalid vsync argument.", str);
+    return false;
 }
 
 /**
@@ -896,53 +895,25 @@ get_tgt_window(session_t *ps) {
 }
 
 /**
- * Find a window from window id in window linked list of the session.
- */
-static inline win *
-find_win(session_t *ps, Window id) {
-  if (!id)
-    return NULL;
-
-  static const enum ComponentType req_types[] = { COMPONENT_TRACKS_WINDOW, 0 };
-  struct SwissIterator it = {0};
-  swiss_getFirst(&ps->win_list, req_types, &it);
-  while(!it.done) {
-      struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
-
-      if (w->id == id)
-          return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-      swiss_getNext(&ps->win_list, req_types, &it);
-  }
-
-  return NULL;
-}
-
-/**
  * Find out the WM frame of a client window using existing data.
  *
  * @param id window ID
  * @return struct _win object of the found window, NULL if not found
  */
-static inline win *
-find_toplevel(session_t *ps, Window id) {
-  if (!id)
+static inline win * find_toplevel(session_t *ps, Window id) {
+    if (!id)
+        return NULL;
+
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_HAS_CLIENT, CQ_END) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
+
+        if (client->id == id && w->state != STATE_DESTROYING)
+            return w;
+    }
+
     return NULL;
-
-  static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_HAS_CLIENT, 0 };
-  struct SwissIterator it = {0};
-  swiss_getFirst(&ps->win_list, req_types, &it);
-  while(!it.done) {
-      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-      struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
-
-      if (client->id == id && w->state != STATE_DESTROYING)
-          return w;
-
-      swiss_getNext(&ps->win_list, req_types, &it);
-  }
-
-  return NULL;
 }
 
 /**

@@ -482,7 +482,7 @@ cdbus_apdarg_wids(session_t *ps, DBusMessage *msg, const void *data) {
         assert(pcur <= arr + swiss_size(&ps->win_list));
       }
 
-      swiss_getNext(&ps->win_list, req_types, &it);
+      swiss_getNext(&ps->win_list, &it);
     }
     assert(pcur == arr + swiss_size(&ps->win_list));
   }

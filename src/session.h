@@ -26,8 +26,7 @@ typedef int (*f_GetVideoSync) (unsigned *);
 typedef Bool (*f_GetSyncValuesOML) (Display* dpy, GLXDrawable drawable, int64_t* ust, int64_t* msc, int64_t* sbc);
 typedef Bool (*f_WaitForMscOML) (Display* dpy, GLXDrawable drawable, int64_t target_msc, int64_t divisor, int64_t remainder, int64_t* ust, int64_t* msc, int64_t* sbc);
 
-typedef int (*f_SwapIntervalSGI) (int interval);
-typedef int (*f_SwapIntervalMESA) (unsigned int interval);
+typedef int (*f_SwapIntervalEXT) (Display* dpy, GLXDrawable drawable, int interval);
 
 typedef void (*f_BindTexImageEXT) (Display *display, GLXDrawable drawable, int buffer, const int *attrib_list);
 typedef void (*f_ReleaseTexImageEXT) (Display *display, GLXDrawable drawable, int buffer);
@@ -62,11 +61,8 @@ typedef struct {
 /// VSync modes.
 typedef enum {
   VSYNC_NONE,
-  VSYNC_DRM,
-  VSYNC_OPENGL,
-  VSYNC_OPENGL_OML,
   VSYNC_OPENGL_SWC,
-  VSYNC_OPENGL_MSWC,
+  VSYNC_OPENGL,
   NUM_VSYNC,
 } vsync_t;
 
@@ -205,18 +201,12 @@ typedef struct _options_t {
   bool mark_wmwin_focused;
   /// A list of windows always to be considered focused.
   c2_lptr_t *focus_blacklist;
-  /// Whether to do window grouping with <code>WM_TRANSIENT_FOR</code>.
-  bool detect_transient;
-  /// Whether to do window grouping with <code>WM_CLIENT_LEADER</code>.
-  bool detect_client_leader;
 
   // === Calculated ===
   /// Whether compton needs to track focus changes.
   bool track_focus;
   /// Whether compton needs to track window name and class.
   bool track_wdata;
-  /// Whether compton needs to track window leaders.
-  bool track_leader;
 } options_t;
 
 
@@ -235,10 +225,8 @@ typedef struct {
   f_GetSyncValuesOML glXGetSyncValuesOML;
   /// Pointer to glXWaitForMscOML function.
   f_WaitForMscOML glXWaitForMscOML;
-  /// Pointer to glXSwapIntervalSGI function.
-  f_SwapIntervalSGI glXSwapIntervalProc;
-  /// Pointer to glXSwapIntervalMESA function.
-  f_SwapIntervalMESA glXSwapIntervalMESAProc;
+
+  f_SwapIntervalEXT glXSwapIntervalProc;
   /// Pointer to glXBindTexImageEXT function.
   f_BindTexImageEXT glXBindTexImageProc;
   /// Pointer to glXReleaseTexImageEXT function.
@@ -339,8 +327,6 @@ typedef struct _session_t {
     struct timeval time_start;
     /// Whether all windows are currently redirected.
     bool redirected;
-    /// Time of last fading. In milliseconds.
-    time_ms_t fade_time;
     /// Head pointer of the error ignore linked list.
     ignore_t *ignore_head;
     /// Pointer to the <code>next</code> member of tail element of the error
@@ -361,9 +347,6 @@ typedef struct _session_t {
     /// case the WM does something extraordinary, but caching the pointer
     /// means another layer of complexity.
     struct _win *active_win;
-    /// Window ID of leader window of currently active window. Used for
-    /// subsidiary window detection.
-    Window active_leader;
 
     struct X11Capabilities capabilities;
 

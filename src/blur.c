@@ -121,8 +121,6 @@ bool blur_cache_resize(glx_blur_cache_t* cache, const Vector2* size) {
     assert(texture_initialized(&cache->texture[1]));
 
     cache->size = *size;
-    // Start out damaged for force a redraw when we resize
-    cache->damaged = true;
 
     renderbuffer_resize(&cache->stencil, size);
     texture_resize(&cache->texture[0], size);

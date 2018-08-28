@@ -18,6 +18,7 @@
 #include "logging.h"
 
 #include "opengl.h"
+#include "swiss.h"
 #include "vmath.h"
 #include "window.h"
 #include "windowlist.h"
@@ -49,10 +50,39 @@ DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
+DECLARE_ZONE(blur_background);
+DECLARE_ZONE(update_shadow);
 DECLARE_ZONE(fetch_prop);
+
 DECLARE_ZONE(update_fade);
+DECLARE_ZONE(update_textures);
 
 // From the header {{{
+
+/**
+ * Update cache data in struct _win that depends on window size.
+ */
+static void
+calc_win_size(session_t *ps, win *w) {
+  w->widthb = w->a.width + w->a.border_width * 2;
+  w->heightb = w->a.height + w->a.border_width * 2;
+  w->flags |= WFLAG_SIZE_CHANGE;
+}
+
+static inline win * find_win(session_t *ps, Window id) {
+  if (!id)
+    return NULL;
+
+  for_components(it, &ps->win_list,
+      COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, CQ_END) {
+      struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
+
+      if (w->id == id)
+          return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+  }
+
+  return NULL;
+}
 
 static void discard_ignore(session_t *ps, unsigned long sequence);
 
@@ -184,17 +214,6 @@ static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern
 
 static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 
-static void clear_cache_win_leaders(session_t *ps) {
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-        w->cache_leader = None;
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
-}
-
 static win * find_toplevel2(session_t *ps, Window wid);
 
 static win * find_win_all(session_t *ps, const Window wid) {
@@ -206,34 +225,6 @@ static win * find_win_all(session_t *ps, const Window wid) {
     if (!w) w = find_toplevel2(ps, wid);
     return w;
 }
-
-static Window win_get_leader_raw(session_t *ps, win *w, int recursions);
-
-static Window win_get_leader(session_t *ps, win *w) {
-    return win_get_leader_raw(ps, w, 0);
-}
-
-static bool group_is_focused(session_t *ps, Window leader) {
-    if (!leader)
-        return false;
-
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-        if (win_get_leader(ps, w) == leader && w->state != STATE_DESTROYING
-                && win_is_focused_real(ps, w))
-            return true;
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
-
-    return false;
-}
-
-static void win_update_leader(session_t *ps, win *w);
-
-static void win_set_leader(session_t *ps, win *w, Window leader);
 
 static void win_update_focused(session_t *ps, win *w);
 
@@ -319,17 +310,9 @@ static bool ensure_glx_context(session_t *ps) {
     return ps->psglx->context;
 }
 
-static bool vsync_opengl_init(session_t *ps);
-
-static bool vsync_opengl_oml_init(session_t *ps);
-
 static bool vsync_opengl_swc_init(session_t *ps);
 
-static bool vsync_opengl_mswc_init(session_t *ps);
-
 static void vsync_opengl_swc_deinit(session_t *ps);
-
-static void vsync_opengl_mswc_deinit(session_t *ps);
 
 static void redir_start(session_t *ps);
 static void redir_stop(session_t *ps);
@@ -382,10 +365,8 @@ const char * const WINTYPES[NUM_WINTYPES] = {
 /// Names of VSync modes.
 const char * const VSYNC_STRS[NUM_VSYNC + 1] = {
   "none",             // VSYNC_NONE
-  "opengl",           // VSYNC_OPENGL
-  "opengl-oml",       // VSYNC_OPENGL_OML
   "opengl-swc",       // VSYNC_OPENGL_SWC
-  "opengl-mswc",      // VSYNC_OPENGL_MSWC
+  "opengl",           // VSYNC_OPENGL
   NULL
 };
 
@@ -403,16 +384,12 @@ const char* const StateNames[] = {
 
 /// Function pointers to init VSync modes.
 static bool (* const (VSYNC_FUNCS_INIT[NUM_VSYNC]))(session_t *ps) = {
-  [VSYNC_OPENGL       ] = vsync_opengl_init,
-  [VSYNC_OPENGL_OML   ] = vsync_opengl_oml_init,
   [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_init,
-  [VSYNC_OPENGL_MSWC  ] = vsync_opengl_mswc_init,
 };
 
 /// Function pointers to deinitialize VSync.
 static void (* const (VSYNC_FUNCS_DEINIT[NUM_VSYNC]))(session_t *ps) = {
   [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_deinit,
-  [VSYNC_OPENGL_MSWC  ] = vsync_opengl_mswc_deinit,
 };
 
 /// Names of root window properties that could point to a pixmap of
@@ -429,18 +406,6 @@ const static char *background_props_str[] = {
 /// <code>error()</code> and <code>reset_enable()</code>, which could not
 /// have a pointer to current session passed in.
 session_t *ps_g = NULL;
-
-// === Fading ===
-
-/**
- * Get the time left before next fading point.
- *
- * In milliseconds.
- */
-static int
-fade_timeout(session_t *ps) {
-  return 10;
-}
 
 // === Error handling ===
 
@@ -528,12 +493,12 @@ wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
   };
 }
 
-void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector* mrects) {
+void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector2* offset, Vector* mrects) {
     // Convert the XRectangles into application specific (and non-scaled) rectangles
     for(int i = 0; i < rect_count; i++) {
         struct Rect* mrect = vector_reserve(mrects, 1);
-        mrect->pos.x = rects[i].x;
-        mrect->pos.y = extents->y - rects[i].y;
+        mrect->pos.x = rects[i].x - offset->x;
+        mrect->pos.y = extents->y - (rects[i].y - offset->y);
 
         mrect->size.x = rects[i].width;
         mrect->size.y = rects[i].height;
@@ -549,7 +514,12 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     if(w->face != NULL)
         face_unload_file(w->face);
 
-    Vector2 extents = {{w->a.width, w->a.height}};
+    Vector2 extents = {{w->widthb, w->heightb}};
+    // X has some insane notion that borders aren't part of the window.
+    // Therefore a window with a border will have a bounding shape with
+    // a negative upper left corner. This offset corrects for that, so we don't
+    // have to deal with it downstream
+    Vector2 offset = {{-w->a.border_width, -w->a.border_width}};
 
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, window->id, ShapeBounding);
@@ -562,7 +532,7 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     Vector mrects;
     vector_init(&mrects, sizeof(struct Rect), rect_count);
 
-    convert_xrects_to_relative_rect(rects, rect_count, &extents, &mrects);
+    convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &mrects);
 
     struct face* face = malloc(sizeof(struct face));
     // Triangulate the rectangles into a triangle vertex stream
@@ -985,10 +955,6 @@ static void map_win(session_t *ps, win_id wid) {
 
   assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
-  // @HACK: We need to save the old state here before recheck focus might
-  // change it. It kinda sucks, but such is life.
-  enum WindowState oldstate = w->state;
-
   // FocusIn/Out may be ignored when the window is unmapped, so we must
   // recheck focus here
   if (ps->o.track_focus)
@@ -997,44 +963,33 @@ static void map_win(session_t *ps, win_id wid) {
   // Update window focus state
   win_update_focused(ps, w);
 
-  // Many things above could affect shadow
-  win_determine_shadow(ps, w);
-
   win_determine_blur_background(ps, w);
 
-  w->damaged = false;
-
   if(ps->redirected) {
-      // If the window was invisible we need to bind it again, since it was
-      // unbound.
-      if(oldstate == STATE_INVISIBLE) {
-          // configure_win might rebind, so we need to bind before
-          if(!wd_bind(&w->drawable)) {
-              printf_errf("Failed binding window drawable %s", w->name);
-              return;
-          }
-
-          if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
-              printf_errf("Failed resizing window blur %s", w->name);
-              return;
-          }
-      } else if(oldstate == STATE_HIDING){
-          // If we were in the process of unmapping before we need to rebind
-          if(!wd_unbind(&w->drawable)) {
-              printf_errf("Failed unbinding window on resize");
-          }
-          if(!wd_bind(&w->drawable)) {
-              printf_errf("Failed rebinding window on resize");
-          }
-      }
   }
+  win_determine_shadow(ps, w);
+
+  if (!XGetWindowAttributes(ps->dpy, window->id, &w->a)) {
+      printf_errf("Failed getting window attributes while mapping");
+      return;
+  }
+  calc_win_size(ps, w);
+
+  // Add a map event
+  swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
+  struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
+  map->position = (Vector2){{w->a.x, w->a.y}};
+  map->size = (Vector2){{w->widthb, w->heightb}};
+
+  // sets w->shadow from some parameters. We use that to decide if this window
+  // has the shadow component
+  win_determine_shadow(ps, w);
 
   // Set fading state
   w->in_openclose = true;
 
   w->state = STATE_WAITING;
-  if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
-      swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
+  swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
 
   /* if any configure events happened while
      the window was unmapped, then configure
@@ -1061,11 +1016,9 @@ static void unmap_win(session_t *ps, win *w) {
 
     w->a.map_state = IsUnmapped;
 
-    // Fading out
-    w->state = STATE_HIDING;
+	w->state = STATE_HIDING;
 
-    struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, wid);
-    fade_keyframe(&fo->fade, 0, ps->o.opacity_fade_time);
+    swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
 
     w->in_openclose = true;
 
@@ -1085,8 +1038,6 @@ static void unmap_win(session_t *ps, win *w) {
  */
 static void
 win_determine_fade(session_t *ps, win *w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
   // To prevent it from being overwritten by last-paint value if the window is
   // unmapped on next frame, write w->fade_last as well
   if (UNSET != w->fade_force)
@@ -1221,16 +1172,6 @@ win_on_factor_change(session_t *ps, win *w) {
 }
 
 /**
- * Update cache data in struct _win that depends on window size.
- */
-static void
-calc_win_size(session_t *ps, win *w) {
-  w->widthb = w->a.width + w->a.border_width * 2;
-  w->heightb = w->a.height + w->a.border_width * 2;
-  w->flags |= WFLAG_SIZE_CHANGE;
-}
-
-/**
  * Update window type.
  */
 static void
@@ -1285,10 +1226,6 @@ win_mark_client(session_t *ps, win *w, Window client) {
 
   win_upd_wintype(ps, w);
 
-  // Get window group
-  if (ps->o.track_leader)
-    win_update_leader(ps, w);
-
   // Get window name and class if we are tracking them
   if (ps->o.track_wdata) {
     win_get_name(ps, w);
@@ -1314,8 +1251,7 @@ static void win_unmark_client(session_t *ps, win *w) {
     struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
     // Recheck event mask
-    XSelectInput(ps->dpy, client->id,
-            determine_evmask(ps, client, WIN_EVMODE_UNKNOWN));
+    XSelectInput(ps->dpy, client->id, determine_evmask(ps, client->id, WIN_EVMODE_UNKNOWN));
 
     swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 }
@@ -1372,7 +1308,6 @@ add_win(session_t *ps, Window id) {
     .face = NULL,
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
-    .damaged = false,
     .damage = None,
     .flags = 0,
     .need_configure = false,
@@ -1384,8 +1319,6 @@ add_win(session_t *ps, Window id) {
 
     .window_type = WINTYPE_UNKNOWN,
     .wmwin = false,
-    .leader = None,
-    .cache_leader = None,
 
     .focused = false,
     .focused_force = UNSET,
@@ -1436,6 +1369,8 @@ add_win(session_t *ps, Window id) {
   struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
   window->id = id;
 
+  swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
+
   memcpy(new, &win_def, sizeof(win_def));
 
 #ifdef DEBUG_EVENTS
@@ -1458,8 +1393,6 @@ add_win(session_t *ps, Window id) {
     return false;
   }
 
-  fetch_shaped_window_face(ps, slot);
-
   // Notify compton when the shape of a window changes
   if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
       // It will stop when the window is destroyed
@@ -1479,43 +1412,15 @@ add_win(session_t *ps, Window id) {
 
   calc_win_size(ps, new);
 
-  if(!wd_init(&new->drawable, &ps->psglx->xcontext, id)) {
-      printf_errf("Failed initializing window drawable");
-      free(new);
-      return false;
-  }
+  fetch_shaped_window_face(ps, slot);
+
+  struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
+  physical->position = (Vector2){{new->a.x, new->a.y}};
+  physical->size = (Vector2){{new->widthb, new->heightb}};
 
   if(!blur_cache_init(&new->glx_blur_cache)) {
       printf_errf("Failed initializing window blur");
-      wd_delete(&new->drawable);
       free(new);
-      return false;
-  }
-
-  // @PERFORMANCE @MEMORY: Theres no reason so have a shadow cache for windows
-  // that don't have a shadow. But to make it easy to program i'll just have it
-  // for all windows for now
-  struct glx_shadow_cache* shadow = swiss_addComponent(&ps->win_list, COMPONENT_SHADOW, slot);
-  if(shadow_cache_init(shadow) != 0){
-      printf_errf("Failed initializing window shadow");
-
-      blur_cache_delete(&new->glx_blur_cache);
-      wd_delete(&new->drawable);
-      free(new);
-
-      return false;
-  }
-
-  // @PERFORMANCE @MEMORY: We only need stencil buffers for ARGB windows, but
-  // for now we'll just have it for all windows
-  if(renderbuffer_stencil_init(&new->stencil, NULL) != 0){
-      printf_errf("Failed initializing window stencil");
-
-      shadow_cache_delete(shadow);
-      blur_cache_delete(&new->glx_blur_cache);
-      wd_delete(&new->drawable);
-      free(new);
-
       return false;
   }
 
@@ -1609,6 +1514,7 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
   // Other window changes
   win *w = find_win(ps, ce->window);
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
   if (!w)
     return;
@@ -1634,36 +1540,21 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       factor_change = true;
     }
 
+    Vector2 position = {{ce->x, ce->y}};
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_MOVE, wid)) {
+        // If we already have a move, just override it
+        // @SPEED: We might want to deduplicate before we do this
+        struct MoveComponent* move = swiss_getComponent(&ps->win_list, COMPONENT_MOVE, wid);
+        move->newPosition = position;
+    } else if(!vec2_eq(&physical->position, &position)) {
+        // Only add a move if the reconfigure has a new position
+        struct MoveComponent* move = swiss_addComponent(&ps->win_list, COMPONENT_MOVE, wid);
+        move->newPosition = position;
+    }
+
     w->a.x = ce->x;
     w->a.y = ce->y;
-
-    // We need to damage all the blurs on top of this one, because the
-    // DamageNotify event might arrive a frame late (which looks bad)
-    for (win *t = w; t; t = t->prev_trans) {
-        // @CLEANUP: Ideally we should just recalculate the blur right now. We need
-        // to render the windows behind this though, and that takes time. For now we
-        // just do it indirectly
-        if(win_overlap(w, t))
-            t->glx_blur_cache.damaged = true;
-    }
-
-    if (w->a.width != ce->width || w->a.height != ce->height
-            || w->a.border_width != ce->border_width) {
-        if(ps->redirected) {
-            if(!wd_unbind(&w->drawable)) {
-                printf_errf("Failed unbinding window on resize");
-            }
-            if(!wd_bind(&w->drawable)) {
-                printf_errf("Failed rebinding window on resize");
-            }
-            w->stencil_damaged = true;
-
-            if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
-                printf_errf("Failed resizing window blur %s", w->name);
-                return;
-            }
-        }
-    }
 
     if (w->a.width != ce->width || w->a.height != ce->height
         || w->a.border_width != ce->border_width) {
@@ -1673,6 +1564,19 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
       calc_win_size(ps, w);
     }
+
+    Vector2 size = {{w->widthb, w->heightb}};
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_RESIZE, wid)) {
+        // If we already have a resize, just override it
+        // @SPEED: We might want to deduplicate before we do this
+        struct ResizeComponent* resize = swiss_getComponent(&ps->win_list, COMPONENT_RESIZE, wid);
+        resize->newSize = size;
+    } else if(!vec2_eq(&physical->size, &size)) {
+        // Only add a resize if the reconfigure has a size
+        struct ResizeComponent* resize = swiss_addComponent(&ps->win_list, COMPONENT_RESIZE, wid);
+        resize->newSize = size;
+    }
+
 
     if (factor_change) {
       cxinerama_win_upd_scr(ps, w);
@@ -1756,6 +1660,7 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
   win *w = find_win(ps, de->drawable);
 
   if (!w) return;
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
   if (IsViewable != w->a.map_state)
     return;
@@ -1763,18 +1668,10 @@ damage_win(session_t *ps, XDamageNotifyEvent *de) {
   //Reset the XDamage region, so we continue to recieve new damage
   XDamageSubtract(ps->dpy, w->damage, None, None);
 
-  w->damaged = true;
-
-  w->stencil_damaged = true;
-
-  // Damage all the bg blurs of the windows on top of this one
-  for (win *t = w; t; t = t->prev_trans) {
-      // @CLEANUP: Ideally we should just recalculate the blur right now. We need
-      // to render the windows behind this though, and that takes time. For now we
-      // just do it indirectly
-      if(win_overlap(w, t))
-          t->glx_blur_cache.damaged = true;
-  }
+  swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
+  // @CLEANUP: We shouldn't damage the shadow here. It's more of an update
+  // thing. Maybe make a function for quick or?
+  swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
@@ -1863,7 +1760,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
                 ev->minor_code, ev->serial, buf);
     }
 
-    // print_backtrace();
+    /* print_backtrace(); */
 
     return 0;
 }
@@ -1895,15 +1792,13 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
 static void win_update_focused(session_t *ps, win *w) {
     bool oldFocused = w->focused;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
 
     // If the window has forced focus we don't need any further calculation
     if (UNSET != w->focused_force) {
         w->focused = w->focused_force;
 
         if(w->focused != oldFocused) {
-            if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
-                swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
         }
 
         return;
@@ -1920,16 +1815,10 @@ static void win_update_focused(session_t *ps, win *w) {
     else if(IsViewable == w->a.map_state
             && win_match(ps, w, ps->o.focus_blacklist, &w->cache_fcblst)) {
         w->focused = true;
-    } else if (ps->o.track_leader && ps->active_leader
-            && win_get_leader(ps, w) == ps->active_leader) {
-        // If window grouping detection is enabled, mark the window active if
-        // its group is
-        w->focused = true;
     }
 
     if(w->focused != oldFocused) {
-        if(!swiss_hasComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid))
-            swiss_addComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
+        swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
     }
 }
 
@@ -1949,25 +1838,6 @@ static void win_set_focused(session_t *ps, win *w) {
         win* old_active = ps->active_win;
         ps->active_win = NULL;
 
-        Window leader = win_get_leader(ps, old_active);
-        if (!win_is_focused_real(ps, w) && leader && leader == ps->active_leader && !group_is_focused(ps, leader)) {
-            ps->active_leader = None;
-
-            //Update the focused state of all other windows lead by leader
-            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-                if (win_get_leader(ps, t) == leader)
-                    win_update_focused(ps, t);
-
-                swiss_getNext(&ps->win_list, req_types, &it);
-            }
-
-        }
-
         win_update_focused(ps, old_active);
     }
 
@@ -1976,34 +1846,6 @@ static void win_set_focused(session_t *ps, win *w) {
     assert(win_is_focused_real(ps, w) == true);
 
     win_update_focused(ps, w);
-
-    // If window grouping detection is enabled
-    if (ps->o.track_leader) {
-        Window leader = win_get_leader(ps, w);
-
-        // If the window gets focused, replace the old active_leader
-        if (win_is_focused_real(ps, w) && leader != ps->active_leader) {
-            Window active_leader_old = ps->active_leader;
-
-            ps->active_leader = leader;
-
-            //Update the focused state of all other windows lead by old leader
-            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-                if (win_get_leader(ps, t) == active_leader_old)
-                    win_update_focused(ps, t);
-
-                if (win_get_leader(ps, t) == leader)
-                    win_update_focused(ps, t);
-
-                swiss_getNext(&ps->win_list, req_types, &it);
-            }
-        }
-    }
 
     // Update everything related to conditions
     win_on_factor_change(ps, w);
@@ -2019,113 +1861,7 @@ static void win_set_focused(session_t *ps, win *w) {
 #endif
 }
 
-/**
- * Update leader of a window.
- */
-static void
-win_update_leader(session_t *ps, win *w) {
-  Window leader = None;
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-
-  // Read the leader properties
-  if (ps->o.detect_transient && !leader)
-    leader = wid_get_prop_window(ps, client->id, ps->atoms.atom_transient);
-
-  if (ps->o.detect_client_leader && !leader)
-    leader = wid_get_prop_window(ps, client->id, ps->atoms.atom_client_leader);
-
-  win_set_leader(ps, w, leader);
-}
-
-/**
- * Set leader of a window.
- */
-static void
-win_set_leader(session_t *ps, win *w, Window nleader) {
-  // If the leader changes
-  if (w->leader != nleader) {
-    Window cache_leader_old = win_get_leader(ps, w);
-
-    w->leader = nleader;
-
-    // Forcefully do this to deal with the case when a child window
-    // gets mapped before parent, or when the window is a waypoint
-    clear_cache_win_leaders(ps);
-
-    // Update the old and new window group and active_leader if the window
-    // could affect their state.
-    Window cache_leader = win_get_leader(ps, w);
-    if (win_is_focused_real(ps, w) && cache_leader_old != cache_leader) {
-      ps->active_leader = cache_leader;
-
-      //Update the focused state of all other windows lead by leader
-
-      static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-      struct SwissIterator it = {0};
-      swiss_getFirst(&ps->win_list, req_types, &it);
-      while(!it.done) {
-          win* t = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-          if (win_get_leader(ps, t) == cache_leader_old)
-              win_update_focused(ps, t);
-
-          if (win_get_leader(ps, t) == cache_leader)
-              win_update_focused(ps, t);
-
-          swiss_getNext(&ps->win_list, req_types, &it);
-      }
-    }
-    // Otherwise, at most the window itself is affected
-    else {
-      win_update_focused(ps, w);
-    }
-
-    // Update everything related to conditions
-    win_on_factor_change(ps, w);
-  }
-}
-
-static Window win_get_leader_raw(session_t *ps, win *w, int recursions) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-
-    // Rebuild the cache
-    if (!w->cache_leader) {
-        bool hasClient = swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-        if(w->leader != None) {
-            w->cache_leader = w->leader;
-
-            // If we a lead by our own client, we're done
-            if(hasClient) {
-                struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-                if(w->leader == client->id) {
-                    return w->leader;
-                }
-            }
-
-            // Find the leader of the window we are lead by, recursively.
-            win *wp = find_toplevel(ps, w->leader);
-            if (wp) {
-                // Dead loop?
-                if (recursions > WIN_GET_LEADER_MAX_RECURSION)
-                    return None;
-
-                w->cache_leader = win_get_leader_raw(ps, wp, recursions + 1);
-            }
-        } else if(hasClient) {
-            struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-            w->cache_leader = client->id;
-        }
-    }
-
-    return w->cache_leader;
-}
-
-/**
- * Get the value of a text property of a window.
- */
-bool
-wid_get_text_prop(session_t *ps, Window wid, Atom prop,
+bool wid_get_text_prop(session_t *ps, Window wid, Atom prop,
     char ***pstrlst, int *pnstr) {
   XTextProperty text_prop = { NULL, None, 0, 0 };
 
@@ -2338,15 +2074,11 @@ opts_set_no_fading_openclose(session_t *ps, bool newval) {
     if (newval != ps->o.no_fading_openclose) {
         ps->o.no_fading_openclose = newval;
 
-        static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-        struct SwissIterator it = {0};
-        swiss_getFirst(&ps->win_list, req_types, &it);
-        while(!it.done) {
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, CQ_END) {
             win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
             win_determine_fade(ps, w);
-
-            swiss_getNext(&ps->win_list, req_types, &it);
         }
 
         ps->skip_poll = true;
@@ -2541,7 +2273,7 @@ static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 
     assert(w_frame != NULL);
     if(w_frame == NULL) {
-        printf_errf("New parent for %d doesn't have a parent frame", ev->window);
+        printf_errf("New parent for %lu doesn't have a parent frame", ev->window);
         return;
     }
 
@@ -2593,7 +2325,7 @@ update_ewmh_active_win(session_t *ps) {
   win *w = find_win_all(ps, wid);
 
   if(w == NULL) {
-      printf_errf("Window with the id %d was not found", wid);
+      printf_errf("Window with the id %lu was not found", wid);
       return;
   }
 
@@ -2697,15 +2429,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     }
   }
 
-  // If a leader property changes
-  if ((ps->o.detect_transient && ps->atoms.atom_transient == ev->atom)
-      || (ps->o.detect_client_leader && ps->atoms.atom_client_leader == ev->atom)) {
-    win *w = find_toplevel(ps, ev->window);
-    if (w) {
-      win_update_leader(ps, w);
-    }
-  }
-
   // Check for other atoms we are tracking
   for (latom_t *platom = ps->track_atom_lst; platom; platom = platom->next) {
     if (platom->atom == ev->atom) {
@@ -2729,13 +2452,12 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    fetch_shaped_window_face(ps, w);
+    fetch_shaped_window_face(ps, wid);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
-    w->stencil_damaged = true;
 
     //The shadow is damaged because the outline (and therefore the inner clip) has changed.
-    swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
+    swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 /**
@@ -2980,15 +2702,6 @@ usage(int ret) {
     "\n"
     "--inactive-dim-fixed\n"
     "  Use fixed inactive dim value.\n"
-    "\n"
-    "--detect-transient\n"
-    "  Use WM_TRANSIENT_FOR to group windows, and consider windows in\n"
-    "  the same group focused at the same time.\n"
-    "\n"
-    "--detect-client-leader\n"
-    "  Use WM_CLIENT_LEADER to group windows, and consider windows in\n"
-    "  the same group focused at the same time. WM_TRANSIENT_FOR has\n"
-    "  higher priority if --detect-transient is enabled, too.\n"
     "\n"
     "--blur-background\n"
     "  Blur background of semi-transparent / ARGB windows. Bad in\n"
@@ -3573,11 +3286,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     ps->o.unredir_if_possible_delay = ival;
   // --inactive-dim-fixed
   lcfg_lookup_bool(&cfg, "inactive-dim-fixed", &ps->o.inactive_dim_fixed);
-  // --detect-transient
-  lcfg_lookup_bool(&cfg, "detect-transient", &ps->o.detect_transient);
-  // --detect-client-leader
-  lcfg_lookup_bool(&cfg, "detect-client-leader",
-      &ps->o.detect_client_leader);
   // --shadow-exclude
   parse_cfg_condlst(ps, &cfg, &ps->o.shadow_blacklist, "shadow-exclude");
   // --fade-exclude
@@ -3672,8 +3380,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "unredir-if-possible", no_argument, NULL, 278 },
     { "focus-exclude", required_argument, NULL, 279 },
     { "inactive-dim-fixed", no_argument, NULL, 280 },
-    { "detect-transient", no_argument, NULL, 281 },
-    { "detect-client-leader", no_argument, NULL, 282 },
     { "blur-background", no_argument, NULL, 283 },
     { "blur-background-fixed", no_argument, NULL, 285 },
     { "dbus", no_argument, NULL, 286 },
@@ -3839,8 +3545,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.focus_blacklist, optarg);
         break;
       P_CASEBOOL(280, inactive_dim_fixed);
-      P_CASEBOOL(281, detect_transient);
-      P_CASEBOOL(282, detect_client_leader);
       P_CASEBOOL(283, blur_background);
       P_CASEBOOL(285, blur_background_fixed);
       P_CASEBOOL(286, dbus);
@@ -3932,108 +3636,37 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   if (ps->o.inactive_opacity || ps->o.active_opacity || ps->o.inactive_dim) {
     ps->o.track_focus = true;
   }
-
-  // Determine whether we track window grouping
-  if (ps->o.detect_transient || ps->o.detect_client_leader) {
-    ps->o.track_leader = true;
-  }
-}
-
-/**
- * Initialize OpenGL VSync.
- *
- * Stolen from: http://git.tuxfamily.org/?p=ccm/cairocompmgr.git;a=commitdiff;h=efa4ceb97da501e8630ca7f12c99b1dce853c73e
- * Possible original source: http://www.inb.uni-luebeck.de/~boehme/xvideo_sync.html
- *
- * @return true for success, false otherwise
- */
-static bool
-vsync_opengl_init(session_t *ps) {
-  if (!ensure_glx_context(ps))
-    return false;
-
-  // Get video sync functions
-  if (!ps->psglx->glXGetVideoSyncSGI)
-    ps->psglx->glXGetVideoSyncSGI = (f_GetVideoSync)
-      glXGetProcAddress((const GLubyte *) "glXGetVideoSyncSGI");
-  if (!ps->psglx->glXWaitVideoSyncSGI)
-    ps->psglx->glXWaitVideoSyncSGI = (f_WaitVideoSync)
-      glXGetProcAddress((const GLubyte *) "glXWaitVideoSyncSGI");
-  if (!ps->psglx->glXWaitVideoSyncSGI || !ps->psglx->glXGetVideoSyncSGI) {
-    printf_errf("(): Failed to get glXWait/GetVideoSyncSGI function.");
-    return false;
-  }
-
-  return true;
-}
-
-static bool
-vsync_opengl_oml_init(session_t *ps) {
-  if (!ensure_glx_context(ps))
-    return false;
-
-  // Get video sync functions
-  if (!ps->psglx->glXGetSyncValuesOML)
-    ps->psglx->glXGetSyncValuesOML = (f_GetSyncValuesOML)
-      glXGetProcAddress ((const GLubyte *) "glXGetSyncValuesOML");
-  if (!ps->psglx->glXWaitForMscOML)
-    ps->psglx->glXWaitForMscOML = (f_WaitForMscOML)
-      glXGetProcAddress ((const GLubyte *) "glXWaitForMscOML");
-  if (!ps->psglx->glXGetSyncValuesOML || !ps->psglx->glXWaitForMscOML) {
-    printf_errf("(): Failed to get OML_sync_control functions.");
-    return false;
-  }
-
-  return true;
 }
 
 static bool
 vsync_opengl_swc_init(session_t *ps) {
-  if (!ensure_glx_context(ps))
-    return false;
 
-  // Get video sync functions
-  if (!ps->psglx->glXSwapIntervalProc)
-    ps->psglx->glXSwapIntervalProc = (f_SwapIntervalSGI)
-      glXGetProcAddress ((const GLubyte *) "glXSwapIntervalSGI");
-  if (!ps->psglx->glXSwapIntervalProc) {
-    printf_errf("(): Failed to get SGI_swap_control function.");
-    return false;
-  }
-  ps->psglx->glXSwapIntervalProc(1);
+    if(!glx_hasglext(ps, "EXT_swap_control")) {
+        printf_errf("No swap control extension, can't set the swap inteval. Expect no vsync");
+        return false;
+    }
 
-  return true;
-}
+    assert(ensure_glx_context(ps));
 
-static bool
-vsync_opengl_mswc_init(session_t *ps) {
-  if (!ensure_glx_context(ps))
-    return false;
+    // Get video sync functions
+    if (!ps->psglx->glXSwapIntervalProc) {
+        ps->psglx->glXSwapIntervalProc =
+            (f_SwapIntervalEXT) glXGetProcAddress ((const GLubyte *) "glXSwapIntervalEXT");
+    }
+    if (!ps->psglx->glXSwapIntervalProc) {
+        printf_errf("Failed to get EXT_swap_control function.");
+        return false;
+    }
+    ps->psglx->glXSwapIntervalProc(ps->psglx->xcontext.display, glXGetCurrentDrawable(), 1);
 
-  // Get video sync functions
-  if (!ps->psglx->glXSwapIntervalMESAProc)
-    ps->psglx->glXSwapIntervalMESAProc = (f_SwapIntervalMESA)
-      glXGetProcAddress ((const GLubyte *) "glXSwapIntervalMESA");
-  if (!ps->psglx->glXSwapIntervalMESAProc) {
-    printf_errf("(): Failed to get MESA_swap_control function.");
-    return false;
-  }
-  ps->psglx->glXSwapIntervalMESAProc(1);
-
-  return true;
+    return true;
 }
 
 static void
 vsync_opengl_swc_deinit(session_t *ps) {
   // The standard says it doesn't accept 0, but in fact it probably does
   if (glx_has_context(ps) && ps->psglx->glXSwapIntervalProc)
-    ps->psglx->glXSwapIntervalProc(0);
-}
-
-static void
-vsync_opengl_mswc_deinit(session_t *ps) {
-  if (glx_has_context(ps) && ps->psglx->glXSwapIntervalMESAProc)
-    ps->psglx->glXSwapIntervalMESAProc(0);
+      ps->psglx->glXSwapIntervalProc(ps->psglx->xcontext.display, glXGetCurrentDrawable(), 0);
 }
 
 /**
@@ -4144,25 +3777,6 @@ redir_start(session_t *ps) {
     static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
     struct SwissIterator it = {0};
     swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-        // If the window was mapped, then we need to do the mapping again
-        if(w->a.map_state == IsViewable) {
-            if(!wd_bind(&w->drawable)) {
-                printf_errf("Failed binding window drawable %s", w->name);
-                return;
-            }
-
-            if(!blur_cache_resize(&w->glx_blur_cache, &w->drawable.texture.size)) {
-                printf_errf("Failed resizing window blur %s", w->name);
-                return;
-            }
-        }
-
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
-
     ps->redirected = true;
   }
 }
@@ -4321,22 +3935,6 @@ redir_stop(session_t *ps) {
     print_timestamp(ps);
     printf_dbgf("(): Screen unredirected.\n");
 #endif
-    // Destroy all Pictures as they expire once windows are unredirected
-    // If we don't destroy them here, looks like the resources are just
-    // kept inaccessible somehow
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-        if(w->a.map_state == IsViewable) {
-            wd_unbind(&w->drawable);
-        }
-
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
-
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
     // Unmap overlay window
     if (ps->overlay)
@@ -4383,6 +3981,8 @@ mainloop(session_t *ps) {
     return true;
   }
 
+  return false;
+
 #ifdef CONFIG_DBUS
   if (ps->o.dbus) {
     cdbus_loop(ps);
@@ -4400,11 +4000,6 @@ mainloop(session_t *ps) {
       ptv = malloc(sizeof(struct timeval));
       ptv->tv_sec = 0L;
       ptv->tv_usec = 0L;
-    }
-    // Then consider fading timeout
-    else if (!ps->idling) {
-      ptv = malloc(sizeof(struct timeval));
-      *ptv = ms_to_tv(fade_timeout(ps));
     }
 
     // Don't continue looping for 0 timeout
@@ -4533,12 +4128,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
       .wintype_focus = { false },
       .focus_blacklist = NULL,
-      .detect_transient = false,
-      .detect_client_leader = false,
 
       .track_focus = false,
       .track_wdata = false,
-      .track_leader = false,
     },
 
     .pfds_read = NULL,
@@ -4550,14 +4142,12 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .time_start = { 0, 0 },
     .redirected = false,
     .idling = false,
-    .fade_time = 0L,
     .ignore_head = NULL,
     .ignore_tail = NULL,
     .reset = false,
 
     .win_list = {0},
     .active_win = NULL,
-    .active_leader = None,
 
     .track_atom_lst = NULL,
 
@@ -4584,6 +4174,12 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   swiss_clearComponentSizes(&ps->win_list);
   swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_TEXTURED, sizeof(struct TexturedComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_BINDS_TEXTURE, sizeof(struct BindsTextureComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_MAP, sizeof(struct MapComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_MOVE, sizeof(struct MoveComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TRACKS_WINDOW, sizeof(struct TracksWindowComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
@@ -4797,20 +4393,13 @@ void session_destroy(session_t *ps) {
 #endif
 
   // Free window linked list
-  {
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+  for_components(it, &ps->win_list,
+      COMPONENT_MUD, CQ_END) {
+      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
-        if (IsViewable == w->a.map_state && w->state != STATE_DESTROYING)
-            win_ev_stop(ps, w);
+      if (IsViewable == w->a.map_state && w->state != STATE_DESTROYING)
+          win_ev_stop(ps, w);
 
-        wd_delete(&w->drawable);
-
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
   }
 
 #ifdef CONFIG_C2
@@ -4895,17 +4484,14 @@ void session_destroy(session_t *ps) {
 }
 
 void calculate_window_opacity(session_t* ps, Swiss* em) {
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(em, req_types, &it);
-    while(!it.done) {
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
 
         // Try obeying window type opacity firstly
         if(ps->o.wintype_opacity[w->window_type] != -1.0) {
             f->newOpacity = ps->o.wintype_opacity[w->window_type];
-            swiss_getNext(em, req_types, &it);
             continue;
         }
 
@@ -4915,7 +4501,6 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
             void* val;
             if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
                 f->newOpacity = (double)(long)val;
-                swiss_getNext(em, req_types, &it);
                 continue;
             }
         }
@@ -4930,21 +4515,14 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
         if (f->newOpacity == 100.0 && ps->o.active_opacity && win_is_focused_real(ps, w)) {
             f->newOpacity = ps->o.active_opacity;
         }
-
-        swiss_getNext(em, req_types, &it);
     }
 }
 
 // @CLEANUP: This shouldn't be here
 bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     bool skip_poll = false;
-    static const enum ComponentType req_types[] = {
-        COMPONENT_FADES_OPACITY,
-        0,
-    };
-    struct SwissIterator it = {0};
-    swiss_getFirst(em, req_types, &it);
-    while(!it.done) {
+    for_components(it, em,
+        COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
 
         fo->fade.value = fo->fade.keyframes[fo->fade.head].target;
@@ -4979,10 +4557,95 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
             }
             skip_poll = true;
         }
-
-        swiss_getNext(em, req_types, &it);
     }
     return skip_poll;
+}
+
+void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Framebuffer* fbo) {
+    static const enum ComponentType req_types[] = {
+        COMPONENT_BINDS_TEXTURE,
+        COMPONENT_TEXTURED,
+        COMPONENT_CONTENTS_DAMAGED,
+        CQ_END
+    };
+    struct SwissIterator it = {0};
+    swiss_getFirst(em, req_types, &it);
+    if(it.done)
+        return;
+
+    framebuffer_resetTarget(fbo);
+    framebuffer_bind(fbo);
+
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+
+    struct shader_program* program = assets_load("stencil.shader");
+    if(program->shader_type_info != &stencil_info) {
+        printf_errf("Shader was not a stencil shader\n");
+        return;
+    }
+    struct Stencil* shader_type = program->shader_type;
+
+    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+
+    shader_use(program);
+
+    // @RESEARCH: According to the spec (https://www.khronos.org/registry/OpenGL/extensions/EXT/GLX_EXT_texture_from_pixmap.txt)
+    // we should always grab the server before binding glx textures, and keep
+    // server until we are done with the textures. Experiments show that it
+    // completely kills rendering performance for chrome and electron.
+    // - Delusional 19/08-2018
+    XGrabServer(xcontext->display);
+    glXWaitX();
+
+    while(!it.done) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
+
+        XSyncFence fence = XSyncCreateFence(xcontext->display, bindsTexture->drawable.wid, false);
+        XSyncTriggerFence(xcontext->display, fence);
+        XSyncAwaitFence(xcontext->display, &fence, 1);
+        XSyncDestroyFence(xcontext->display, fence);
+
+        if(!wd_bind(&bindsTexture->drawable)) {
+            // If we fail to bind we just assume that the window must have been
+            // closed and keep the old texture
+            swiss_getNext(em, &it);
+            continue;
+        }
+
+        framebuffer_resetTarget(fbo);
+        framebuffer_targetTexture(fbo, &textured->texture);
+        framebuffer_targetRenderBuffer_stencil(fbo, &textured->stencil);
+        framebuffer_rebind(fbo);
+
+        Vector2 offset = textured->texture.size;
+        vec2_sub(&offset, &bindsTexture->drawable.texture.size);
+
+        Matrix old_view = view;
+        view = mat4_orthogonal(0, textured->texture.size.x, 0, textured->texture.size.y, -1, 1);
+        glViewport(0, 0, textured->texture.size.x, textured->texture.size.y);
+
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        assert(bindsTexture->drawable.bound);
+        texture_bind(&bindsTexture->drawable.texture, GL_TEXTURE0);
+
+        shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
+
+        draw_rect(w->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
+
+        view = old_view;
+
+        wd_unbind(&bindsTexture->drawable);
+
+        swiss_getNext(em, &it);
+    }
+
+    XUngrabServer(xcontext->display);
 }
 
 /**
@@ -5016,6 +4679,8 @@ void session_run(session_t *ps) {
 
         zone_start(&ZONE_global);
 
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
         zone_enter(&ZONE_input);
 
         while (mainloop(ps));
@@ -5026,12 +4691,10 @@ void session_run(session_t *ps) {
         timestamp currentTime;
         if(!getTime(&currentTime)) {
             printf_errf("Failed getting time");
-            session_destroy(ps);
             exit(1);
         }
 
         double dt = timeDiff(&lastTime, &currentTime);
-
 
         ps->skip_poll = false;
 
@@ -5059,60 +4722,233 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update);
 
-        calculate_window_opacity(ps, &ps->win_list);
+        // Mapping a window causes it to bind from X
+        for_components(it, &ps->win_list,
+            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, CQ_END) {
+            struct TracksWindowComponent* tracksWindow = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
+            struct BindsTextureComponent* bindsTexture = swiss_addComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, it.id);
 
-        {
-            static const enum ComponentType req_types[] = {
-                COMPONENT_MUD,
-                COMPONENT_FOCUS_CHANGE,
-                COMPONENT_FADES_OPACITY,
-                0,
-            };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-                struct FocusChangedComponent* f = swiss_getComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
-                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
-
-                if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE
-                        && w->state != STATE_DESTROYING && w->state != STATE_DESTROYED) {
-                    if(w->focused) {
-                        w->state = STATE_ACTIVATING;
-                    } else {
-                        w->state = STATE_DEACTIVATING;
-                    }
-                    fade_keyframe(&fo->fade, f->newOpacity, ps->o.opacity_fade_time);
-                }
-
-                swiss_removeComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
-                swiss_getNext(&ps->win_list, req_types, &it);
+            if(!wd_init(&bindsTexture->drawable, &ps->psglx->xcontext, tracksWindow->id)) {
+                printf_errf("Failed initializing window drawable on map");
             }
         }
 
-        zone_enter(&ZONE_update_fade);
-        {
-            static const enum ComponentType req_types[] = {
-                COMPONENT_MUD,
-                COMPONENT_FADES_OPACITY,
-                0,
-            };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+        // Resize textures when mapping a window with a texture
+        for_components(it, &ps->win_list,
+            COMPONENT_MAP, COMPONENT_TEXTURED, CQ_END) {
+            struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, it.id);
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
 
-                if(!fade_done(&fo->fade)) {
-                    // If the fade isn't done, then damage the blur of everyone above
-                    for (win *t = w->prev_trans; t; t = t->prev_trans) {
-                        if(win_overlap(w, t))
-                            t->glx_blur_cache.damaged = true;
-                    }
-                }
-                w->opacity = fo->fade.value;
-                swiss_getNext(&ps->win_list, req_types, &it);
+            texture_resize(&textured->texture, &map->size);
+            renderbuffer_resize(&textured->stencil, &map->size);
+        }
+
+        // Create a texture when mapping windows without one
+        for_components(it, &ps->win_list,
+            COMPONENT_MAP, CQ_NOT, COMPONENT_TEXTURED, CQ_END) {
+            struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, it.id);
+
+            struct TexturedComponent* textured = swiss_addComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+
+            if(texture_init(&textured->texture, GL_TEXTURE_2D, &map->size) != 0)  {
+                printf_errf("Failed initializing window contents texture");
             }
+
+            if(renderbuffer_stencil_init(&textured->stencil, &map->size) != 0)  {
+                printf_errf("Failed initializing window contents stencil");
+            }
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_SHADOW, CQ_END) {
+            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
+            if(w->shadow) {
+                struct glx_shadow_cache* shadow = swiss_addComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+                if(shadow_cache_init(shadow) != 0){
+                    printf_errf("Failed initializing window shadow");
+                    continue;
+                }
+            }
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MAP, COMPONENT_SHADOW, CQ_END) {
+            struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, it.id);
+            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+            shadow_cache_resize(shadow, &map->size);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_PHYSICAL, CQ_END) {
+            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, it.id);
+            struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+
+            physical->position = map->position;
+            physical->size = map->size;
+
+            if(!blur_cache_resize(&w->glx_blur_cache, &map->size)) {
+                printf_errf("Failed resizing window blur %s", w->name);
+                continue;
+            }
+            swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, it.id);
+        }
+
+        swiss_resetComponent(&ps->win_list, COMPONENT_MAP);
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_UNMAP, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
+            // Fading out
+            w->state = STATE_HIDING;
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_UNMAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
+            struct BindsTextureComponent* bindsTexture = swiss_getComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, it.id);
+            wd_delete(&bindsTexture->drawable);
+            swiss_removeComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, it.id);
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
+            struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+            fade_keyframe(&fadesOpacity->fade, 0, ps->o.opacity_fade_time);
+        }
+
+        swiss_resetComponent(&ps->win_list, COMPONENT_UNMAP);
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MOVE, CQ_END) {
+            swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, it.id);
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MOVE, COMPONENT_PHYSICAL, CQ_END) {
+            struct MoveComponent* move = swiss_getComponent(&ps->win_list, COMPONENT_MOVE, it.id);
+            struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+
+            physical->position = move->newPosition;
+            swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, it.id);
+        }
+
+        swiss_resetComponent(&ps->win_list, COMPONENT_MOVE);
+
+        for_components(it, &ps->win_list,
+            COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+            struct ResizeComponent* resize = swiss_getComponent(&ps->win_list, COMPONENT_RESIZE, it.id);
+            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+            shadow_cache_resize(shadow, &resize->newSize);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_RESIZE, COMPONENT_TEXTURED, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+            struct ResizeComponent* resize = swiss_getComponent(&ps->win_list, COMPONENT_RESIZE, it.id);
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+
+            texture_resize(&textured->texture, &resize->newSize);
+            renderbuffer_resize(&textured->stencil, &resize->newSize);
+        }
+
+        for_components(it, &ps->win_list,
+            COMPONENT_RESIZE, COMPONENT_PHYSICAL, COMPONENT_MUD, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+                struct ResizeComponent* resize = swiss_getComponent(&ps->win_list, COMPONENT_RESIZE, it.id);
+                struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+                struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
+                physical->size = resize->newSize;
+
+                if(!blur_cache_resize(&w->glx_blur_cache, &resize->newSize)) {
+                    printf_errf("Failed resizing window blur %s", w->name);
+                    continue;
+                }
+
+                swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, it.id);
+
+        }
+
+        swiss_removeComponentWhere(
+            &ps->win_list,
+            COMPONENT_RESIZE,
+            (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
+        );
+
+        // Damage the blur of windows on top of damaged windows
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+
+            size_t order_slot = vector_find_uint64(&ps->order, it.id);
+            assert(order_slot >= 0);
+
+            win_id* other_id = vector_getNext(&ps->order, &order_slot);
+            while(other_id != NULL) {
+                win* other = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *other_id);
+
+                if(win_overlap(w, other)) {
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, *other_id);
+                }
+
+                other_id = vector_getNext(&ps->order, &order_slot);
+            }
+        }
+
+        zone_enter(&ZONE_update_textures);
+        update_window_textures(&ps->win_list, &ps->psglx->xcontext, &ps->psglx->blur.fbo);
+        zone_leave(&ZONE_update_textures);
+
+        calculate_window_opacity(ps, &ps->win_list);
+
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_OPACITY, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            struct FocusChangedComponent* f = swiss_getComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
+            struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+            if(w->state != STATE_HIDING && w->state != STATE_INVISIBLE
+                    && w->state != STATE_DESTROYING && w->state != STATE_DESTROYED) {
+                if(w->focused) {
+                    w->state = STATE_ACTIVATING;
+                } else {
+                    w->state = STATE_DEACTIVATING;
+                }
+                fade_keyframe(&fo->fade, f->newOpacity, ps->o.opacity_fade_time);
+            }
+
+            swiss_removeComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
+        }
+
+        zone_enter(&ZONE_update_fade);
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_FADES_OPACITY, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+
+            if(!fade_done(&fo->fade)) {
+                // If the fade isn't done, then damage the blur of everyone above
+                size_t order_slot = vector_find_uint64(&ps->order, it.id);
+                assert(order_slot >= 0);
+
+                win_id* other_id = vector_getNext(&ps->order, &order_slot);
+                while(other_id != NULL) {
+                    win* other = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *other_id);
+
+                    if(win_overlap(w, other)) {
+                        swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, *other_id);
+                    }
+
+                    other_id = vector_getNext(&ps->order, &order_slot);
+                }
+            }
+            w->opacity = fo->fade.value;
         }
 
         if(do_win_fade(&ps->curve, dt, &ps->win_list)) {
@@ -5121,64 +4957,48 @@ void session_run(session_t *ps) {
 
         zone_leave(&ZONE_update_fade);
 
-        {
-            size_t index;
-            win_id* w_id = vector_getFirst(&paints, &index);
-            while(w_id != NULL) {
-                win_update(ps, swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id), dt);
-                w_id = vector_getNext(&paints, &index);
-            }
-        }
-
         // Update state when fading complete
-        {
-            static const enum ComponentType req_types[] = { COMPONENT_MUD, COMPONENT_FADES_OPACITY, 0 };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-                struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_FADES_OPACITY, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            struct FadesOpacityComponent* fo = swiss_getComponent(&ps->win_list, COMPONENT_FADES_OPACITY, it.id);
 
-                if(fade_done(&fo->fade)) {
-                    if(w->state == STATE_ACTIVATING) {
-                        w->state = STATE_ACTIVE;
+            if(fade_done(&fo->fade)) {
+                if(w->state == STATE_ACTIVATING) {
+                    w->state = STATE_ACTIVE;
 
-                        w->in_openclose = false;
-                    } else if(w->state == STATE_DEACTIVATING) {
-                        w->state = STATE_INACTIVE;
-                    } else if(w->state == STATE_HIDING) {
-                        w->damaged = false;
+                    w->in_openclose = false;
+                } else if(w->state == STATE_DEACTIVATING) {
+                    w->state = STATE_INACTIVE;
+                } else if(w->state == STATE_HIDING) {
+                    w->in_openclose = false;
 
-                        w->in_openclose = false;
-
-                        if(ps->redirected)
-                            wd_unbind(&w->drawable);
-
-                        w->state = STATE_INVISIBLE;
-                    } else if(w->state == STATE_DESTROYING) {
-                        w->state = STATE_DESTROYED;
+                    // @PERFORMANCE @CLEANUP: Ideally this should be
+                    // a different loop, but i don't have a good way for
+                    // triggering on state changes (No event so far).
+                    // I need to figure out how that will look.
+                    if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, it.id)) {
+                        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+                        shadow_cache_delete(shadow);
+                        swiss_removeComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
                     }
-                }
 
-                swiss_getNext(&ps->win_list, req_types, &it);
+                    w->state = STATE_INVISIBLE;
+                } else if(w->state == STATE_DESTROYING) {
+                    w->state = STATE_DESTROYED;
+                }
             }
         }
 
 
-        {
-            static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-            struct SwissIterator it = {0};
-            swiss_getFirst(&ps->win_list, req_types, &it);
-            while(!it.done) {
-                win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        for_components(it, &ps->win_list,
+            COMPONENT_MUD, CQ_END) {
+            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
-                if(w->state == STATE_DESTROYED) {
-                    finish_destroy_win(ps, it.id);
-                    size_t paints_slot = vector_find_uint64(&paints, it.id);
-                    vector_remove(&paints, paints_slot);
-                }
-
-                swiss_getNext(&ps->win_list, req_types, &it);
+            if(w->state == STATE_DESTROYED) {
+                finish_destroy_win(ps, it.id);
+                size_t paints_slot = vector_find_uint64(&paints, it.id);
+                vector_remove(&paints, paints_slot);
             }
         }
 
@@ -5186,11 +5006,13 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_effect_textures);
 
-        windowlist_updateStencil(ps, &paints);
-
+        zone_enter(&ZONE_update_shadow);
         windowlist_updateShadow(ps, &paints);
+        zone_leave(&ZONE_update_shadow);
 
+        zone_enter(&ZONE_blur_background);
         windowlist_updateBlur(ps, &paints);
+        zone_leave(&ZONE_blur_background);
 
         zone_leave(&ZONE_effect_textures);
 
@@ -5207,25 +5029,53 @@ void session_run(session_t *ps) {
 
         zone_leave(&ZONE_paint);
 
+        swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
+
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef DEBUG_PROFILE
         profiler_render(event_stream);
 #endif
 
-        if (ps->o.vsync) {
-            // Make sure all previous requests are processed to achieve best
-            // effect
-            XSync(ps->dpy, False);
-            if (glx_has_context(ps)) {
-                glXWaitX();
+        {
+            Vector2 pen = {{0, ps->root_height}};
+            Vector2 scale = {{1.3, 1.3}};
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
+            glDrawBuffers(1, DRAWBUFS);
+
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+
+            {
+                char* text;
+                asprintf(&text, "Frame Time: %f", dt);
+
+                Vector2 size = {{0}};
+                text_size(&debug_font, text, &scale, &size);
+                pen.y -= size.y;
+
+                text_draw(&debug_font, text, &pen, &scale);
+
+                free(text);
+            }
+
+            {
+                char* text;
+                asprintf(&text, "FPS: %f", 1000/dt);
+
+                Vector2 size = {{0}};
+                text_size(&debug_font, text, &scale, &size);
+                pen.y -= size.y;
+
+                text_draw(&debug_font, text, &pen, &scale);
+
+                free(text);
             }
         }
 
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));
-
-        if (ps->idling)
-            ps->fade_time = 0L;
+        glFinish();
 
         lastTime = currentTime;
     }

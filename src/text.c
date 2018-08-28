@@ -70,36 +70,6 @@ void text_debug_load(char* filename) {
     font_load(&debug_font, filename);
 }
 
-static void draw_letter(const struct Font* font, const struct Character* letter, Vector2* position, const Vector2* scale) {
-    struct face* face = assets_load("window.face");
-
-    texture_bind(&letter->texture, GL_TEXTURE0);
-
-    struct shader_program* text_program = assets_load("text.shader");
-    if(text_program->shader_type_info != &text_info) {
-        printf_errf("Shader was not a text shader\n");
-        return;
-    }
-
-    struct Text* text_type = text_program->shader_type;
-
-    shader_set_future_uniform_bool(text_type->flip, true);
-    shader_set_future_uniform_float(text_type->opacity, (float)1.0);
-    shader_set_future_uniform_sampler(text_type->tex_scr, 0);
-
-    shader_use(text_program);
-
-    {
-        Vector3 pos = vec3_from_vec2(position, 0.0);
-        pos.x += letter->bearing.x * scale->x;
-        pos.y -= (letter->texture.size.y - letter->bearing.y) * scale->y;
-        Vector2 size = letter->texture.size;
-        vec2_mul(&size, scale);
-        draw_rect(face, text_type->mvp, pos, size);
-    }
-    position->x += letter->advance * scale->x;
-}
-
 void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size) {
     const float line_height = scale->y * font->size;
     size->y = line_height;
@@ -112,11 +82,44 @@ void text_size(const struct Font* font, const char* text, const Vector2* scale, 
 }
 
 void text_draw(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale) {
+    text_draw_colored(font, text, position, scale, &(Vector3){{1.0, 1.0, 1.0}});
+}
+
+void text_draw_colored(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale, const Vector3* color) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    struct face* face = assets_load("window.face");
+
+    struct shader_program* text_program = assets_load("text.shader");
+    if(text_program->shader_type_info != &text_info) {
+        printf_errf("Shader was not a text shader\n");
+        return;
+    }
+
+    struct Text* text_type = text_program->shader_type;
+
+    shader_set_future_uniform_bool(text_type->flip, true);
+    shader_set_future_uniform_float(text_type->opacity, (float)1.0);
+    shader_set_future_uniform_sampler(text_type->tex_scr, 0);
+    shader_set_future_uniform_vec3(text_type->color, color);
+
+    shader_use(text_program);
+
     Vector2 pen = *position;
     size_t text_len = strlen(text);
     for(int i = 0; i < text_len; i++) {
-        draw_letter(font, &font->characters[text[i]], &pen, scale);
+        const struct Character* letter = &font->characters[text[i]];
+
+        texture_bind(&letter->texture, GL_TEXTURE0);
+
+        {
+            Vector3 pos = vec3_from_vec2(&pen, 0.0);
+            pos.x += letter->bearing.x * scale->x;
+            pos.y -= (letter->texture.size.y - letter->bearing.y) * scale->y;
+            Vector2 size = letter->texture.size;
+            vec2_mul(&size, scale);
+            draw_rect(face, text_type->mvp, pos, size);
+        }
+        pen.x += letter->advance * scale->x;
     }
 }

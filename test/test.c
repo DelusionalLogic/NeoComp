@@ -324,7 +324,7 @@ static struct TestResult convert_xrects_to_relative_rect__keep_all_rects__conver
     Vector mrects;
     vector_init(&mrects, sizeof(struct Rect), 2);
 
-    convert_xrects_to_relative_rect(rects, 2, &extents, &mrects);
+    convert_xrects_to_relative_rect(rects, 2, &extents, &VEC2_ZERO, &mrects);
 
     assertEq(mrects.size, 2);
 }
@@ -343,7 +343,7 @@ static struct TestResult convert_xrects_to_relative_rect__keep_x_coordinate__con
     Vector mrects;
     vector_init(&mrects, sizeof(struct Rect), 1);
 
-    convert_xrects_to_relative_rect(rects, 1, &extents, &mrects);
+    convert_xrects_to_relative_rect(rects, 1, &extents, &VEC2_ZERO, &mrects);
 
     struct Rect* rect = vector_get(&mrects, 0);
     assertEq(rect->pos.x, 0);
@@ -363,7 +363,7 @@ static struct TestResult convert_xrects_to_relative_rect__translate_y_coordinate
     Vector mrects;
     vector_init(&mrects, sizeof(struct Rect), 1);
 
-    convert_xrects_to_relative_rect(rects, 1, &extents, &mrects);
+    convert_xrects_to_relative_rect(rects, 1, &extents, &VEC2_ZERO, &mrects);
 
     struct Rect* rect = vector_get(&mrects, 0);
     // Y is also converted to relative coordinates 10/10 = 1
@@ -496,13 +496,10 @@ static struct TestResult swiss__iterate_components_in_order_abcdef__iterating_fo
 
     //Read it out to a char array
     char order[6];
-    enum ComponentType query[] = { COMPONENT_MUD, 0 };
     size_t count = 0;
-    struct SwissIterator it;
-    swiss_getFirst(&swiss, query, &it);
-    while(!it.done) {
+    for_components(it, &swiss,
+        COMPONENT_MUD, CQ_END) {
         order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
-        swiss_getNext(&swiss, query, &it);
     }
 
     assertEqString(order, "abcdef", 6);
@@ -531,13 +528,10 @@ static struct TestResult swiss__skip_entities_missing_components__iterating_forw
 
     //Read it out to a char array, hopefully skipping all the _'s
     char order[6];
-    enum ComponentType query[] = { COMPONENT_MUD, COMPONENT_SHADOW, 0 };
     size_t count = 0;
-    struct SwissIterator it;
-    swiss_getFirst(&swiss, query, &it);
-    while(!it.done) {
+    for_components(it, &swiss,
+        COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
         order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
-        swiss_getNext(&swiss, query, &it);
     }
 
     assertEqString(order, "abcdef", 6);
@@ -566,13 +560,10 @@ static struct TestResult swiss__include_entities_with_components_not_required__i
 
     //Read it out to a char array
     char order[9];
-    enum ComponentType query[] = { COMPONENT_MUD, 0 };
     size_t count = 0;
-    struct SwissIterator it;
-    swiss_getFirst(&swiss, query, &it);
-    while(!it.done) {
+    for_components(it, &swiss,
+        COMPONENT_MUD, CQ_END) {
         order[count++] = *(char*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
-        swiss_getNext(&swiss, query, &it);
     }
 
     assertEqString(order, "a_b_cde_f", 9);

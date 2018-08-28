@@ -194,8 +194,7 @@ glx_init(session_t *ps, bool need_render) {
   // Check GL_ARB_texture_non_power_of_two, requires a GLX context and
   // must precede FBConfig fetching
   if (need_render)
-    psglx->has_texture_non_power_of_two = glx_hasglext(ps,
-        "GL_ARB_texture_non_power_of_two");
+    psglx->has_texture_non_power_of_two = glx_hasglext(ps, "GL_ARB_texture_non_power_of_two");
 
   // Acquire function addresses
   if (need_render) {
@@ -298,29 +297,21 @@ glx_destroy(session_t *ps) {
   if (!ps->psglx)
     return;
 
-  {
-    static const enum ComponentType req_types[] = { COMPONENT_SHADOW, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
-        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+  for_components(it, &ps->win_list,
+      COMPONENT_SHADOW, CQ_END) {
+      struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
 
-        shadow_cache_delete(shadow);
+      shadow_cache_delete(shadow);
 
-        swiss_getNext(&ps->win_list, req_types, &it);
-    }
+      swiss_getNext(&ps->win_list, &it);
   }
 
   // Free all GLX resources of windows
-  static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-  struct SwissIterator it = {0};
-  swiss_getFirst(&ps->win_list, req_types, &it);
-  while(!it.done) {
+  for_components(it, &ps->win_list,
+      COMPONENT_MUD, CQ_END) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
       blur_cache_delete(&w->glx_blur_cache);
-
-      swiss_getNext(&ps->win_list, req_types, &it);
   }
 
   blur_destroy(&ps->psglx->blur);

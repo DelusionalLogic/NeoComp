@@ -25,4 +25,12 @@ int font_load(struct Font* font, char* filename);
 void text_debug_load(char* filename);
 
 void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size);
+
 void text_draw(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale);
+void text_draw_colored(
+    const struct Font* font,
+    const char* text,
+    const Vector2* position,
+    const Vector2* scale,
+    const Vector3* color
+);

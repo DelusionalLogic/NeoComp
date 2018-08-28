@@ -130,35 +130,6 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     Vector shadow_updates;
     vector_init(&shadow_updates, sizeof(win_id), paints->size);
 
-
-    // @HACK: For legacy reasons we assume the shadow is damaged if the size of
-    // the window has changed. we should move over to manually damaging it when
-    // we change size
-    {
-        static const enum ComponentType req_types[] = {
-            COMPONENT_MUD,
-            COMPONENT_SHADOW,
-            0
-        };
-        struct SwissIterator it = {0};
-        swiss_getFirst(&ps->win_list, req_types, &it);
-        while(!it.done) {
-            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
-
-            if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE
-                    || w->state == STATE_DESTROYING) {
-                swiss_getNext(&ps->win_list, req_types, &it);
-                continue;
-            }
-
-            if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id))
-                swiss_addComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
-
-            swiss_getNext(&ps->win_list, req_types, &it);
-        }
-    }
-
     struct Framebuffer framebuffer;
     if(!framebuffer_init(&framebuffer)) {
         printf("Couldn't create framebuffer for shadow\n");
@@ -180,20 +151,12 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
-    static const enum ComponentType req_types[] = {
-        COMPONENT_MUD,
-        COMPONENT_SHADOW_DAMAGED,
-        COMPONENT_SHADOW,
-        0
-    };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW, CQ_END) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
-
-        Vector2 size = {{w->widthb, w->heightb}};
-        shadow_cache_resize(shadow, &size);
 
         framebuffer_resetTarget(&framebuffer);
         framebuffer_targetTexture(&framebuffer, &shadow->texture);
@@ -207,8 +170,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
         glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
-        assert(w->drawable.bound);
-        texture_bind(&w->drawable.texture, GL_TEXTURE0);
+        texture_bind(&textured->texture, GL_TEXTURE0);
 
         struct shader_program* shadow_program = assets_load("shadow.shader");
         if(shadow_program->shader_type_info != &shadow_info) {
@@ -219,13 +181,13 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         }
         struct Shadow* shadow_type = shadow_program->shader_type;
 
-        shader_set_future_uniform_bool(shadow_type->flip, w->drawable.texture.flipped);
+        shader_set_future_uniform_bool(shadow_type->flip, textured->texture.flipped);
         shader_set_future_uniform_sampler(shadow_type->tex_scr, 0);
 
         shader_use(shadow_program);
 
         Vector3 pos = vec3_from_vec2(&shadow->border, 0.0);
-        draw_rect(w->face, shadow_type->mvp, pos, size);
+        draw_rect(w->face, shadow_type->mvp, pos, physical->size);
 
         view = old_view;
 
@@ -236,8 +198,6 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
             .swap = &shadow->effect,
         };
         vector_putBack(&blurDatas, &blurData);
-
-        swiss_getNext(&ps->win_list, req_types, &it);
     }
 
     glDisable(GL_STENCIL_TEST);
@@ -258,8 +218,8 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     glEnable(GL_STENCIL_TEST);
 
-    swiss_getFirst(&ps->win_list, req_types, &it);
-    while(!it.done) {
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW, CQ_END) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
 
@@ -280,10 +240,9 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         draw_tex(w->face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
 
         view = old_view;
-
-        swiss_removeComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, it.id);
-        swiss_getNext(&ps->win_list, req_types, &it);
     }
+
+    swiss_resetComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED);
 
     glDisable(GL_STENCIL_TEST);
 

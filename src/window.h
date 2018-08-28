@@ -7,6 +7,7 @@
 #include <X11/extensions/sync.h>
 #include <X11/extensions/Xdamage.h>
 
+#include "swiss.h"
 #include "switch.h"
 #include "shadow.h"
 #include "xtexture.h"
@@ -43,6 +44,35 @@ struct TracksWindowComponent {
 
 struct HasClientComponent {
     Window id;
+};
+
+struct MoveComponent {
+    Vector2 newPosition;
+};
+
+struct ResizeComponent {
+    Vector2 newSize;
+};
+
+struct MapComponent {
+    Vector2 position;
+    Vector2 size;
+};
+
+struct TexturedComponent {
+    struct Texture texture;
+    struct RenderBuffer stencil;
+};
+
+struct BindsTextureComponent {
+    // @CLEANUP: I don't think i need this extra complication. I could just
+    // manage the xtexture and fbconfig myself
+    struct WindowDrawable drawable;
+};
+
+struct PhysicalComponent {
+    Vector2 position;
+    Vector2 size;
 };
 
 /// A structure representing margins around a rectangle.
@@ -114,8 +144,6 @@ typedef struct _win {
   /// Xinerama screen this window is on.
   int xinerama_scr;
 
-  /// Whether the window has been damaged at least once.
-  bool damaged;
   /// Damage of the window.
   Damage damage;
 
@@ -151,10 +179,6 @@ typedef struct _win {
   /// it does not have a decedent with WM_STATE and it is not override-
   /// redirected itself.
   bool wmwin;
-  /// Leader window ID of the window.
-  Window leader;
-  /// Cached topmost window ID of the window.
-  Window cache_leader;
 
   // Focus-related members
   /// Whether the window is to be considered focused.
@@ -216,8 +240,6 @@ typedef struct _win {
 
   /// Textures and FBO background blur use.
   glx_blur_cache_t glx_blur_cache;
-
-  struct WindowDrawable drawable;
 } win;
 
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);

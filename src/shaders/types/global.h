@@ -8,5 +8,6 @@
     M(flip)                 \
     M(invert)               \
     M(dim)                  \
+    M(uvscale)              \
     M(opacity)
-#define UNIFORMS_COUNT 6
+#define UNIFORMS_COUNT 7

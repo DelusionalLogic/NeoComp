@@ -197,7 +197,7 @@ static int parse_type(char* def, struct shader_value* uniform) {
                 &uniform->stock.vec3.z
             );
 
-            if(matches != 2) {
+            if(matches != 3) {
                 printf("Wrongly formatted vec3 def \"%s\", ignoring\n", value);
                 return 1;
             }
@@ -411,7 +411,7 @@ struct shader_program* shader_program_load_file(const char* path) {
     for(int i = 0; i < uniform_cursor; i++) {
         struct shader_value* uniform = &program->uniforms[i];
         uniform->gl_uniform = glGetUniformLocation(program->gl_program, names[i]);
-        printf("\tUniform \"%s\" has id %d\n", names[i], uniform->gl_uniform);
+        printf("\tUniform \"%s\" has id %d, required %d\n", names[i], uniform->gl_uniform, uniform->required);
     }
 
     return program;

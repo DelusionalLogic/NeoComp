@@ -10,3 +10,5 @@ uniform mvp ignored
 uniform tex_scr sampler
 uniform flip bool false
 uniform opacity float 1.0
+
+uniform color vec3 1.0,1.0,1.0

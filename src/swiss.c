@@ -51,9 +51,22 @@ static int findFirstSet(uint64_t value) {
 static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, const size_t bucket) {
     uint64_t finalKey = (~0ULL);
 
-    for(int i = 0; types[i] != COMPONENT_END; i++) {
+    bool flip = false;
+    // @CLEANUP: We want to remove COMPONENT_END at some point, replace with CQ_END
+    for(int i = 0; types[i] != COMPONENT_END && types[i] != CQ_END; i++) {
+        if(types[i] == CQ_NOT) {
+            flip = true;
+            continue;
+        }
         uint64_t* freelist = index->freelist[types[i]];
-        finalKey &= freelist[bucket];
+
+        uint64_t value = freelist[bucket];
+        if(flip) {
+            value = ~value;
+            flip = false;
+        }
+
+        finalKey &= value;
     }
 
     return finalKey;
@@ -84,6 +97,7 @@ static size_t findNextFree(const Swiss* vector, const enum ComponentType type, c
     return -1;
 }
 
+// This takes an array of types to support query like things
 static size_t findNextUsed(const Swiss* vector, const enum ComponentType* types, const size_t start) {
 #if SWISS_FREELIST_BUCKET_SIZE != 64
 #error "findNextUsed has to be made aware of the new size"
@@ -214,7 +228,13 @@ void* swiss_addComponent(Swiss* index, const enum ComponentType type, win_id id)
 
     setFreeStatus(index, type, id, false);
 
-    return swiss_getComponent(index, type, id);
+    return index->data[type] + index->componentSize[type] * id;
+}
+
+void swiss_ensureComponent(Swiss* index, const enum ComponentType type, win_id id) {
+    assert(index->capacity != 0);
+
+    setFreeStatus(index, type, id, false);
 }
 
 bool swiss_hasComponent(const Swiss* index, enum ComponentType type, win_id id) {
@@ -235,9 +255,17 @@ void swiss_removeComponent(Swiss* index, const enum ComponentType type, win_id i
     setFreeStatus(index, type, id, true);
 }
 
+void swiss_resetComponent(Swiss* index, const enum ComponentType type) {
+    assert(index->capacity != 0);
+
+    size_t freeSize = freelist_numBuckets(index->capacity);
+    memset(index->freelist[type], 0, freeSize * SWISS_FREELIST_BUCKET_SIZE_BYTES);
+}
+
 void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_id id) {
     assert(index->capacity != 0);
     assert(swiss_hasComponent(index, type, id) == true);
+    assert(index->componentSize[type] != 0);
 
     return index->data[type] + index->componentSize[type] * id;
 }
@@ -274,12 +302,33 @@ size_t swiss_indexOfPointer(Swiss* vector, enum ComponentType type, void* data) 
     return (data - (void*)vector->data[type]) / vector->componentSize[type];
 }
 
+void swiss_removeComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys) {
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    for(int i = 0; i < numBuckets; i++) {
+        uint64_t key = makeBucket(index, keys, i);
+
+        if(key == 0)
+            continue;
+
+        index->freelist[type][i] &= ~key;
+    }
+}
+
+struct SwissIterator swiss_getFirstInit(const Swiss* index, const enum ComponentType* types) {
+    struct SwissIterator it;
+    it.types = types;
+    it.id = findNextUsed(index, it.types, 0);
+    it.done = it.id == -1;
+    return it;
+}
+
 void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it) {
-    it->id = findNextUsed(index, types, 0);
+    it->types = types;
+    it->id = findNextUsed(index, it->types, 0);
     it->done = it->id == -1;
 }
 
-void swiss_getNext(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it) {
-    it->id = findNextUsed(index, types, it->id + 1);
+void swiss_getNext(const Swiss* index, struct SwissIterator* it) {
+    it->id = findNextUsed(index, it->types, it->id + 1);
     it->done = it->id == -1;
 }

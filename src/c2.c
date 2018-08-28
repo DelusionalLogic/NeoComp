@@ -55,7 +55,6 @@ const static c2_predef_t C2_PREDEFS[] = {
     [C2_L_PWMWIN      ] = { "wmwin"             , C2_L_TCARDINAL  , 0  },
     [C2_L_PCLIENT     ] = { "client"            , C2_L_TWINDOW    , 0  },
     [C2_L_PWINDOWTYPE ] = { "window_type"       , C2_L_TSTRING    , 0  },
-    [C2_L_PLEADER     ] = { "leader"            , C2_L_TWINDOW    , 0  },
     [C2_L_PNAME       ] = { "name"              , C2_L_TSTRING    , 0  },
     [C2_L_PCLASSG     ] = { "class_g"           , C2_L_TSTRING    , 0  },
     [C2_L_PCLASSI     ] = { "class_i"           , C2_L_TSTRING    , 0  },
@@ -1280,7 +1279,6 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                             tgt = client != NULL ? client->id : None;
                             break;
                         }
-                        case C2_L_PLEADER:  tgt = w->leader;                break;
                         default:            *perr = true; assert(0);        break;
                     }
                 }

@@ -6,5 +6,6 @@
     M(mvp)                  \
     M(tex_scr)              \
     M(flip)                 \
+    M(color)                \
     M(opacity)
-#define UNIFORMS_COUNT 4
+#define UNIFORMS_COUNT 5

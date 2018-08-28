@@ -107,7 +107,6 @@ struct _c2_l {
         C2_L_PWMWIN,
         C2_L_PCLIENT,
         C2_L_PWINDOWTYPE,
-        C2_L_PLEADER,
         C2_L_PNAME,
         C2_L_PCLASSG,
         C2_L_PCLASSI,

@@ -32,17 +32,41 @@ struct MetaComponent {
 
 enum ComponentType {
     COMPONENT_META, // Special component used for bookkeeping
-    COMPONENT_END = COMPONENT_META,
+    COMPONENT_END = COMPONENT_META ,
     COMPONENT_MUD, // The goal is to eliminate this one
+    COMPONENT_PHYSICAL,
+    COMPONENT_BINDS_TEXTURE,
+    COMPONENT_TEXTURED,
     COMPONENT_TRACKS_WINDOW,
     COMPONENT_HAS_CLIENT,
-    COMPONENT_SHADOW_DAMAGED,
     COMPONENT_SHADOW,
     COMPONENT_OPACITY,
-    COMPONENT_FOCUS_CHANGE,
     COMPONENT_FADES_OPACITY,
+
+    // Messages
+    COMPONENT_MAP,
+    COMPONENT_UNMAP,
+    COMPONENT_MOVE,
+    COMPONENT_RESIZE,
+    COMPONENT_BLUR_DAMAGED,
+    COMPONENT_CONTENTS_DAMAGED,
+    COMPONENT_SHADOW_DAMAGED,
+    COMPONENT_FOCUS_CHANGE,
+
     NUM_COMPONENT_TYPES,
+
+    CQ_NOT,
+    CQ_END,
 };
+
+typedef enum ComponentType CType;
+
+#define for_components(IT, EM, ...)                                               \
+    for(                                                                          \
+        struct SwissIterator IT = swiss_getFirstInit(EM, (CType[]){__VA_ARGS__}); \
+        !IT.done;                                                                 \
+        swiss_getNext(EM, &IT)                                                    \
+    )
 
 typedef struct {
     size_t capacity;
@@ -65,8 +89,10 @@ win_id swiss_allocate(Swiss* index);
 void swiss_remove(Swiss* index, win_id id);
 
 void* swiss_addComponent(Swiss* index, const enum ComponentType type, win_id id);
+void swiss_ensureComponent(Swiss* index, const enum ComponentType type, win_id id);
 bool swiss_hasComponent(const Swiss* vector, enum ComponentType type, win_id id);
 void swiss_removeComponent(Swiss* index, const enum ComponentType type, win_id id);
+void swiss_resetComponent(Swiss* index, const enum ComponentType type);
 
 // Avoid using this
 void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_id id);
@@ -77,11 +103,15 @@ int swiss_size(Swiss* vector);
 
 size_t swiss_indexOfPointer(Swiss* vector, const enum ComponentType type, void* data);
 
+void swiss_removeComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
+
 struct SwissIterator {
     win_id id;
     bool done;
+    const enum ComponentType* types;
 };
+struct SwissIterator swiss_getFirstInit(const Swiss* index, const enum ComponentType* types);
 void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it);
-void swiss_getNext(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it);
+void swiss_getNext(const Swiss* index, struct SwissIterator* it);
 
 #endif
