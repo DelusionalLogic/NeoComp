@@ -820,7 +820,7 @@ cdbus_process_win_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_win_get_do(leader, cdbus_reply_wid);
   // focused_real
   if (!strcmp("focused_real", target)) {
-    cdbus_reply_bool(ps, msg, win_is_focused_real(ps, w));
+    cdbus_reply_bool(ps, msg, ps->active_win == w);
     return true;
   }
   cdbus_m_win_get_do(fade_force, cdbus_reply_enum);

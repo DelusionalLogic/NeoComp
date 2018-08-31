@@ -75,7 +75,7 @@ void fade_keyframe(struct Fading* fade, double opacity, double duration) {
 
     size_t nextIndex = (fade->tail + 1) % FADE_KEYFRAMES;
     if(nextIndex == fade->head) {
-        printf_dbgf("Warning: Shoving something off the opacity animation\n");
+        printf_dbgf("Warning: Shoving something off the opacity animation");
         fade->head = (fade->head + 1) % FADE_KEYFRAMES;
         //The head has nothing to be blended into.
         fade->keyframes[fade->head].duration = -1;
@@ -94,72 +94,7 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
-static void win_drawcontents(session_t* ps, win* w, float z) {
-    glx_mark(ps, 0, true);
-
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, wid);
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-
-    glEnable(GL_BLEND);
-
-    // This is all weird, but X Render is using premultiplied ARGB format, and
-    // we need to use those things to correct it. Thanks to derhass for help.
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    /* glColor4f(opacity, opacity, opacity, opacity); */
-
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-
-    struct shader_program* global_program = assets_load("global.shader");
-    if(global_program->shader_type_info != &global_info) {
-        printf_errf("Shader was not a global shader");
-        // @INCOMPLETE: Make sure the config is correct
-        return;
-    }
-
-    struct Global* global_type = global_program->shader_type;
-
-    shader_set_future_uniform_bool(global_type->invert, w->invert_color);
-    shader_set_future_uniform_bool(global_type->flip, textured->texture.flipped);
-    shader_set_future_uniform_float(global_type->opacity, (float)(w->opacity / 100.0));
-    shader_set_future_uniform_sampler(global_type->tex_scr, 0);
-
-    // Dimming the window if needed
-    if (w->dim) {
-        double dim_opacity = ps->o.inactive_dim;
-        if (!ps->o.inactive_dim_fixed)
-            dim_opacity *= w->opacity / 100.0;
-        shader_set_future_uniform_float(global_type->dim, dim_opacity);
-    }
-
-    shader_use(global_program);
-
-    // Bind texture
-    texture_bind(&textured->texture, GL_TEXTURE0);
-
-#ifdef DEBUG_GLX
-    printf_dbgf("(): Draw: %d, %d, %d, %d -> %d, %d (%d, %d) z %d\n", x, y, width, height, dx, dy, ptex->width, ptex->height, z);
-#endif
-
-    // Painting
-    {
-        Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
-        Vector3 winpos = vec3_from_vec2(&glRectPos, z);
-
-#ifdef DEBUG_GLX
-        printf_dbgf("(): Rect %f, %f, %f, %f\n", relpos.x, relpos.y, scale.x, scale.y);
-#endif
-
-        /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
-        /* draw_colored_rect(w->face, &winpos, &rectSize, &color); */
-        draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
-    }
-
-    glx_mark(ps, 0, false);
-}
-
-static void win_draw_debug(session_t* ps, win* w, float z) {
+static void win_draw_debug(session_t* ps, win* w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct face* face = assets_load("window.face");
     Vector2 scale = {{1, 1}};
@@ -286,19 +221,6 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         free(text);
     }
 
-    {
-        char* text;
-        asprintf(&text, "focused: %d", w->focused);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen.y -= size.y;
-
-        text_draw(&debug_font, text, &pen, &scale);
-
-        free(text);
-    }
-
     if(swiss_hasComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, wid)) {
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, wid);
         char* text;
@@ -326,9 +248,10 @@ static void win_draw_debug(session_t* ps, win* w, float z) {
         free(text);
     }
 
-    {
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
+        struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, wid);
         char* text;
-        asprintf(&text, "z: %f", w->z);
+        asprintf(&text, "z: %f", z->z);
 
         Vector2 size = {{0}};
         text_size(&debug_font, text, &scale, &size);
@@ -387,23 +310,21 @@ void win_draw(session_t* ps, win* w, float z) {
 
         glEnable(GL_BLEND);
         glDepthMask(GL_FALSE);
-        draw_tex(w->face, &w->glx_blur_cache.texture[0], &dglPos, &physical->size);
     }
-
-    win_drawcontents(ps, w, z);
 
     /* win_draw_debug(ps, w, z); */
 }
 
-void win_postdraw(session_t* ps, win* w, float z) {
+void win_postdraw(session_t* ps, win* w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+    struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, wid);
 
     Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
     // Painting shadow
     if (w->shadow) {
-        win_paint_shadow(ps, w, &glPos, &physical->size, w->z);
+        win_paint_shadow(ps, w, &glPos, &physical->size, z->z);
     }
 }
 

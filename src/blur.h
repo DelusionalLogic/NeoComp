@@ -16,9 +16,7 @@ struct blur {
     GLuint array;
 };
 
-typedef struct {
-    /// Framebuffer used for blurring.
-    struct Framebuffer fbo;
+typedef struct glx_blur_cache {
     /// Textures used for blurring.
     struct Texture texture[2];
     struct RenderBuffer stencil;
@@ -38,6 +36,6 @@ bool blur_backbuffer(struct blur* blur, struct _session_t* ps, const Vector2* po
         const Vector2* size, float z, GLfloat factor_center,
         glx_blur_cache_t* pbc, struct _win* w);
 
-bool blur_cache_init(glx_blur_cache_t* cache);
+int blur_cache_init(glx_blur_cache_t* cache);
 void blur_cache_delete(glx_blur_cache_t* cache);
 bool blur_cache_resize(glx_blur_cache_t* cache, const Vector2* size);

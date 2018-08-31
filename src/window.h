@@ -75,6 +75,10 @@ struct PhysicalComponent {
     Vector2 size;
 };
 
+struct ZComponent {
+    double z;
+};
+
 /// A structure representing margins around a rectangle.
 typedef struct {
   int top;
@@ -135,7 +139,6 @@ typedef struct _win {
   // Core members
   /// Window attributes.
   XWindowAttributes a;
-  float z;
 
   struct face* face;
 
@@ -181,8 +184,6 @@ typedef struct _win {
   bool wmwin;
 
   // Focus-related members
-  /// Whether the window is to be considered focused.
-  bool focused;
   /// Override value of window focus state. Set by D-Bus method calls.
   switch_t focused_force;
 
@@ -237,9 +238,6 @@ typedef struct _win {
 
   bool stencil_damaged;
   struct RenderBuffer stencil;
-
-  /// Textures and FBO background blur use.
-  glx_blur_cache_t glx_blur_cache;
 } win;
 
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
@@ -255,7 +253,7 @@ void fade_init(struct Fading* fade, double value);
 bool fade_done(struct Fading* fade);
 
 void win_draw(struct _session_t* ps, win* w, float z);
-void win_postdraw(struct _session_t* ps, win* w, float z);
+void win_postdraw(struct _session_t* ps, win* w);
 void win_update(struct _session_t* ps, win* w, double dt);
 
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid);

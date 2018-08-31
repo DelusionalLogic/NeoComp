@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "vector.h"
 #include <assert.h>
 #include <string.h>
@@ -84,7 +85,11 @@ void* vector_get(const Vector* vector, const size_t count)
 void vector_remove(Vector* vector, const size_t count)
 {
     assert(vector->elementSize != 0);
-    memmove(vector->data + count * vector->elementSize, vector->data + (count+1) * vector->elementSize, (vector->size-1) * vector->elementSize);
+    memmove(
+        vector->data + count * vector->elementSize,
+        vector->data + (count+1) * vector->elementSize,
+        (vector->size-count-1) * vector->elementSize
+    );
     vector->size -= 1;
 }
 
@@ -94,10 +99,9 @@ void vector_clear(Vector* vector)
     vector->size = 0;
 }
 
-void vector_qsort(Vector* vector, int (*compar)(const void *, const void*))
-{
+void vector_qsort(Vector* vector, int (*compar)(const void *, const void*, void*), void* userdata) {
     assert(vector->elementSize != 0);
-    qsort(vector->data, vector->size, vector->elementSize, compar);
+    qsort_r(vector->data, vector->size, vector->elementSize, compar, userdata);
 }
 
 int vector_foreach(Vector* vector, int (*callback)(void* elem, void* userdata), void* userdata)

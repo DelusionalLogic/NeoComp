@@ -49,7 +49,7 @@ static int findFirstSet(uint64_t value) {
 }
 
 static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, const size_t bucket) {
-    uint64_t finalKey = (~0ULL);
+    uint64_t finalKey = index->freelist[COMPONENT_META][bucket];
 
     bool flip = false;
     // @CLEANUP: We want to remove COMPONENT_END at some point, replace with CQ_END
@@ -224,6 +224,8 @@ void swiss_remove(Swiss* index, win_id id) {
 
 void* swiss_addComponent(Swiss* index, const enum ComponentType type, win_id id) {
     assert(index->capacity != 0);
+    if(type != COMPONENT_META)
+        assert(swiss_hasComponent(index, COMPONENT_META, id) == true);
     assert(swiss_hasComponent(index, type, id) == false);
 
     setFreeStatus(index, type, id, false);
@@ -233,6 +235,7 @@ void* swiss_addComponent(Swiss* index, const enum ComponentType type, win_id id)
 
 void swiss_ensureComponent(Swiss* index, const enum ComponentType type, win_id id) {
     assert(index->capacity != 0);
+    assert(swiss_hasComponent(index, COMPONENT_META, id) == true);
 
     setFreeStatus(index, type, id, false);
 }
@@ -264,6 +267,7 @@ void swiss_resetComponent(Swiss* index, const enum ComponentType type) {
 
 void* swiss_getComponent(const Swiss* index, const enum ComponentType type, win_id id) {
     assert(index->capacity != 0);
+    assert(swiss_hasComponent(index, COMPONENT_META, id) == true);
     assert(swiss_hasComponent(index, type, id) == true);
     assert(index->componentSize[type] != 0);
 

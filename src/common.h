@@ -925,14 +925,6 @@ glx_has_context(session_t *ps) {
 }
 
 /**
- * Check if a window is really focused.
- */
-static inline bool
-win_is_focused_real(session_t *ps, const win *w) {
-  return IsViewable == w->a.map_state && ps->active_win == w;
-}
-
-/**
  * Find out the currently focused window.
  *
  * @return struct _win object of the found window, NULL if not found
@@ -941,7 +933,7 @@ static inline win *
 find_focused(session_t *ps) {
   if (!ps->o.track_focus) return NULL;
 
-  if (ps->active_win && win_is_focused_real(ps, ps->active_win))
+  if (ps->active_win && ps->active_win->a.map_state == IsViewable)
     return ps->active_win;
   return NULL;
 }
@@ -1135,9 +1127,6 @@ glx_tex_binded(const glx_texture_t *ptex, Pixmap pixmap) {
   return ptex && ptex->glpixmap && ptex->texture
     && (!pixmap || pixmap == ptex->pixmap);
 }
-
-void
-glx_set_clip(session_t *ps, XserverRegion reg, const reg_data_t *pcache_reg);
 
 bool
 glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,

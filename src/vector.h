@@ -28,7 +28,7 @@ void* vector_get(const Vector* vector, const size_t count);
 
 void vector_remove(Vector* vector, size_t count);
 void vector_clear(Vector* vector);
-void vector_qsort(Vector* vector, int (*compar)(const void *, const void*));
+void vector_qsort(Vector* vector, int (*compar)(const void *, const void*, void*), void* userdata);
 
 int vector_foreach(Vector* vector, int (*callback)(void* elem, void* userdata), void* userdata);
 

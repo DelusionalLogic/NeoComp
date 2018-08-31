@@ -35,8 +35,6 @@ glx_dump_err_str(GLenum err) {
   return NULL;
 }
 
-void glx_shadow_dst(session_t *ps, win* w, const Vector2* pos, const Vector2* size, float z);
-
 /**
  * Check for GLX error.
  *
@@ -69,8 +67,7 @@ glx_check_err_(session_t *ps, const char *func, int line) {
 /**
  * Check if a word is in string.
  */
-static inline bool
-wd_is_in_str(const char *haystick, const char *needle) {
+static inline bool wd_is_in_str(const char *haystick, const char *needle) {
   if (!haystick)
     return false;
 
@@ -91,8 +88,7 @@ wd_is_in_str(const char *haystick, const char *needle) {
 /**
  * Check if a GLX extension exists.
  */
-static inline bool
-glx_hasglxext(session_t *ps, const char *ext) {
+static inline bool glx_hasglxext(session_t *ps, const char *ext) {
   const char *glx_exts = glXQueryExtensionsString(ps->dpy, ps->scr);
   if (!glx_exts) {
     printf_errf("(): Failed get GLX extension list.");
@@ -109,8 +105,7 @@ glx_hasglxext(session_t *ps, const char *ext) {
 /**
  * Check if a GLX extension exists.
  */
-static inline bool
-glx_hasglext(session_t *ps, const char *ext) {
+static inline bool glx_hasglext(session_t *ps, const char *ext) {
     GLint n;
     glGetIntegerv(GL_NUM_EXTENSIONS, &n);
     for(int i = 0; i < n; i++) {
@@ -121,12 +116,4 @@ glx_hasglext(session_t *ps, const char *ext) {
     }
     printf_errf("(): Missing GL extension %s.", ext);
     return false;
-}
-
-static inline XVisualInfo *
-get_visualinfo_from_visual(session_t *ps, Visual *visual) {
-  XVisualInfo vreq = { .visualid = XVisualIDFromVisual(visual) };
-  int nitems = 0;
-
-  return XGetVisualInfo(ps->dpy, VisualIDMask, &vreq, &nitems);
 }
