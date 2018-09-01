@@ -121,25 +121,63 @@ void windowlist_draw(session_t* ps, Vector* order) {
     glx_mark(ps, 0, false);
 }
 
-void windowlist_findbehind(const Swiss* win_list, const Vector* paints, const win* overlap, const size_t overlap_index, Vector* overlaps) {
-    size_t index = overlap_index;
-    win_id* w_id = vector_getNext(paints, &index);
-    while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(win_list, COMPONENT_MUD, *w_id);
+void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id overlap, Vector* overlaps) {
+    size_t len = vector_size(windows);
+    if(len == 0)
+        return;
+    if(len == 1) {
+        assert(false);
+        return;
+    }
 
-        if(win_overlap(overlap, w)) {
-            vector_putBack(overlaps, w_id);
+    struct ZComponent* z = swiss_getComponent(win_list, COMPONENT_Z, overlap);
+
+    size_t low = 0;
+    size_t high = len - 1;
+    size_t pivot = 0;
+    while(true) {
+        pivot = (high - low) / 2 + low;
+        win_id id_low = *(win_id*)vector_get(windows, pivot);
+        win_id id_high = *(win_id*)vector_get(windows, pivot + 1);
+        struct ZComponent* z_low = swiss_getComponent(win_list, COMPONENT_Z, id_low);
+        struct ZComponent* z_high = swiss_getComponent(win_list, COMPONENT_Z, id_high);
+
+        if(pivot != 0 && z_low->z > z->z) {
+            high = pivot;
+            continue;
         }
+        if(pivot != len && z_high->z <= z->z) {
+            low = pivot;
+            continue;
+        }
+        break;
+    }
 
-        w_id = vector_getNext(paints, &index);
+    size_t index = pivot;
+    win_id* wid = vector_getNext(windows, &index);
+    while(wid != NULL) {
+        if(win_overlap(win_list, overlap, *wid))
+            vector_putBack(overlaps, wid);
+        wid = vector_getNext(windows, &index);
     }
 }
 
-void windowlist_updateBlur(session_t* ps, Vector* paints) {
-#if 0
+void windowlist_updateBlur(session_t* ps, Vector* paintss) {
     Vector to_blur;
-    Vector to_render_behind;
-#endif
+    vector_init(&to_blur, sizeof(win_id), ps->win_list.size);
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_BLUR, COMPONENT_BLUR_DAMAGED, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_END) {
+        vector_putBack(&to_blur, &it.id);
+    }
+    vector_qsort(&to_blur, window_zcmp, &ps->win_list);
+
+    Vector all_renderable;
+    vector_init(&all_renderable, sizeof(win_id), ps->win_list.size);
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_END) {
+        vector_putBack(&all_renderable, &it.id);
+    }
+    vector_qsort(&all_renderable, window_zcmp, &ps->win_list);
 
     struct blur* cache = &ps->psglx->blur;
 
@@ -151,99 +189,94 @@ void windowlist_updateBlur(session_t* ps, Vector* paints) {
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
 
+    // Blurring is a strange process, because every window depends on the blurs
+    // behind it. Therefore we render them individually, starting from the
+    // back.
     size_t index;
-    win_id* w_id = vector_getLast(paints, &index);
+    win_id* w_id = vector_getLast(&to_blur, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
+        struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
 
         Vector2 glpos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
-        if(win_viewable(w)) {
-            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-                struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
-                if(swiss_hasComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, *w_id)) {
+        struct Texture* tex = &blur->texture[1];
 
-                    struct Texture* tex = &blur->texture[1];
+        framebuffer_resetTarget(&cache->fbo);
+        framebuffer_targetRenderBuffer_stencil(&cache->fbo, &blur->stencil);
+        framebuffer_targetTexture(&cache->fbo, tex);
+        framebuffer_rebind(&cache->fbo);
 
-                    framebuffer_resetTarget(&cache->fbo);
-                    framebuffer_targetRenderBuffer_stencil(&cache->fbo, &blur->stencil);
-                    framebuffer_targetTexture(&cache->fbo, tex);
-                    framebuffer_rebind(&cache->fbo);
+        Matrix old_view = view;
+        view = mat4_orthogonal(glpos.x, glpos.x + physical->size.x, glpos.y, glpos.y + physical->size.y, -1, 1);
+        glViewport(0, 0, physical->size.x, physical->size.y);
 
-                    Matrix old_view = view;
-                    view = mat4_orthogonal(glpos.x, glpos.x + physical->size.x, glpos.y, glpos.y + physical->size.y, -1, 1);
-                    glViewport(0, 0, physical->size.x, physical->size.y);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
 
-                    glEnable(GL_DEPTH_TEST);
-                    glEnable(GL_BLEND);
+        glClearColor(1.0, 0.0, 1.0, 0.0);
+        glClearDepth(1.0);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-                    glClearColor(1.0, 0.0, 1.0, 0.0);
-                    glClearDepth(1.0);
-                    glDepthMask(GL_TRUE);
-                    glDepthFunc(GL_LESS);
-                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        Vector behind;
+        vector_init(&behind, sizeof(win_id), 16);
+        windowlist_findbehind(&ps->win_list, &all_renderable, *w_id, &behind);
 
-                    Vector behind;
-                    vector_init(&behind, sizeof(win_id), vector_size(paints) - index);
-                    windowlist_findbehind(&ps->win_list, paints, w, index, &behind);
+        windowlist_drawBackground(ps, &behind);
+        windowlist_draw(ps, &behind);
 
-                    windowlist_drawBackground(ps, &behind);
-                    windowlist_draw(ps, &behind);
+        vector_kill(&behind);
 
-                    vector_kill(&behind);
+        Vector2 root_size = {{ps->root_width, ps->root_height}};
 
-                    Vector2 root_size = {{ps->root_width, ps->root_height}};
+        draw_tex(face, &ps->root_texture.texture, &(Vector3){{0, 0, 0.99999}}, &root_size);
 
-                    draw_tex(face, &ps->root_texture.texture, &(Vector3){{0, 0, 0.99999}}, &root_size);
+        view = old_view;
 
-                    view = old_view;
+        glDisable(GL_BLEND);
 
-                    glDisable(GL_BLEND);
+        int level = ps->o.blur_level;
 
-                    int level = ps->o.blur_level;
-
-                    struct TextureBlurData blurData = {
-                        .depth = &blur->stencil,
-                        .tex = tex,
-                        .swap = &blur->texture[0],
-                    };
-                    // Do the blur
-                    if(!texture_blur(&blurData, &cache->fbo, level, false)) {
-                        printf_errf("Failed blurring the background texture\n");
-                        return;
-                    }
-
-                    // Flip the blur back into texture[0] to clip to the stencil
-                    framebuffer_resetTarget(&cache->fbo);
-                    framebuffer_targetTexture(&cache->fbo, &blur->texture[0]);
-                    if(framebuffer_rebind(&cache->fbo) != 0) {
-                        printf("Failed binding framebuffer to clip blur\n");
-                        return;
-                    }
-
-                    old_view = view;
-                    view = mat4_orthogonal(0, blur->texture[0].size.x, 0, blur->texture[0].size.y, -1, 1);
-                    glViewport(0, 0, blur->texture[0].size.x, blur->texture[0].size.y);
-
-                    glClearColor(0.0, 0.0, 0.0, 0.0);
-                    glClear(GL_COLOR_BUFFER_BIT);
-
-                    /* glEnable(GL_STENCIL_TEST); */
-
-                    glStencilMask(0);
-                    glStencilFunc(GL_EQUAL, 1, 0xFF);
-
-                    draw_tex(face, &blur->texture[1], &VEC3_ZERO, &blur->texture[0].size);
-
-                    /* glDisable(GL_STENCIL_TEST); */
-                    view = old_view;
-
-                }
-            }
+        struct TextureBlurData blurData = {
+            .depth = &blur->stencil,
+            .tex = tex,
+            .swap = &blur->texture[0],
+        };
+        // Do the blur
+        if(!texture_blur(&blurData, &cache->fbo, level, false)) {
+            printf_errf("Failed blurring the background texture\n");
+            return;
         }
 
-        w_id = vector_getPrev(paints, &index);
+        // Flip the blur back into texture[0] to clip to the stencil
+        framebuffer_resetTarget(&cache->fbo);
+        framebuffer_targetTexture(&cache->fbo, &blur->texture[0]);
+        if(framebuffer_rebind(&cache->fbo) != 0) {
+            printf("Failed binding framebuffer to clip blur\n");
+            return;
+        }
+
+        old_view = view;
+        view = mat4_orthogonal(0, blur->texture[0].size.x, 0, blur->texture[0].size.y, -1, 1);
+        glViewport(0, 0, blur->texture[0].size.x, blur->texture[0].size.y);
+
+        glClearColor(0.0, 0.0, 0.0, 0.0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        /* glEnable(GL_STENCIL_TEST); */
+
+        glStencilMask(0);
+        glStencilFunc(GL_EQUAL, 1, 0xFF);
+
+        draw_tex(face, &blur->texture[1], &VEC3_ZERO, &blur->texture[0].size);
+
+        /* glDisable(GL_STENCIL_TEST); */
+        view = old_view;
+
+        w_id = vector_getPrev(&to_blur, &index);
     }
 
     swiss_resetComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED);

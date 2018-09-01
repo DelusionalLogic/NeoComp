@@ -79,10 +79,13 @@ typedef struct {
     size_t componentSize[NUM_COMPONENT_TYPES];
     uint64_t* freelist[NUM_COMPONENT_TYPES];
     uint8_t* data[NUM_COMPONENT_TYPES];
+    bool safemode[NUM_COMPONENT_TYPES];
 } Swiss;
 
 void swiss_clearComponentSizes(Swiss* index);
 void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t size);
+void swiss_enableAllAutoRemove(Swiss* index);
+void swiss_disableAutoRemove(Swiss* index, const enum ComponentType type);
 void swiss_init(Swiss* index, size_t initialSize);
 
 void swiss_kill(Swiss* vector);

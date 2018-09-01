@@ -880,23 +880,6 @@ static void assign_depth(Swiss* em, Vector* order) {
     }
 }
 
-int window_zcmp(const void* a, const void* b, void* userdata) {
-    const win_id *a_wid = a;
-    const win_id *b_wid = b;
-    const Swiss* em = userdata;
-    struct ZComponent* a_z = swiss_getComponent(em, COMPONENT_Z, *a_wid);
-    struct ZComponent* b_z = swiss_getComponent(em, COMPONENT_Z, *b_wid);
-
-    if(a_z->z > b_z->z)
-        return 1;
-
-    if(a_z->z < b_z->z)
-        return -1;
-
-    // Must be equal
-    return 0;
-}
-
 static wintype_t
 wid_get_prop_wintype(session_t *ps, Window wid) {
   set_ignore_next(ps);
@@ -1781,7 +1764,6 @@ static void win_set_focused(session_t *ps, win *w) {
     if (ps->active_win) {
         assert(ps->active_win->a.map_state != IsUnmapped);
 
-        win* old_active = ps->active_win;
         ps->active_win = NULL;
     }
 
@@ -4114,11 +4096,14 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   get_cfg(ps, argc, argv, true);
 
   swiss_clearComponentSizes(&ps->win_list);
+  swiss_enableAllAutoRemove(&ps->win_list);
   swiss_setComponentSize(&ps->win_list, COMPONENT_MUD, sizeof(struct _win));
   swiss_setComponentSize(&ps->win_list, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_Z, sizeof(struct ZComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TEXTURED, sizeof(struct TexturedComponent));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_TEXTURED);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BINDS_TEXTURE, sizeof(struct BindsTextureComponent));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_BINDS_TEXTURE);
   swiss_setComponentSize(&ps->win_list, COMPONENT_MAP, sizeof(struct MapComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_MOVE, sizeof(struct MoveComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
@@ -4127,7 +4112,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHADOW);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_BLUR);
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -4612,8 +4599,7 @@ static void damage_blur_over_fade(Swiss* em) {
     vector_qsort(&order, window_zcmp, em);
 
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_FADES_OPACITY, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
 
         if(!fade_done(&fo->fade)) {
@@ -4623,9 +4609,7 @@ static void damage_blur_over_fade(Swiss* em) {
 
             win_id* other_id = vector_getPrev(&order, &order_slot);
             while(other_id != NULL) {
-                win* other = swiss_getComponent(em, COMPONENT_MUD, *other_id);
-
-                if(win_overlap(w, other)) {
+                if(win_overlap(em, it.id, *other_id)) {
                     swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
                 }
 
@@ -4685,29 +4669,30 @@ static void transition_faded_entities(Swiss* em) {
             } else if(w->state == STATE_HIDING) {
                 w->in_openclose = false;
 
-                // @PERFORMANCE @CLEANUP: Ideally this should be a different
-                // loop, but i don't have a good way for triggering on state
-                // changes (No event so far).  I need to figure out how that
-                // will look.
-                // Maybe we can just always do it in invis/destroyed. It will
-                // still only trigger once?
-                if(swiss_hasComponent(em, COMPONENT_SHADOW, it.id)) {
-                    struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-                    shadow_cache_delete(shadow);
-                    swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
-                }
-                if(swiss_hasComponent(em, COMPONENT_BLUR, it.id)) {
-                    struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-                    blur_cache_delete(blur);
-                    swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-                }
-
                 w->state = STATE_INVISIBLE;
             } else if(w->state == STATE_DESTROYING) {
                 w->state = STATE_DESTROYED;
 
                 // @RESEARCH: Are we leaking memory from the cache/shadow here?
             }
+        }
+    }
+
+    for_components(it, em, COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            shadow_cache_delete(shadow);
+            swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
+        }
+    }
+
+    for_components(it, em, COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            blur_cache_delete(blur);
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
         }
     }
 }
@@ -4805,8 +4790,8 @@ static void commit_resize(Swiss* em) {
 
         if(!blur_cache_resize(blur, &resize->newSize)) {
             printf_errf("Failed resizing window blur");
-            continue;
         }
+        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
 
     for_components(it, em,
@@ -5056,17 +5041,15 @@ void session_run(session_t *ps) {
 
         // Damage the blur of windows on top of damaged windows
         for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            COMPONENT_CONTENTS_DAMAGED, CQ_END) {
 
             size_t order_slot = vector_find_uint64(&ps->order, it.id);
             assert(order_slot >= 0);
 
             win_id* other_id = vector_getNext(&ps->order, &order_slot);
             while(other_id != NULL) {
-                win* other = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *other_id);
 
-                if(win_overlap(w, other)) {
+                if(win_overlap(&ps->win_list, it.id, *other_id)) {
                     swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, *other_id);
                 }
 

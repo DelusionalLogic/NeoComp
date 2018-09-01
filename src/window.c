@@ -15,19 +15,35 @@
 #include "renderutil.h"
 #include "shadow.h"
 
-bool win_overlap(const win* w1, const win* w2) {
-    const Vector2 w1lpos = {{
-        w1->a.x, w1->a.y,
-    }};
-    const Vector2 w1rpos = {{
-        w1->a.x + w1->widthb, w1->a.y + w1->heightb,
-    }};
-    const Vector2 w2lpos = {{
-        w2->a.x, w2->a.y,
-    }};
-    const Vector2 w2rpos = {{
-        w2->a.x + w2->widthb, w2->a.y + w2->heightb,
-    }};
+int window_zcmp(const void* a, const void* b, void* userdata) {
+    const win_id *a_wid = a;
+    const win_id *b_wid = b;
+    const Swiss* em = userdata;
+    struct ZComponent* a_z = swiss_getComponent(em, COMPONENT_Z, *a_wid);
+    struct ZComponent* b_z = swiss_getComponent(em, COMPONENT_Z, *b_wid);
+
+    if(a_z->z > b_z->z)
+        return 1;
+
+    if(a_z->z < b_z->z)
+        return -1;
+
+    // Must be equal
+    return 0;
+}
+
+bool win_overlap(Swiss* em, win_id w1, win_id w2) {
+    struct PhysicalComponent* w1p = swiss_getComponent(em, COMPONENT_PHYSICAL, w1);
+    struct PhysicalComponent* w2p = swiss_getComponent(em, COMPONENT_PHYSICAL, w2);
+
+    const Vector2 w1lpos = w1p->position;
+    Vector2 w1rpos = w1p->position;
+    vec2_add(&w1rpos, &w1p->size);
+
+    const Vector2 w2lpos = w2p->position;
+    Vector2 w2rpos = w2p->position;
+    vec2_add(&w2rpos, &w2p->size);
+
     // Horizontal collision
     if (w1lpos.x > w2rpos.x || w2lpos.x > w1rpos.x)
         return false;

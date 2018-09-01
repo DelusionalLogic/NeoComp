@@ -152,6 +152,14 @@ void swiss_setComponentSize(Swiss* index, const enum ComponentType type, size_t 
     index->componentSize[type] = size;
 }
 
+void swiss_enableAllAutoRemove(Swiss* index) {
+    memset(index->safemode, 0x00, sizeof(bool) * NUM_COMPONENT_TYPES);
+}
+
+void swiss_disableAutoRemove(Swiss* index, const enum ComponentType type) {
+    index->safemode[type] = true;
+}
+
 void swiss_init(Swiss* index, size_t initialsize) {
     swiss_setComponentSize(index, COMPONENT_META, sizeof(struct MetaComponent));
 
@@ -213,7 +221,10 @@ void swiss_remove(Swiss* index, win_id id) {
     assert(swiss_hasComponent(index, COMPONENT_META, id) == true);
 
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
-        swiss_removeComponent(index, i, id);
+        if(swiss_hasComponent(index, i, id)) {
+            assert(!index->safemode[i]);
+            swiss_removeComponent(index, i, id);
+        }
     }
 
     if(index->firstFree > id)

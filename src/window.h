@@ -240,9 +240,10 @@ typedef struct _win {
   struct RenderBuffer stencil;
 } win;
 
+int window_zcmp(const void* a, const void* b, void* userdata);
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
-bool win_overlap(const win* w1, const win* w2);
+bool win_overlap(Swiss* em, win_id w1, win_id w2);
 bool win_covers(win* w);
 bool win_is_solid(win* w);
 
