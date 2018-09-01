@@ -23,6 +23,7 @@ extern struct Font debug_font;
 
 int font_load(struct Font* font, char* filename);
 void text_debug_load(char* filename);
+void text_debug_unload();
 
 void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size);
 

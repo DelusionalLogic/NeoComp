@@ -4182,6 +4182,24 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // of OpenGL context.
   init_overlay(ps);
 
+  add_shader_type(&global_info);
+  add_shader_type(&downsample_info);
+  add_shader_type(&upsample_info);
+  add_shader_type(&passthough_info);
+  add_shader_type(&profiler_info);
+  add_shader_type(&text_info);
+  add_shader_type(&shadow_info);
+  add_shader_type(&stencil_info);
+  add_shader_type(&colored_info);
+
+  assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
+  assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
+  assets_add_handler(struct face, "face", face_load_file, face_unload_file);
+  assets_add_handler(struct shader_program, "shader", shader_program_load_file,
+      shader_program_unload_file);
+
+  assets_add_path("./assets/");
+
   // Initialize OpenGL as early as possible
   if (!glx_init(ps, true))
     exit(1);
@@ -4322,15 +4340,47 @@ void session_destroy(session_t *ps) {
   free(ps->dbus_service);
 #endif
 
+  text_debug_unload();
+
   // Free window linked list
   for_components(it, &ps->win_list,
       COMPONENT_MUD, CQ_END) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
 
+      if(w->face != NULL) {
+          face_unload_file(w->face);
+          w->face = NULL;
+      }
+
       if (IsViewable == w->a.map_state && w->state != STATE_DESTROYING)
           win_ev_stop(ps, w);
 
   }
+  for_components(it, &ps->win_list,
+      COMPONENT_TEXTURED, CQ_END) {
+      struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+      texture_delete(&textured->texture);
+      renderbuffer_delete(&textured->stencil);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_TEXTURED);
+  for_components(it, &ps->win_list,
+      COMPONENT_BINDS_TEXTURE, CQ_END) {
+      struct BindsTextureComponent* bindsTexture = swiss_getComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE, it.id);
+      wd_delete(&bindsTexture->drawable);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
+  for_components(it, &ps->win_list,
+      COMPONENT_SHADOW, CQ_END) {
+      struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+      shadow_cache_delete(shadow);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_SHADOW);
+  for_components(it, &ps->win_list,
+      COMPONENT_BLUR, CQ_END) {
+      struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id);
+      blur_cache_delete(blur);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_BLUR);
 
 #ifdef CONFIG_C2
   // Free blacklists
@@ -4384,6 +4434,8 @@ void session_destroy(session_t *ps) {
   xorgContext_delete(&ps->psglx->xcontext);
 
   glx_destroy(ps);
+
+  swiss_kill(&ps->win_list);
 
   // Release overlay window
   if (ps->overlay) {
@@ -4701,8 +4753,11 @@ static void remove_texture_invis_windows(Swiss* em) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_TEXTURED, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
 
         if(w->state == STATE_INVISIBLE || w->state == STATE_DESTROYED) {
+            texture_delete(&textured->texture);
+            renderbuffer_delete(&textured->stencil);
             swiss_removeComponent(em, COMPONENT_TEXTURED, it.id);
         }
     }
@@ -5134,8 +5189,10 @@ void session_run(session_t *ps) {
             }
 
             paint++;
-            if (ps->o.benchmark && paint >= ps->o.benchmark)
+            if (ps->o.benchmark && paint >= ps->o.benchmark) {
+                session_destroy(ps);
                 exit(0);
+            }
             XSync(ps->dpy, False);
         }
 

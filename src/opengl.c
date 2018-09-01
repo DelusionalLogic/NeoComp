@@ -226,39 +226,7 @@ glx_init(session_t *ps, bool need_render) {
   // Render preparations
   if (need_render) {
     glx_on_root_change(ps);
-
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-
-    // Initialize stencil buffer
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glDisable(GL_STENCIL_TEST);
-    glStencilMask(0x1);
-    glStencilFunc(GL_EQUAL, 0x1, 0x1);
-
-    // Clear screen
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // glXSwapBuffers(ps->dpy, get_tgt_window(ps));
   }
-
-  add_shader_type(&global_info);
-  add_shader_type(&downsample_info);
-  add_shader_type(&upsample_info);
-  add_shader_type(&passthough_info);
-  add_shader_type(&profiler_info);
-  add_shader_type(&text_info);
-  add_shader_type(&shadow_info);
-  add_shader_type(&stencil_info);
-  add_shader_type(&colored_info);
-
-  assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
-  assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
-  assets_add_handler(struct face, "face", face_load_file, face_unload_file);
-  assets_add_handler(struct shader_program, "shader", shader_program_load_file,
-    shader_program_unload_file);
-
-  assets_add_path("./assets/");
 
   if(!framebuffer_init(&psglx->stencil_fbo)) {
       printf_errf("Failed initializing the stencil framebuffer");

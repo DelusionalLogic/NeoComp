@@ -112,7 +112,6 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
 void blur_destroy(struct blur* blur) {
     glDeleteVertexArrays(1, &blur->array);
-    free(blur);
 }
 
 bool blur_cache_resize(glx_blur_cache_t* cache, const Vector2* size) {

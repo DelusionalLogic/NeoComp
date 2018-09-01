@@ -66,8 +66,19 @@ int font_load(struct Font* font, char* filename) {
     return 0;
 }
 
+void font_unload(struct Font* font) {
+    for(uint8_t i = 0; i < 128; i++) {
+        struct Character* chara = &font->characters[i];
+        texture_delete(&chara->texture);
+    }
+}
+
 void text_debug_load(char* filename) {
     font_load(&debug_font, filename);
+}
+
+void text_debug_unload() {
+    font_unload(&debug_font);
 }
 
 void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size) {

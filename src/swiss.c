@@ -181,6 +181,14 @@ void swiss_kill(Swiss* index) {
     assert(index->capacity != 0);
 
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+        if(index->safemode[i]) {
+            enum ComponentType type = i;
+            assert(findNextUsed(index, &type, 0) == -1);
+        }
+    }
+
+    for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
+
         // Calling free on a NULL ptr isn't a problem, so  there's no reason to
         // check
         free(index->data[i]);
