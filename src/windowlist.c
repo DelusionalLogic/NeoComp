@@ -15,7 +15,7 @@
 
 DECLARE_ZONE(paint_window);
 
-static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
+Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
         xpos->x, ps->root_height - xpos->y - size->y
     }};
@@ -28,77 +28,98 @@ static bool win_viewable(win* w) {
         || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
 }
 
-void windowlist_drawBackground(session_t* ps, Vector* order) {
+void windowlist_drawBackground(session_t* ps, Vector* opaque) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
 
+    {
+        size_t index;
+        win_id* w_id = vector_getFirst(opaque, &index);
+        while(w_id != NULL) {
+            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+            struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
+            struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
+
+            Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+
+            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
+                struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
+                Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
+
+                draw_tex(w->face, &blur->texture[0], &dglPos, &physical->size);
+            }
+
+            w_id = vector_getNext(opaque, &index);
+        }
+    }
+
+    glDepthMask(GL_FALSE);
+    glDisable(GL_DEPTH_TEST);
+}
+
+void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
     size_t index;
-    win_id* w_id = vector_getFirst(order, &index);
+    win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
-
+        struct OpacityComponent* opacity = swiss_getComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
+        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
-        if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-            struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
-            Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
+        // Background
+        {
 
-            draw_tex(w->face, &blur->texture[0], &dglPos, &physical->size);
+            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
+                struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
+                Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
+
+                struct shader_program* passthough_program = assets_load("passthough.shader");
+                if(passthough_program->shader_type_info != &passthough_info) {
+                    printf_errf("Shader was not a passthough shader\n");
+                    return;
+                }
+                struct Passthough* passthough_type = passthough_program->shader_type;
+                shader_set_future_uniform_bool(passthough_type->flip, blur->texture[0].flipped);
+                shader_set_future_uniform_float(passthough_type->opacity, opacity->opacity/100.0);
+                shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
+
+                shader_use(passthough_program);
+
+                texture_bind(&blur->texture[0], GL_TEXTURE0);
+
+                /* Vector4 color = {{opacity->opacity/100, opacity->opacity/100, opacity->opacity/100, opacity->opacity/100}}; */
+                /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
+                draw_rect(w->face, passthough_type->mvp, dglPos, physical->size);
+            }
         }
 
-        w_id = vector_getNext(order, &index);
-    }
-}
+        // Content
+        {
+            struct shader_program* global_program = assets_load("global.shader");
+            if(global_program->shader_type_info != &global_info) {
+                printf_errf("Shader was not a global shader");
+                // @INCOMPLETE: Make sure the config is correct
+                return;
+            }
 
-void windowlist_draw(session_t* ps, Vector* order) {
-    glx_mark(ps, 0, true);
+            struct Global* global_type = global_program->shader_type;
 
-    {
-        glEnable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
+            shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
-        // This is all weird, but X Render is using premultiplied ARGB format, and
-        // we need to use those things to correct it. Thanks to derhass for help.
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-
-        glDepthMask(GL_TRUE);
-
-        struct shader_program* global_program = assets_load("global.shader");
-        if(global_program->shader_type_info != &global_info) {
-            printf_errf("Shader was not a global shader");
-            // @INCOMPLETE: Make sure the config is correct
-            return;
-        }
-
-        struct Global* global_type = global_program->shader_type;
-
-        shader_set_future_uniform_sampler(global_type->tex_scr, 0);
-
-        shader_use(global_program);
-
-        size_t index;
-        win_id* w_id = vector_getFirst(order, &index);
-        while(w_id != NULL) {
-            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
-            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
-            struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
-            struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
-
+            shader_use(global_program);
             zone_enter_extra(&ZONE_paint_window, "%s", w->name);
 
             shader_set_uniform_bool(global_type->invert, w->invert_color);
             shader_set_uniform_bool(global_type->flip, textured->texture.flipped);
-            shader_set_uniform_float(global_type->opacity, (float)(w->opacity / 100.0));
-
-            // Dimming the window if needed
-            if (w->dim) {
-                double dim_opacity = ps->o.inactive_dim;
-                if (!ps->o.inactive_dim_fixed)
-                    dim_opacity *= w->opacity / 100.0;
-                shader_set_uniform_float(global_type->dim, dim_opacity);
-            }
+            shader_set_uniform_float(global_type->opacity, (float)(opacity->opacity / 100.0));
 
             // Bind texture
             texture_bind(&textured->texture, GL_TEXTURE0);
@@ -107,54 +128,130 @@ void windowlist_draw(session_t* ps, Vector* order) {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
-                /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
+                /* Vector4 color = {{0.0, 1.0, 0.4, opacity->opacity/100}}; */
                 /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
                 draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
             }
 
             zone_leave(&ZONE_paint_window);
+        }
 
-            w_id = vector_getNext(order, &index);
+        w_id = vector_getPrev(transparent, &index);
+    }
+
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_DEPTH_TEST);
+}
+
+void windowlist_draw(session_t* ps, Vector* order) {
+    glx_mark(ps, 0, true);
+
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    struct shader_program* global_program = assets_load("global.shader");
+    if(global_program->shader_type_info != &global_info) {
+        printf_errf("Shader was not a global shader");
+        glDepthMask(GL_TRUE);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        return;
+    }
+
+    struct Global* global_type = global_program->shader_type;
+
+    shader_set_future_uniform_sampler(global_type->tex_scr, 0);
+
+    shader_use(global_program);
+
+    size_t index;
+    win_id* w_id = vector_getFirst(order, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
+        struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
+
+        zone_enter_extra(&ZONE_paint_window, "%s", w->name);
+
+        shader_set_uniform_bool(global_type->invert, w->invert_color);
+        shader_set_uniform_bool(global_type->flip, textured->texture.flipped);
+
+        // Bind texture
+        texture_bind(&textured->texture, GL_TEXTURE0);
+
+        {
+            Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
+            Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
+
+            /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
+            /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
+            draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
+        }
+
+        zone_leave(&ZONE_paint_window);
+
+        w_id = vector_getNext(order, &index);
+    }
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+
+    glx_mark(ps, 0, false);
+}
+
+size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle) {
+    size_t len = vector_size(candidates);
+    if(len == 0)
+        return 0;
+
+    size_t low = 0;
+    size_t high = len-1;
+
+    {
+        win_id id = *(win_id*)vector_get(candidates, high);
+        struct ZComponent* z = swiss_getComponent(em, COMPONENT_Z, id);
+        if(z->z < needle) {
+            return len;
         }
     }
 
-    glx_mark(ps, 0, false);
+    while(low < high) {
+        size_t mid = (low + high) / 2;
+
+        win_id id = *(win_id*)vector_get(candidates, mid);
+        struct ZComponent* z = swiss_getComponent(em, COMPONENT_Z, id);
+
+        if(z->z > needle) {
+            high = mid;
+            if(mid == 0)
+                return 0;
+        } else {
+            low  = mid + 1;
+            if(low == len)
+                return len;
+        }
+    }
+
+    return low;
 }
 
 void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id overlap, Vector* overlaps) {
     size_t len = vector_size(windows);
     if(len == 0)
         return;
-    if(len == 1) {
-        assert(false);
-        return;
-    }
 
     struct ZComponent* z = swiss_getComponent(win_list, COMPONENT_Z, overlap);
 
-    size_t low = 0;
-    size_t high = len - 1;
-    size_t pivot = 0;
-    while(true) {
-        pivot = (high - low) / 2 + low;
-        win_id id_low = *(win_id*)vector_get(windows, pivot);
-        win_id id_high = *(win_id*)vector_get(windows, pivot + 1);
-        struct ZComponent* z_low = swiss_getComponent(win_list, COMPONENT_Z, id_low);
-        struct ZComponent* z_high = swiss_getComponent(win_list, COMPONENT_Z, id_high);
-
-        if(pivot != 0 && z_low->z > z->z) {
-            high = pivot;
-            continue;
-        }
-        if(pivot != len && z_high->z <= z->z) {
-            low = pivot;
-            continue;
-        }
-        break;
-    }
-
-    size_t index = pivot;
-    win_id* wid = vector_getNext(windows, &index);
+    size_t index = binaryZSearch(win_list, windows, z->z);
+    if(index >= vector_size(windows))
+        return;
+    win_id* wid = vector_get(windows, index);
     while(wid != NULL) {
         if(win_overlap(win_list, overlap, *wid))
             vector_putBack(overlaps, wid);
@@ -162,7 +259,7 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
     }
 }
 
-void windowlist_updateBlur(session_t* ps, Vector* paintss) {
+void windowlist_updateBlur(session_t* ps) {
     Vector to_blur;
     vector_init(&to_blur, sizeof(win_id), ps->win_list.size);
     for_components(it, &ps->win_list,
@@ -171,13 +268,21 @@ void windowlist_updateBlur(session_t* ps, Vector* paintss) {
     }
     vector_qsort(&to_blur, window_zcmp, &ps->win_list);
 
-    Vector all_renderable;
-    vector_init(&all_renderable, sizeof(win_id), ps->win_list.size);
+    Vector opaque_renderable;
+    vector_init(&opaque_renderable, sizeof(win_id), ps->win_list.size);
     for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_END) {
-        vector_putBack(&all_renderable, &it.id);
+            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, CQ_NOT, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+        vector_putBack(&opaque_renderable, &it.id);
     }
-    vector_qsort(&all_renderable, window_zcmp, &ps->win_list);
+    vector_qsort(&opaque_renderable, window_zcmp, &ps->win_list);
+
+    Vector transparent_renderable;
+    vector_init(&transparent_renderable, sizeof(win_id), ps->win_list.size);
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+        vector_putBack(&transparent_renderable, &it.id);
+    }
+    vector_qsort(&transparent_renderable, window_zcmp, &ps->win_list);
 
     struct blur* cache = &ps->psglx->blur;
 
@@ -221,18 +326,27 @@ void windowlist_updateBlur(session_t* ps, Vector* paintss) {
         glDepthFunc(GL_LESS);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        Vector behind;
-        vector_init(&behind, sizeof(win_id), 16);
-        windowlist_findbehind(&ps->win_list, &all_renderable, *w_id, &behind);
+        // Find the drawables behind this one
+        Vector opaque_behind;
+        vector_init(&opaque_behind, sizeof(win_id), 16);
+        windowlist_findbehind(&ps->win_list, &opaque_renderable, *w_id, &opaque_behind);
+        Vector transparent_behind;
+        vector_init(&transparent_behind, sizeof(win_id), 16);
+        windowlist_findbehind(&ps->win_list, &transparent_renderable, *w_id, &transparent_behind);
 
-        windowlist_drawBackground(ps, &behind);
-        windowlist_draw(ps, &behind);
+        windowlist_drawBackground(ps, &opaque_behind);
+        windowlist_draw(ps, &opaque_behind);
 
-        vector_kill(&behind);
-
+        // Draw root
+        glEnable(GL_DEPTH_TEST);
         Vector2 root_size = {{ps->root_width, ps->root_height}};
-
         draw_tex(face, &ps->root_texture.texture, &(Vector3){{0, 0, 0.99999}}, &root_size);
+        glDisable(GL_DEPTH_TEST);
+
+        windowlist_drawTransparent(ps, &transparent_behind);
+
+        vector_kill(&transparent_behind);
+        vector_kill(&opaque_behind);
 
         view = old_view;
 

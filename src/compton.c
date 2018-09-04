@@ -703,6 +703,8 @@ static void paint_root(session_t *ps) {
     Vector2 rootSize = {{ps->root_width, ps->root_height}};
     Vector3 pos = {{0, 0, 0.9999}};
     draw_tex(face, &ps->root_texture.texture, &pos, &rootSize);
+
+    glDisable(GL_DEPTH_TEST);
 }
 
 /**
@@ -4111,6 +4113,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct FadesOpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHADOW);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
@@ -4765,11 +4768,25 @@ static void remove_texture_invis_windows(Swiss* em) {
 
 static void syncronize_fade_opacity(Swiss* em) {
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_FADES_OPACITY, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        if(fo->fade.value != 1.0) {
+            swiss_ensureComponent(em, COMPONENT_OPACITY, it.id);
+        }
+    }
+    for_components(it, em,
+            COMPONENT_OPACITY, COMPONENT_FADES_OPACITY, CQ_END) {
+        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
 
-        w->opacity = fo->fade.value;
+        opacity->opacity = fo->fade.value;
+    }
+    for_components(it, em,
+            COMPONENT_OPACITY, CQ_END) {
+        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
+        if(opacity->opacity == 100.0) {
+            swiss_removeComponent(em, COMPONENT_OPACITY, it.id);
+        }
     }
 }
 
@@ -5136,23 +5153,29 @@ void session_run(session_t *ps) {
         finish_destroyed_windows(&ps->win_list, ps);
         zone_leave(&ZONE_update);
 
-        Vector order;
-        vector_init(&order, sizeof(win_id), ps->order.size);
-
+        Vector opaque;
+        vector_init(&opaque, sizeof(win_id), ps->order.size);
         for_components(it, &ps->win_list,
-                COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, CQ_END) {
-            vector_putBack(&order, &it.id);
+                COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+            vector_putBack(&opaque, &it.id);
         }
-        vector_qsort(&order, window_zcmp, &ps->win_list);
+        vector_qsort(&opaque, window_zcmp, &ps->win_list);
+        Vector transparent;
+        vector_init(&transparent, sizeof(win_id), ps->order.size);
+        for_components(it, &ps->win_list,
+                COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+            vector_putBack(&transparent, &it.id);
+        }
+        vector_qsort(&transparent, window_zcmp, &ps->win_list);
 
         zone_enter(&ZONE_effect_textures);
 
         zone_enter(&ZONE_update_shadow);
-        windowlist_updateShadow(ps, &order);
+        windowlist_updateShadow(ps, &transparent);
         zone_leave(&ZONE_update_shadow);
 
         zone_enter(&ZONE_blur_background);
-        windowlist_updateBlur(ps, &order);
+        windowlist_updateBlur(ps);
         zone_leave(&ZONE_blur_background);
 
         zone_leave(&ZONE_effect_textures);
@@ -5172,21 +5195,39 @@ void session_run(session_t *ps) {
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
             glDepthFunc(GL_LESS);
 
-            windowlist_drawBackground(ps, &order);
-            windowlist_draw(ps, &order);
-            glEnable(GL_DEPTH_TEST);
+            windowlist_drawBackground(ps, &opaque);
+            windowlist_draw(ps, &opaque);
+
             paint_root(ps);
-            glDisable(GL_DEPTH_TEST);
+
+            windowlist_drawTransparent(ps, &transparent);
 
             {
                 size_t index;
-                win_id* w_id = vector_getFirst(&order, &index);
+                win_id* w_id = vector_getFirst(&transparent, &index);
                 while(w_id != NULL) {
                     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
                     win_postdraw(ps, w);
-                    w_id = vector_getNext(&order, &index);
+                    w_id = vector_getNext(&transparent, &index);
                 }
             }
+
+            /* { */
+            /*     glDisable(GL_DEPTH_TEST); */
+            /*     glDisable(GL_BLEND); */
+            /*     struct face* face = assets_load("window.face"); */
+            /*     for_components(it, &ps->win_list, */
+            /*             COMPONENT_PHYSICAL, COMPONENT_BLUR, COMPONENT_Z, CQ_END) { */
+            /*         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id); */
+            /*         struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id); */
+            /*         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id); */
+
+            /*         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size); */
+            /*         Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001); */
+
+            /*         draw_tex(face, &blur->texture[0], &dglPos, &(Vector2){{100, 100}}); */
+            /*     } */
+            /* } */
 
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark) {
@@ -5196,7 +5237,7 @@ void session_run(session_t *ps) {
             XSync(ps->dpy, False);
         }
 
-        vector_kill(&order);
+        vector_kill(&transparent);
 
         zone_leave(&ZONE_paint);
 
@@ -5207,43 +5248,6 @@ void session_run(session_t *ps) {
 #ifdef DEBUG_PROFILE
         profiler_render(event_stream);
 #endif
-
-        {
-            Vector2 pen = {{0, ps->root_height}};
-            Vector2 scale = {{1.3, 1.3}};
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
-            glDrawBuffers(1, DRAWBUFS);
-
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_BLEND);
-
-            {
-                char* text;
-                asprintf(&text, "Frame Time: %f", dt);
-
-                Vector2 size = {{0}};
-                text_size(&debug_font, text, &scale, &size);
-                pen.y -= size.y;
-
-                text_draw(&debug_font, text, &pen, &scale);
-
-                free(text);
-            }
-
-            {
-                char* text;
-                asprintf(&text, "FPS: %f", 1000/dt);
-
-                Vector2 size = {{0}};
-                text_size(&debug_font, text, &scale, &size);
-                pen.y -= size.y;
-
-                text_draw(&debug_font, text, &pen, &scale);
-
-                free(text);
-            }
-        }
 
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));
         glFinish();

@@ -834,6 +834,105 @@ struct TestResult win_fade__skip_keyframes_superseded_by_others__a_fade_is_runni
     assertEq(fade_done(&fo->fade), true);
 }
 
+static make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
+    for(int i = 0; i < cnt; i++) {
+        win_id wid = swiss_allocate(swiss);
+        vector_putBack(wids, &wid);
+        struct ZComponent* z = swiss_addComponent(swiss, COMPONENT_Z, wid);
+        z->z = vals[i];
+    }
+}
+
+struct TestResult binaryZSearch__return_0__finding_in_empty_haystack() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){}, 0);
+
+    size_t res = binaryZSearch(&swiss, &wids, 3);
+
+    assertEq(res, 0);
+}
+
+struct TestResult binaryZSearch__return_first_index_with_value_larger__finding_value_in_the_middle() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){2., 3., 4., 5., 6.}, 5);
+
+    size_t res = binaryZSearch(&swiss, &wids, 3.0);
+
+    assertEq(res, 2);
+}
+
+struct TestResult binaryZSearch__return_an_index_larger_than_size__all_values_are_smaller() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){5., 6., 7., 8., 9.}, 5);
+
+    size_t res = binaryZSearch(&swiss, &wids, 100.0);
+
+    assertEq(res, 5);
+}
+
+struct TestResult binaryZSearch__return_0__all_values_are_larger() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){0., 1., 2., 3.}, 4);
+
+    size_t res = binaryZSearch(&swiss, &wids, -1.0);
+
+    assertEq(res, 0);
+}
+
+struct TestResult binaryZSearch__return_rightmost_element__several_values_are_equal() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){2., 3., 3., 7.}, 4);
+
+    size_t res = binaryZSearch(&swiss, &wids, 3.0);
+
+    assertEq(res, 3);
+}
+
+struct TestResult binaryZSearch__return_smallest_value_larger_than_needle__needle_is_not_a_value() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){0., 1., 2., 3., 3., 3., 3., 7., 8., 9.}, 10);
+
+    size_t res = binaryZSearch(&swiss, &wids, 2.3);
+
+    assertEq(res, 3);
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
 
@@ -916,6 +1015,12 @@ int main(int argc, char** argv) {
     TEST(win_fade__remove_completed_keyframes__a_fade_is_running);
     TEST(win_fade__skip_keyframes_superseded_by_others__a_fade_is_running);
     TEST(win_fade__set_a_keyframe_duration__keyframe_becomes_head);
+
+    TEST(binaryZSearch__return_first_index_with_value_larger__finding_value_in_the_middle);
+    TEST(binaryZSearch__return_an_index_larger_than_size__all_values_are_smaller);
+    TEST(binaryZSearch__return_0__all_values_are_larger);
+    TEST(binaryZSearch__return_rightmost_element__several_values_are_equal);
+    TEST(binaryZSearch__return_smallest_value_larger_than_needle__needle_is_not_a_value);
 
     return test_end();
 }

@@ -61,13 +61,6 @@ bool win_covers(win* w) {
         && !w->unredir_if_possible_excluded;
 }
 
-static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
-    Vector2 glpos = {{
-        xpos->x, ps->root_height - xpos->y - size->y
-    }};
-    return glpos;
-}
-
 void fade_init(struct Fading* fade, double value) {
     fade->head = 0;
     fade->tail = 0;

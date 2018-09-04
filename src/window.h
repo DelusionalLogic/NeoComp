@@ -115,6 +115,10 @@ struct FadesOpacityComponent {
     struct Fading fade;
 };
 
+struct OpacityComponent {
+    double opacity;
+};
+
 extern const char* const StateNames[];
 
 enum WindowState {
