@@ -22,12 +22,6 @@ Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* siz
     return glpos;
 }
 
-static bool win_viewable(win* w) {
-    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
-        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
-        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
-}
-
 void windowlist_drawBackground(session_t* ps, Vector* opaque) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
@@ -101,6 +95,37 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
         }
 
+        // Tint
+        if(swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
+            struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id);
+            struct shader_program* program = assets_load("tint.shader");
+            if(program->shader_type_info != &colored_info) {
+                printf_errf("Shader was not a colored shader");
+                return;
+            }
+            struct Colored* shader_type = program->shader_type;
+
+            shader_set_future_uniform_vec2(shader_type->viewport, &(Vector2){{ps->root_width, ps->root_height}});
+            shader_use(program);
+
+            {
+                double opac = opacity->opacity / 100.0;
+                shader_set_uniform_float(shader_type->opacity, tint->color.w * opac);
+                Vector3 color = tint->color.rgb;
+                vec3_imul(&color, opac);
+                shader_set_uniform_vec3(shader_type->color, &color);
+            }
+
+            {
+                Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+                Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
+
+                /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
+                /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
+                draw_rect(w->face, shader_type->mvp, winpos, physical->size);
+            }
+        }
+
         // Content
         {
             struct shader_program* global_program = assets_load("global.shader");
@@ -142,6 +167,51 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);
     glDisable(GL_DEPTH_TEST);
+}
+
+void windowlist_drawTint(session_t* ps) {
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    struct shader_program* program = assets_load("tint.shader");
+    if(program->shader_type_info != &colored_info) {
+        printf_errf("Shader was not a colored shader");
+        glDepthMask(GL_TRUE);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        return;
+    }
+    struct Colored* shader_type = program->shader_type;
+
+    shader_set_future_uniform_vec2(shader_type->viewport, &(Vector2){{ps->root_width, ps->root_height}});
+    shader_use(program);
+
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z, CQ_END) {
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, it.id);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+        struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
+
+        shader_set_uniform_float(shader_type->opacity, tint->color.w);
+        shader_set_uniform_vec3(shader_type->color, &tint->color.rgb);
+
+        {
+            Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+            Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
+
+            /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
+            /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
+            draw_rect(w->face, shader_type->mvp, winpos, physical->size);
+        }
+    }
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
 }
 
 void windowlist_draw(session_t* ps, Vector* order) {
@@ -251,6 +321,7 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
     size_t index = binaryZSearch(win_list, windows, z->z);
     if(index >= vector_size(windows))
         return;
+
     win_id* wid = vector_get(windows, index);
     while(wid != NULL) {
         if(win_overlap(win_list, overlap, *wid))

@@ -4,6 +4,7 @@
 
 #define UNIFORMS_FOREACH(M) \
     M(mvp)                  \
+    M(viewport)             \
     M(opacity)              \
     M(color)
-#define UNIFORMS_COUNT 3
+#define UNIFORMS_COUNT 4

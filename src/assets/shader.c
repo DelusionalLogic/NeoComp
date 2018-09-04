@@ -482,6 +482,10 @@ void shader_set_uniform_vec2(struct shader_value* uniform, const Vector2* value)
     glUniform2f(uniform->gl_uniform, value->x, value->y);
 }
 
+void shader_set_uniform_vec3(struct shader_value* uniform, const Vector3* value) {
+    glUniform3f(uniform->gl_uniform, value->x, value->y, value->z);
+}
+
 void shader_set_uniform_sampler(struct shader_value* uniform, int value) {
     glUniform1i(uniform->gl_uniform, value);
 }

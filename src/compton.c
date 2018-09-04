@@ -4113,7 +4113,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
-  swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct FadesOpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_TINT, sizeof(struct TintComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct OpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHADOW);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
@@ -4750,11 +4751,17 @@ static void transition_faded_entities(Swiss* em) {
             swiss_removeComponent(em, COMPONENT_BLUR, it.id);
         }
     }
+
+    for_components(it, em, COMPONENT_MUD, COMPONENT_TINT, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            swiss_removeComponent(em, COMPONENT_TINT, it.id);
+        }
+    }
 }
 
 static void remove_texture_invis_windows(Swiss* em) {
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_TEXTURED, CQ_END) {
+    for_components(it, em, COMPONENT_MUD, COMPONENT_TEXTURED, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
 
@@ -4988,6 +4995,16 @@ static void commit_map(Swiss* em, struct X11Context* xcontext) {
         }
     }
 
+    for_components(it, em,
+            COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        if(w->blur_background) {
+            struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
+            tint->color = (Vector4){{0.1, 0.8, 0.2, 0.3}};
+        }
+    }
+
     // No matter what, when we remap a window we want to make sure the blur and
     // shadow are the correct size
     for_components(it, em,
@@ -5196,6 +5213,7 @@ void session_run(session_t *ps) {
             glDepthFunc(GL_LESS);
 
             windowlist_drawBackground(ps, &opaque);
+            windowlist_drawTint(ps);
             windowlist_draw(ps, &opaque);
 
             paint_root(ps);

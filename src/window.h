@@ -46,6 +46,10 @@ struct HasClientComponent {
     Window id;
 };
 
+struct TintComponent {
+    Vector4 color;
+};
+
 struct MoveComponent {
     Vector2 newPosition;
 };
