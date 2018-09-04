@@ -36,7 +36,7 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
 
             Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
-            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
+            if (swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
                 struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
                 Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
 
@@ -219,7 +219,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
 
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
+    glDepthMask(GL_TRUE);
 
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -371,7 +371,6 @@ void windowlist_updateBlur(session_t* ps) {
     size_t index;
     win_id* w_id = vector_getLast(&to_blur, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
 
