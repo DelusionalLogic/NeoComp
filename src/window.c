@@ -324,19 +324,6 @@ void win_draw(session_t* ps, win* w, float z) {
     /* win_draw_debug(ps, w, z); */
 }
 
-void win_postdraw(session_t* ps, win* w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-    struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, wid);
-
-    Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
-
-    // Painting shadow
-    if (w->shadow) {
-        win_paint_shadow(ps, w, &glPos, &physical->size, z->z);
-    }
-}
-
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid) {
     assert(drawable != NULL);
 

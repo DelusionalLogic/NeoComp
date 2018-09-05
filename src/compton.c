@@ -5236,16 +5236,6 @@ void session_run(session_t *ps) {
 
             windowlist_drawTransparent(ps, &transparent);
 
-            {
-                size_t index;
-                win_id* w_id = vector_getFirst(&transparent, &index);
-                while(w_id != NULL) {
-                    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
-                    win_postdraw(ps, w);
-                    w_id = vector_getNext(&transparent, &index);
-                }
-            }
-
             vector_kill(&opaque_shadow);
             vector_kill(&transparent);
             vector_kill(&opaque);

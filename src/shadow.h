@@ -17,9 +17,6 @@ struct glx_shadow_cache {
     Vector2 border;
 };
 
-void win_calc_shadow(struct _session_t* ps, struct _win* w);
-void win_paint_shadow(struct _session_t* ps, struct _win* w, const Vector2* pos, const Vector2* size, float z);
-
 void windowlist_updateShadow(struct _session_t* ps, Vector* paints);
 
 int shadow_cache_init(struct glx_shadow_cache* cache);

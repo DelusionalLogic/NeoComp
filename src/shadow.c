@@ -62,64 +62,6 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
     return;
 }
 
-void win_calc_shadow(session_t* ps, win* w) {
-}
-
-void win_paint_shadow(session_t* ps, win* w, const Vector2* pos, const Vector2* size, float z) {
-    glx_mark(ps, 0, true);
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    if(!swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
-        return;
-    }
-
-    struct glx_shadow_cache* cache = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, wid);
-
-    glEnable(GL_BLEND);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
-    glDrawBuffers(1, DRAWBUFS);
-
-    glViewport(0, 0, ps->root_width, ps->root_height);
-
-    /* { */
-    /*     Vector3 rpos = {{0, 0, 1}}; */
-    /*     Vector2 rsize = {{500, 500}}; */
-    /*     draw_tex(face, &cache->effect, &rpos, &rsize); */
-    /* } */
-
-    struct shader_program* passthough_program = assets_load("passthough.shader");
-    if(passthough_program->shader_type_info != &passthough_info) {
-        printf_errf("Shader was not a passthough shader\n");
-        return;
-    }
-    struct Passthough* passthough_type = passthough_program->shader_type;
-
-    shader_set_future_uniform_bool(passthough_type->flip, cache->effect.flipped);
-    shader_set_future_uniform_float(passthough_type->opacity, w->opacity / 100.0);
-    shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
-    shader_use(passthough_program);
-
-    {
-        Vector2 rpos = *pos;
-        vec2_sub(&rpos, &cache->border);
-        Vector3 tdrpos = vec3_from_vec2(&rpos, z);
-        Vector2 rsize = cache->texture.size;
-
-        texture_bind(&cache->effect, GL_TEXTURE0);
-
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-
-        draw_rect(w->face, passthough_type->mvp, tdrpos, rsize);
-
-        glDepthMask(GL_TRUE);
-        glDisable(GL_DEPTH_TEST);
-    }
-
-    glDisable(GL_BLEND);
-}
-
 static bool win_viewable(win* w) {
     return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
         || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
