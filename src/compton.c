@@ -5001,7 +5001,7 @@ static void commit_map(Swiss* em, struct X11Context* xcontext) {
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{0.1, 0.8, 0.2, 0.3}};
+            tint->color = (Vector4){{1, 1, 1, 0.1}};
         }
     }
 
@@ -5034,6 +5034,15 @@ static void commit_map(Swiss* em, struct X11Context* xcontext) {
         physical->size = map->size;
     }
 }
+
+static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
+    for_componentsArr(it, em, query) {
+        vector_putBack(result, &it.id);
+    }
+    vector_qsort(result, window_zcmp, em);
+}
+#define fetchSortedWindowsWith(em, result, ...) \
+    fetchSortedWindowsWithArr(em, result, (CType[]){ __VA_ARGS__ })
 
 /**
  * Do the actual work.
@@ -5185,6 +5194,11 @@ void session_run(session_t *ps) {
         }
         vector_qsort(&transparent, window_zcmp, &ps->win_list);
 
+        Vector opaque_shadow;
+        vector_init(&opaque_shadow, sizeof(win_id), ps->order.size);
+        fetchSortedWindowsWith(&ps->win_list, &opaque_shadow, 
+                COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_OPACITY, COMPONENT_SHADOW, CQ_END);
+
         zone_enter(&ZONE_effect_textures);
 
         zone_enter(&ZONE_update_shadow);
@@ -5218,6 +5232,8 @@ void session_run(session_t *ps) {
 
             paint_root(ps);
 
+            windowlist_drawShadow(ps, &opaque_shadow);
+
             windowlist_drawTransparent(ps, &transparent);
 
             {
@@ -5229,6 +5245,10 @@ void session_run(session_t *ps) {
                     w_id = vector_getNext(&transparent, &index);
                 }
             }
+
+            vector_kill(&opaque_shadow);
+            vector_kill(&transparent);
+            vector_kill(&opaque);
 
             /* { */
             /*     glDisable(GL_DEPTH_TEST); */

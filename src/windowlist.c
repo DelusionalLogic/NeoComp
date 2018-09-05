@@ -126,6 +126,35 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
         }
 
+        // Shadow
+        if(swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
+            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
+            struct shader_program* program = assets_load("passthough.shader");
+            if(program->shader_type_info != &passthough_info) {
+                printf_errf("Shader was not a passthrough shader");
+                return;
+            }
+            struct Passthough* shader_type = program->shader_type;
+
+            shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
+            shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+            shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
+            shader_use(program);
+
+            texture_bind(&shadow->effect, GL_TEXTURE0);
+
+            {
+                Vector2 rpos = glPos;
+                vec2_sub(&rpos, &shadow->border);
+                Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
+                Vector2 rsize = shadow->texture.size;
+
+
+                draw_rect(w->face, shader_type->mvp, tdrpos, rsize);
+            }
+        }
+
+
         // Content
         {
             struct shader_program* global_program = assets_load("global.shader");
@@ -275,6 +304,54 @@ void windowlist_draw(session_t* ps, Vector* order) {
     glx_mark(ps, 0, false);
 }
 
+void windowlist_drawShadow(session_t* ps, Vector* order) {
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
+    size_t index;
+    win_id* w_id = vector_getFirst(order, &index);
+    while(w_id != NULL) {
+        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
+        struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
+
+        Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+
+        struct shader_program* passthough_program = assets_load("passthough.shader");
+        if(passthough_program->shader_type_info != &passthough_info) {
+            printf_errf("Shader was not a passthough shader\n");
+            return;
+        }
+        struct Passthough* passthough_type = passthough_program->shader_type;
+
+        shader_set_future_uniform_bool(passthough_type->flip, shadow->effect.flipped);
+        shader_set_future_uniform_sampler(passthough_type->opacity, 1.0);
+        shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
+        shader_use(passthough_program);
+
+        {
+            Vector2 rpos = glPos;
+            vec2_sub(&rpos, &shadow->border);
+            Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
+            Vector2 rsize = shadow->texture.size;
+
+            texture_bind(&shadow->effect, GL_TEXTURE0);
+
+            draw_rect(w->face, passthough_type->mvp, tdrpos, rsize);
+        }
+
+        w_id = vector_getNext(order, &index);
+    }
+
+
+    glDepthMask(GL_TRUE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+}
+
+
 size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle) {
     size_t len = vector_size(candidates);
     if(len == 0)
@@ -330,30 +407,39 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
     }
 }
 
+void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
+    for_componentsArr(it, em, query) {
+        vector_putBack(result, &it.id);
+    }
+    vector_qsort(result, window_zcmp, em);
+}
+#define fetchSortedWindowsWith(em, result, ...) \
+    fetchSortedWindowsWithArr(em, result, (CType[]){ __VA_ARGS__ })
+
 void windowlist_updateBlur(session_t* ps) {
     Vector to_blur;
     vector_init(&to_blur, sizeof(win_id), ps->win_list.size);
-    for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_BLUR, COMPONENT_BLUR_DAMAGED, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_END) {
-        vector_putBack(&to_blur, &it.id);
-    }
-    vector_qsort(&to_blur, window_zcmp, &ps->win_list);
+    fetchSortedWindowsWith(&ps->win_list, &to_blur, 
+            COMPONENT_MUD, COMPONENT_BLUR, COMPONENT_BLUR_DAMAGED, COMPONENT_Z,
+            COMPONENT_PHYSICAL, CQ_END);
 
     Vector opaque_renderable;
     vector_init(&opaque_renderable, sizeof(win_id), ps->win_list.size);
-    for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, CQ_NOT, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
-        vector_putBack(&opaque_renderable, &it.id);
-    }
-    vector_qsort(&opaque_renderable, window_zcmp, &ps->win_list);
+    fetchSortedWindowsWith(&ps->win_list, &opaque_renderable, 
+            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL,
+            CQ_NOT, COMPONENT_OPACITY, CQ_END);
+
+    Vector shadow_renderable;
+    vector_init(&shadow_renderable, sizeof(win_id), ps->win_list.size);
+    fetchSortedWindowsWith(&ps->win_list, &shadow_renderable, 
+            COMPONENT_MUD, COMPONENT_SHADOW, COMPONENT_Z, COMPONENT_PHYSICAL,
+            CQ_NOT, COMPONENT_OPACITY, CQ_END);
 
     Vector transparent_renderable;
     vector_init(&transparent_renderable, sizeof(win_id), ps->win_list.size);
-    for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
-        vector_putBack(&transparent_renderable, &it.id);
-    }
-    vector_qsort(&transparent_renderable, window_zcmp, &ps->win_list);
+    fetchSortedWindowsWith(&ps->win_list, &transparent_renderable, 
+            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL,
+            COMPONENT_OPACITY, CQ_END);
 
     struct blur* cache = &ps->psglx->blur;
 
@@ -404,8 +490,13 @@ void windowlist_updateBlur(session_t* ps) {
         vector_init(&transparent_behind, sizeof(win_id), 16);
         windowlist_findbehind(&ps->win_list, &transparent_renderable, *w_id, &transparent_behind);
 
+        Vector shadow_behind;
+        vector_init(&shadow_behind, sizeof(win_id), 16);
+        windowlist_findbehind(&ps->win_list, &shadow_renderable, *w_id, &shadow_behind);
+
         windowlist_drawBackground(ps, &opaque_behind);
         windowlist_draw(ps, &opaque_behind);
+        windowlist_drawShadow(ps, &shadow_behind);
 
         // Draw root
         glEnable(GL_DEPTH_TEST);
@@ -415,8 +506,9 @@ void windowlist_updateBlur(session_t* ps) {
 
         windowlist_drawTransparent(ps, &transparent_behind);
 
-        vector_kill(&transparent_behind);
         vector_kill(&opaque_behind);
+        vector_kill(&shadow_behind);
+        vector_kill(&transparent_behind);
 
         view = old_view;
 
@@ -462,6 +554,11 @@ void windowlist_updateBlur(session_t* ps) {
 
         w_id = vector_getPrev(&to_blur, &index);
     }
+
+    vector_kill(&transparent_renderable);
+    vector_kill(&shadow_renderable);
+    vector_kill(&opaque_renderable);
+    vector_kill(&to_blur);
 
     swiss_resetComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED);
 }

@@ -64,6 +64,12 @@ enum ComponentType {
 
 typedef enum ComponentType CType;
 
+#define for_componentsArr(IT, EM, ARR)                         \
+    for(                                                       \
+        struct SwissIterator IT = swiss_getFirstInit(EM, ARR); \
+        !IT.done;                                              \
+        swiss_getNext(EM, &IT)                                 \
+    )
 #define for_components(IT, EM, ...)                                               \
     for(                                                                          \
         struct SwissIterator IT = swiss_getFirstInit(EM, (CType[]){__VA_ARGS__}); \
