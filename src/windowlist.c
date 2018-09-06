@@ -64,39 +64,36 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
-        struct OpacityComponent* opacity = swiss_getComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
-        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
+        struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
+
         // Background
-        {
+        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
+            struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
+            Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
-            if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-                struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
-                Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
-
-                struct shader_program* passthough_program = assets_load("passthough.shader");
-                if(passthough_program->shader_type_info != &passthough_info) {
-                    printf_errf("Shader was not a passthough shader\n");
-                    return;
-                }
-                struct Passthough* passthough_type = passthough_program->shader_type;
-                shader_set_future_uniform_bool(passthough_type->flip, blur->texture[0].flipped);
-                shader_set_future_uniform_float(passthough_type->opacity, opacity->opacity/100.0);
-                shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
-
-                shader_use(passthough_program);
-
-                texture_bind(&blur->texture[0], GL_TEXTURE0);
-
-                /* Vector4 color = {{opacity->opacity/100, opacity->opacity/100, opacity->opacity/100, opacity->opacity/100}}; */
-                /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
-                draw_rect(w->face, passthough_type->mvp, dglPos, physical->size);
+            struct shader_program* passthough_program = assets_load("passthough.shader");
+            if(passthough_program->shader_type_info != &passthough_info) {
+                printf_errf("Shader was not a passthough shader\n");
+                return;
             }
+            struct Passthough* passthough_type = passthough_program->shader_type;
+            shader_set_future_uniform_bool(passthough_type->flip, blur->texture[0].flipped);
+            shader_set_future_uniform_float(passthough_type->opacity, opacity->opacity/100.0);
+            shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
+
+            shader_use(passthough_program);
+
+            texture_bind(&blur->texture[0], GL_TEXTURE0);
+
+            /* Vector4 color = {{opacity->opacity/100, opacity->opacity/100, opacity->opacity/100, opacity->opacity/100}}; */
+            /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
+            draw_rect(w->face, passthough_type->mvp, dglPos, physical->size);
         }
 
         // Tint
-        if(swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
+        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
             struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id);
             struct shader_program* program = assets_load("tint.shader");
             if(program->shader_type_info != &colored_info) {
@@ -120,14 +117,13 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
-                /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
-                /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
                 draw_rect(w->face, shader_type->mvp, winpos, physical->size);
             }
         }
 
         // Shadow
-        if(swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
+        // This renders shadows for all windows, transparent or no.
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
             struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
             struct shader_program* program = assets_load("passthough.shader");
             if(program->shader_type_info != &passthough_info) {
@@ -138,7 +134,11 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
             shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
-            shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
+            if(opacity != NULL) {
+                shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
+            } else {
+                shader_set_future_uniform_float(shader_type->opacity, 1.0);
+            }
             shader_use(program);
 
             texture_bind(&shadow->effect, GL_TEXTURE0);
@@ -149,14 +149,14 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
                 Vector2 rsize = shadow->texture.size;
 
-
                 draw_rect(w->face, shader_type->mvp, tdrpos, rsize);
             }
         }
 
 
         // Content
-        {
+        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
             struct shader_program* global_program = assets_load("global.shader");
             if(global_program->shader_type_info != &global_info) {
                 printf_errf("Shader was not a global shader");
@@ -309,6 +309,8 @@ void windowlist_drawShadow(session_t* ps, Vector* order) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
+    struct face* face = assets_load("window.face");
+
     size_t index;
     win_id* w_id = vector_getFirst(order, &index);
     while(w_id != NULL) {
@@ -327,20 +329,18 @@ void windowlist_drawShadow(session_t* ps, Vector* order) {
         struct Passthough* passthough_type = passthough_program->shader_type;
 
         shader_set_future_uniform_bool(passthough_type->flip, shadow->effect.flipped);
-        shader_set_future_uniform_sampler(passthough_type->opacity, 1.0);
         shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
+        shader_set_future_uniform_float(passthough_type->opacity, 1.0);
         shader_use(passthough_program);
 
-        {
-            Vector2 rpos = glPos;
-            vec2_sub(&rpos, &shadow->border);
-            Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
-            Vector2 rsize = shadow->texture.size;
+        Vector2 rpos = glPos;
+        vec2_sub(&rpos, &shadow->border);
+        Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
+        Vector2 rsize = shadow->texture.size;
 
-            texture_bind(&shadow->effect, GL_TEXTURE0);
+        texture_bind(&shadow->effect, GL_TEXTURE0);
 
-            draw_rect(w->face, passthough_type->mvp, tdrpos, rsize);
-        }
+        draw_rect(face, passthough_type->mvp, tdrpos, rsize);
 
         w_id = vector_getNext(order, &index);
     }
@@ -437,9 +437,12 @@ void windowlist_updateBlur(session_t* ps) {
 
     Vector transparent_renderable;
     vector_init(&transparent_renderable, sizeof(win_id), ps->win_list.size);
+    // @PERFORMANCE: We should probably restrict these windows to only those
+    // that could possibly do something in drawTransparent. for that we need
+    // some way to merge vectors.
     fetchSortedWindowsWith(&ps->win_list, &transparent_renderable, 
-            COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL,
-            COMPONENT_OPACITY, CQ_END);
+            COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL,
+            /* COMPONENT_OPACITY, */ CQ_END);
 
     struct blur* cache = &ps->psglx->blur;
 
@@ -496,7 +499,7 @@ void windowlist_updateBlur(session_t* ps) {
 
         windowlist_drawBackground(ps, &opaque_behind);
         windowlist_draw(ps, &opaque_behind);
-        windowlist_drawShadow(ps, &shadow_behind);
+        /* windowlist_drawShadow(ps, &shadow_behind); */
 
         // Draw root
         glEnable(GL_DEPTH_TEST);

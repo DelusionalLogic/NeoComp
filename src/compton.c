@@ -5189,7 +5189,7 @@ void session_run(session_t *ps) {
         Vector transparent;
         vector_init(&transparent, sizeof(win_id), ps->order.size);
         for_components(it, &ps->win_list,
-                COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+                COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END) {
             vector_putBack(&transparent, &it.id);
         }
         vector_qsort(&transparent, window_zcmp, &ps->win_list);
@@ -5232,7 +5232,7 @@ void session_run(session_t *ps) {
 
             paint_root(ps);
 
-            windowlist_drawShadow(ps, &opaque_shadow);
+            /* windowlist_drawShadow(ps, &opaque_shadow); */
 
             windowlist_drawTransparent(ps, &transparent);
 
