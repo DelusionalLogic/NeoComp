@@ -849,16 +849,11 @@ paint_preprocess(session_t *ps, Vector* paints) {
         unredir_possible = true;
     if (unredir_possible) {
         if (ps->redirected) {
-            if (!ps->o.unredir_if_possible_delay || ps->tmout_unredir_hit) {
+            if (!ps->o.unredir_if_possible_delay) {
                 redir_stop(ps);
-            }
-            else if (!ps->tmout_unredir->enabled) {
-                timeout_reset(ps, ps->tmout_unredir);
-                ps->tmout_unredir->enabled = true;
             }
         }
     } else if(!ps->redirected) {
-        ps->tmout_unredir->enabled = false;
         redir_start(ps);
     }
 
@@ -3873,17 +3868,6 @@ redir_stop(session_t *ps) {
 }
 
 /**
- * Unredirection timeout callback.
- */
-static bool
-tmout_unredir_callback(session_t *ps, timeout_t *tmout) {
-  ps->tmout_unredir_hit = true;
-  tmout->enabled = false;
-
-  return true;
-}
-
-/**
  * Main loop.
  */
 static bool
@@ -4254,9 +4238,6 @@ XSynchronize(ps->dpy, 1);
     exit(1);
 
   fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
-  ps->tmout_unredir = timeout_insert(ps, ps->o.unredir_if_possible_delay,
-      tmout_unredir_callback, NULL);
-  ps->tmout_unredir->enabled = false;
 
   XGrabServer(ps->dpy);
 
@@ -4462,7 +4443,6 @@ void session_destroy(session_t *ps) {
 #endif
 
   // Free timeouts
-  ps->tmout_unredir = NULL;
   timeout_clear(ps);
 
   if (ps == ps_g)
@@ -5111,7 +5091,6 @@ void session_run(session_t *ps) {
 
         vector_clear(&paints);
         t = paint_preprocess(ps, &paints);
-        ps->tmout_unredir_hit = false;
 
         zone_leave(&ZONE_preprocess);
 
@@ -5211,10 +5190,10 @@ void session_run(session_t *ps) {
 
         zone_leave(&ZONE_effect_textures);
 
-        zone_enter(&ZONE_paint);
-
         {
             static int paint = 0;
+
+            zone_enter(&ZONE_paint);
 
             glDepthMask(GL_TRUE);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -5254,6 +5233,7 @@ void session_run(session_t *ps) {
             /*         draw_tex(face, &blur->texture[0], &dglPos, &(Vector2){{100, 100}}); */
             /*     } */
             /* } */
+            zone_leave(&ZONE_paint);
 
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark) {
@@ -5265,7 +5245,6 @@ void session_run(session_t *ps) {
 
         vector_kill(&transparent);
 
-        zone_leave(&ZONE_paint);
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
 

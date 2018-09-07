@@ -28,7 +28,7 @@ struct Block {
     char* userdata;
 };
 
-#define NUM_TRACKS 4
+#define NUM_TRACKS 5
 #define NUM_BLOCKS 1000
 
 struct ProgramZone* root_zone;

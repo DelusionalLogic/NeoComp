@@ -312,10 +312,6 @@ typedef struct _session_t {
     int nfds_max;
     /// Linked list of all timeouts.
     struct _timeout_t *tmout_lst;
-    /// Timeout for delayed unredirection.
-    struct _timeout_t *tmout_unredir;
-    /// Whether we have hit unredirection timeout.
-    bool tmout_unredir_hit;
     /// Whether we have received an event in this cycle.
     bool skip_poll;
     /// Whether the program is idling. I.e. no fading, no potential window

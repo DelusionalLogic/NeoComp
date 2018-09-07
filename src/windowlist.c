@@ -13,6 +13,11 @@
 #include "blur.h"
 #include "renderutil.h"
 
+DECLARE_ZONE(paint_backgrounds);
+DECLARE_ZONE(paint_tints);
+DECLARE_ZONE(paint_windows);
+DECLARE_ZONE(paint_transparents);
+
 DECLARE_ZONE(paint_window);
 
 Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
@@ -23,6 +28,7 @@ Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* siz
 }
 
 void windowlist_drawBackground(session_t* ps, Vector* opaque) {
+    zone_enter(&ZONE_paint_backgrounds);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
 
@@ -49,9 +55,11 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
 
     glDepthMask(GL_FALSE);
     glDisable(GL_DEPTH_TEST);
+    zone_leave(&ZONE_paint_backgrounds);
 }
 
 void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
+    zone_enter(&ZONE_paint_transparents);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
@@ -196,9 +204,11 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);
     glDisable(GL_DEPTH_TEST);
+    zone_leave(&ZONE_paint_transparents);
 }
 
 void windowlist_drawTint(session_t* ps) {
+    zone_enter(&ZONE_paint_tints);
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
@@ -241,11 +251,11 @@ void windowlist_drawTint(session_t* ps) {
     glDepthMask(GL_TRUE);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
+    zone_leave(&ZONE_paint_tints);
 }
 
 void windowlist_draw(session_t* ps, Vector* order) {
-    glx_mark(ps, 0, true);
-
+    zone_enter(&ZONE_paint_windows);
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
@@ -300,8 +310,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
     glDepthMask(GL_TRUE);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
-
-    glx_mark(ps, 0, false);
+    zone_leave(&ZONE_paint_windows);
 }
 
 size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle) {
