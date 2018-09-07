@@ -695,14 +695,13 @@ static void paint_root(session_t *ps) {
     glClearColor(0.0, 0.0, 1.0, 1.0);
     /* glClear(GL_COLOR_BUFFER_BIT); */
 
-    glViewport(0, 0, ps->root_width, ps->root_height);
+    glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
     glEnable(GL_DEPTH_TEST);
 
     struct face* face = assets_load("window.face");
-    Vector2 rootSize = {{ps->root_width, ps->root_height}};
     Vector3 pos = {{0, 0, 0.9999}};
-    draw_tex(face, &ps->root_texture.texture, &pos, &rootSize);
+    draw_tex(face, &ps->root_texture.texture, &pos, &ps->root_size);
 
     glDisable(GL_DEPTH_TEST);
 }
@@ -765,7 +764,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
         // excluded
         if(w->a.x + w->a.width < 1 || w->a.y + w->a.height < 1)
             to_paint = false;
-        if(w->a.x >= ps->root_width || w->a.y >= ps->root_height)
+        if(w->a.x >= ps->root_size.x || w->a.y >= ps->root_size.y)
             to_paint = false;
         /* if((IsUnmapped == w->a.map_state || w->destroyed)) */
         /*     to_paint = false; */
@@ -1456,8 +1455,9 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
   // On root window changes
   if (ce->window == ps->root) {
 
-    ps->root_width = ce->width;
-    ps->root_height = ce->height;
+    ps->root_size = (Vector2) {{
+        ce->width, ce->height
+    }};
 
     // Re-redirect screen if required
     if (ps->o.reredir_on_root_change && ps->redirected) {
@@ -4002,8 +4002,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .vis = NULL,
     .depth = 0,
     .root = None,
-    .root_height = 0,
-    .root_width = 0,
+    .root_size = {{0}},
     // .root_damage = None,
     .overlay = None,
     .reg_win = None,
@@ -4137,8 +4136,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   XSetErrorHandler(xerror);
   if (ps->o.synchronize) {
-    XSynchronize(ps->dpy, 1);
-  }
+XSynchronize(ps->dpy, 1);
+}
 
   ps->scr = DefaultScreen(ps->dpy);
   ps->root = RootWindow(ps->dpy, ps->scr);
@@ -4155,8 +4154,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     | PropertyChangeMask);
   XFlush(ps->dpy);
 
-  ps->root_width = DisplayWidth(ps->dpy, ps->scr);
-  ps->root_height = DisplayHeight(ps->dpy, ps->scr);
+  ps->root_size = (Vector2) {{
+      DisplayWidth(ps->dpy, ps->scr), DisplayHeight(ps->dpy, ps->scr)
+  }};
 
   // Build a safe representation of display name
   {
@@ -5220,7 +5220,7 @@ void session_run(session_t *ps) {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             static const GLenum DRAWBUFS[2] = { GL_BACK_LEFT };
             glDrawBuffers(1, DRAWBUFS);
-            glViewport(0, 0, ps->root_width, ps->root_height);
+            glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
             glClearDepth(1.0);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -5231,8 +5231,6 @@ void session_run(session_t *ps) {
             windowlist_draw(ps, &opaque);
 
             paint_root(ps);
-
-            /* windowlist_drawShadow(ps, &opaque_shadow); */
 
             windowlist_drawTransparent(ps, &transparent);
 

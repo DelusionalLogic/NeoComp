@@ -26,7 +26,7 @@ void blur_init(struct blur* blur) {
 
 static Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
-        xpos->x, ps->root_height - xpos->y - size->y
+        xpos->x, ps->root_size.y - xpos->y - size->y
     }};
     return glpos;
 }
@@ -42,7 +42,7 @@ bool blur_backbuffer(struct blur* blur, session_t* ps, const Vector2* pos,
 
     struct Texture* tex_scr = &pbc->texture[0];
 
-    glViewport(0, 0, ps->root_width, ps->root_height);
+    glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
     // Lets just make sure we write this back into the stenctil buffer
     if (have_stencil)

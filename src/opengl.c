@@ -317,9 +317,9 @@ glx_reinit(session_t *ps, bool need_render) {
  */
 void
 glx_on_root_change(session_t *ps) {
-  glViewport(0, 0, ps->root_width, ps->root_height);
+  glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
-  ps->psglx->view = mat4_orthogonal(0, ps->root_width, 0, ps->root_height, -.1, 1);
+  ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
   view = ps->psglx->view;
 }
 

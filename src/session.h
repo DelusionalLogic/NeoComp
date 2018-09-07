@@ -279,12 +279,10 @@ typedef struct _session_t {
     Visual *vis;
     /// Default depth.
     int depth;
+
     /// Root window.
     Window root;
-    /// Height of root window.
-    int root_height;
-    /// Width of root window.
-    int root_width;
+    Vector2 root_size;
     // Damage of root window.
     // Damage root_damage;
     /// X Composite overlay window. Used if <code>--paint-on-overlay</code>.
