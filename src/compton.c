@@ -616,21 +616,7 @@ static win * find_toplevel2(session_t *ps, Window wid) {
     return w;
 }
 
-/**
- * Recheck currently focused window and set its <code>w->focused</code>
- * to true.
- *
- * @param ps current session
- * @return struct _win of currently focused window, NULL if not found
- */
-static win * recheck_focus(session_t *ps) {
-    // Use EWMH _NET_ACTIVE_WINDOW if enabled
-    update_ewmh_active_win(ps);
-    return ps->active_win;
-}
-
-static bool
-get_root_tile(session_t *ps) {
+static bool get_root_tile(session_t *ps) {
     Pixmap pixmap = None;
 
     // Get the values of background attributes
@@ -709,29 +695,28 @@ static void paint_root(session_t *ps) {
 /**
  * Look for the client window of a particular window.
  */
-static Window
-find_client_win(session_t *ps, Window w) {
-  if (wid_has_prop(ps, w, ps->atoms.atom_client)) {
-    return w;
-  }
+static Window find_client_win(session_t *ps, Window w) {
+    if (wid_has_prop(ps, w, ps->atoms.atom_client)) {
+        return w;
+    }
 
-  Window *children;
-  unsigned int nchildren;
-  unsigned int i;
-  Window ret = 0;
+    Window *children;
+    unsigned int nchildren;
+    unsigned int i;
+    Window ret = 0;
 
-  if (!wid_get_children(ps, w, &children, &nchildren)) {
-    return 0;
-  }
+    if (!wid_get_children(ps, w, &children, &nchildren)) {
+        return 0;
+    }
 
-  for (i = 0; i < nchildren; ++i) {
-    if ((ret = find_client_win(ps, children[i])))
-      break;
-  }
+    for (i = 0; i < nchildren; ++i) {
+        if ((ret = find_client_win(ps, children[i])))
+            break;
+    }
 
-  cxfree(children);
+    cxfree(children);
 
-  return ret;
+    return ret;
 }
 
 static win *
@@ -862,37 +847,16 @@ paint_preprocess(session_t *ps, Vector* paints) {
 
 static void assign_depth(Swiss* em, Vector* order) {
     float z = 0;
+    float z_step = 1 / em->size;
     size_t index;
     win_id* w_id = vector_getLast(order, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, *w_id);
         struct ZComponent* zc = swiss_getComponent(em, COMPONENT_Z, *w_id);
         zc->z = z;
 
-        // @HACK: This shouldn't be hardcoded. As it stands, it will probably break
-        // for more than 1k windows
-        z += .0001;
+        z += z_step;
         w_id = vector_getPrev(order, &index);
     }
-}
-
-static wintype_t
-wid_get_prop_wintype(session_t *ps, Window wid) {
-  set_ignore_next(ps);
-  winprop_t prop = wid_get_prop(ps, wid, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
-
-  for (unsigned i = 0; i < prop.nitems; ++i) {
-    for (wintype_t j = 1; j < NUM_WINTYPES; ++j) {
-      if (ps->atoms.atoms_wintypes[j] == (Atom) prop.data.p32[i]) {
-        free_winprop(&prop);
-        return j;
-      }
-    }
-  }
-
-  free_winprop(&prop);
-
-  return WINTYPE_UNKNOWN;
 }
 
 static void map_win(session_t *ps, win_id wid) {
@@ -931,7 +895,7 @@ static void map_win(session_t *ps, win_id wid) {
   // FocusIn/Out may be ignored when the window is unmapped, so we must
   // recheck focus here
   if (ps->o.track_focus)
-    recheck_focus(ps);
+      update_ewmh_active_win(ps);
 
   win_determine_blur_background(ps, w);
 
@@ -1103,19 +1067,6 @@ win_update_opacity_rule(session_t *ps, win *w) {
 }
 
 /**
- * Function to be called on window type changes.
- */
-static void
-win_on_wtype_change(session_t *ps, win *w) {
-  win_determine_shadow(ps, w);
-  win_determine_fade(ps, w);
-  if (ps->o.invert_color_list)
-    win_determine_invert_color(ps, w);
-  if (ps->o.opacity_rules)
-    win_update_opacity_rule(ps, w);
-}
-
-/**
  * Function to be called on window data changes.
  */
 static void
@@ -1136,34 +1087,6 @@ win_on_factor_change(session_t *ps, win *w) {
   if (IsViewable == w->a.map_state && ps->o.unredir_if_possible_blacklist)
     w->unredir_if_possible_excluded = win_match(ps, w,
         ps->o.unredir_if_possible_blacklist, &w->cache_uipblst);
-}
-
-/**
- * Update window type.
- */
-static void
-win_upd_wintype(session_t *ps, win *w) {
-  const wintype_t wtype_old = w->window_type;
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-
-  // Detect window type here
-  w->window_type = wid_get_prop_wintype(ps, client->id);
-
-  // Conform to EWMH standard, if _NET_WM_WINDOW_TYPE is not present, take
-  // override-redirect windows or windows without WM_TRANSIENT_FOR as
-  // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
-  if (WINTYPE_UNKNOWN == w->window_type) {
-    if (w->a.override_redirect
-        || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
-      w->window_type = WINTYPE_NORMAL;
-    else
-      w->window_type = WINTYPE_DIALOG;
-  }
-
-  if (w->window_type != wtype_old) {
-      win_on_wtype_change(ps, w);
-  }
 }
 
 /**
@@ -1191,7 +1114,7 @@ win_mark_client(session_t *ps, win *w, Window client) {
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
 
-  win_upd_wintype(ps, w);
+  swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
 
   // Get window name and class if we are tracking them
   if (ps->o.track_wdata) {
@@ -2319,8 +2242,10 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
   // there are always some stupid applications. (#144)
   if (ev->atom == ps->atoms.atom_win_type) {
     win *w = NULL;
-    if ((w = find_toplevel(ps, ev->window)))
-      win_upd_wintype(ps, w);
+    if ((w = find_toplevel(ps, ev->window))) {
+        win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+        swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+    }
   }
 
   // If name changes
@@ -4102,6 +4027,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHADOW);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_BLUR);
+  swiss_setComponentSize(&ps->win_list, COMPONENT_WINTYPE_CHANGE, sizeof(struct WintypeChangedComponent));
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -4262,7 +4188,7 @@ XSynchronize(ps->dpy, 1);
   }
 
   if (ps->o.track_focus) {
-    recheck_focus(ps);
+      update_ewmh_active_win(ps);
   }
 
   XUngrabServer(ps->dpy);
@@ -5015,6 +4941,61 @@ static void commit_map(Swiss* em, struct X11Context* xcontext) {
     }
 }
 
+void fill_wintype_changes(Swiss* em, session_t* ps) {
+    // Fetch the new window type
+    for_components(it, em,
+            COMPONENT_WINTYPE_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+
+        // Detect window type here
+        set_ignore_next(ps);
+        winprop_t prop = wid_get_prop(ps, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
+
+        wintypeChanged->newType = WINTYPE_UNKNOWN;
+
+        for (unsigned i = 0; i < prop.nitems; ++i) {
+            for (wintype_t j = 1; j < NUM_WINTYPES; ++j) {
+                if (ps->atoms.atoms_wintypes[j] == (Atom) prop.data.p32[i]) {
+                    wintypeChanged->newType = j;
+                }
+            }
+        }
+
+        free_winprop(&prop);
+    }
+
+    // Guess the window type if not provided
+    for_components(it, em,
+            COMPONENT_WINTYPE_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+
+        // Conform to EWMH standard, if _NET_WM_WINDOW_TYPE is not present, take
+        // override-redirect windows or windows without WM_TRANSIENT_FOR as
+        // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
+        if (wintypeChanged->newType == WINTYPE_UNKNOWN) {
+            if (w->a.override_redirect || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
+                w->window_type = WINTYPE_NORMAL;
+            else
+                w->window_type = WINTYPE_DIALOG;
+        }
+    }
+
+    // Remove the change if it's the same as the current
+    for_components(it, em,
+            COMPONENT_WINTYPE_CHANGE, CQ_END) {
+        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        if(w->window_type == wintypeChanged->newType) {
+            swiss_removeComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+            continue;
+        }
+    }
+}
+
 static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
     for_componentsArr(it, em, query) {
         vector_putBack(result, &it.id);
@@ -5087,6 +5068,8 @@ void session_run(session_t *ps) {
         // idling will be turned off during paint_preprocess() if needed
         ps->idling = true;
 
+        Swiss* em = &ps->win_list;
+
         zone_enter(&ZONE_preprocess);
 
         vector_clear(&paints);
@@ -5099,6 +5082,29 @@ void session_run(session_t *ps) {
         assign_depth(&ps->win_list, &ps->order);
 
         // Process all the events added by X
+        fill_wintype_changes(&ps->win_list, ps);
+
+        for_components(it, em,
+                COMPONENT_WINTYPE_CHANGE, CQ_END) {
+            struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+            w->window_type = wintypeChanged->newType;
+        }
+
+        for_components(it, em,
+                COMPONENT_MUD, COMPONENT_WINTYPE_CHANGE, CQ_END) {
+            struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+            win_determine_shadow(ps, w);
+            win_determine_fade(ps, w);
+            if (ps->o.invert_color_list)
+                win_determine_invert_color(ps, w);
+            if (ps->o.opacity_rules)
+                win_update_opacity_rule(ps, w);
+        }
+
         commit_map(&ps->win_list, &ps->psglx->xcontext);
         commit_unmap(&ps->win_list);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);

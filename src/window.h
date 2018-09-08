@@ -38,6 +38,10 @@ struct FocusChangedComponent {
     double newOpacity;
 };
 
+struct WintypeChangedComponent {
+    wintype_t newType;
+};
+
 struct TracksWindowComponent {
     Window id;
 };
