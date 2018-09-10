@@ -143,11 +143,6 @@ enum WindowState {
 
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
-  /// Pointer to the next higher window to paint.
-  struct _win *prev_trans;
-  /// Pointer to the next lower window to paint.
-  struct _win *next_trans;
-
   // Core members
   /// Window attributes.
   XWindowAttributes a;
@@ -162,15 +157,11 @@ typedef struct _win {
   /// Damage of the window.
   Damage damage;
 
-  /// Window flags. Definitions above.
-  int_fast16_t flags;
   /// Whether there's a pending <code>ConfigureNotify</code> happening
   /// when the window is unmapped.
   bool need_configure;
   /// Queued <code>ConfigureNotify</code> when the window is unmapped.
   XConfigureEvent queue_configure;
-  /// Cached width/height of the window including border.
-  int widthb, heightb;
   /// Whether this window is to be painted.
   bool to_paint;
   /// Whether the window is painting excluded.
@@ -208,14 +199,6 @@ typedef struct _win {
   char *class_general;
   /// <code>WM_WINDOW_ROLE</code> value of the window.
   char *role;
-  const c2_lptr_t *cache_sblst;
-  const c2_lptr_t *cache_fblst;
-  const c2_lptr_t *cache_fcblst;
-  const c2_lptr_t *cache_ivclst;
-  const c2_lptr_t *cache_bbblst;
-  const c2_lptr_t *cache_oparule;
-  const c2_lptr_t *cache_pblst;
-  const c2_lptr_t *cache_uipblst;
 
   // Current window opacity.
   double opacity;
@@ -256,6 +239,7 @@ int window_zcmp(const void* a, const void* b, void* userdata);
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
 bool win_overlap(Swiss* em, win_id w1, win_id w2);
+bool win_mapped(win* w);
 bool win_covers(win* w);
 bool win_is_solid(win* w);
 

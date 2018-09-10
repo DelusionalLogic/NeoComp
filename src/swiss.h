@@ -45,6 +45,7 @@ enum ComponentType {
     COMPONENT_TINT,
     COMPONENT_OPACITY,
     COMPONENT_FADES_OPACITY,
+    COMPONENT_REDIRECTED,
 
     // Messages
     COMPONENT_MAP,

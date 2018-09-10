@@ -55,6 +55,12 @@ bool win_overlap(Swiss* em, win_id w1, win_id w2) {
     return true;
 }
 
+bool win_mapped(win* w) {
+    return w->state == STATE_ACTIVATING || w->state == STATE_ACTIVE
+        || w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE
+        || w->state == STATE_WAITING;
+}
+
 bool win_covers(win* w) {
     return w->solid
         && w->fullscreen
@@ -105,6 +111,7 @@ bool fade_done(struct Fading* fade) {
 
 static void win_draw_debug(session_t* ps, win* w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
     struct face* face = assets_load("window.face");
     Vector2 scale = {{1, 1}};
 
@@ -112,8 +119,8 @@ static void win_draw_debug(session_t* ps, win* w) {
     Vector2 winPos;
     Vector2 pen;
     {
-        Vector2 xPen = {{w->a.x, w->a.y}};
-        Vector2 size = {{w->widthb, w->heightb}};
+        Vector2 xPen = physical->position;
+        Vector2 size = physical->size;
         winPos = X11_rectpos_to_gl(ps, &xPen, &size);
         pen = winPos;
     }
@@ -174,7 +181,7 @@ static void win_draw_debug(session_t* ps, win* w) {
 
     {
         pen.x = winPos.x;
-        pen.y = winPos.y + w->heightb - 20;
+        pen.y = winPos.y + physical->size.y - 20;
     }
 
     {

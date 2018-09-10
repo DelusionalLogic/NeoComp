@@ -351,6 +351,8 @@ typedef struct _session_t {
     /// Number of Xinerama screens.
     int xinerama_nscrs;
 
+    XserverRegion root_region;
+
     // === Atoms ===
     struct Atoms atoms;
     /// Linked list of additional atoms to track.
@@ -366,5 +368,4 @@ typedef struct _session_t {
 } session_t;
 
 winprop_t
-wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
-    long length, Atom rtype, int rformat);
+wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat);

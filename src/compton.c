@@ -59,16 +59,6 @@ DECLARE_ZONE(update_textures);
 
 // From the header {{{
 
-/**
- * Update cache data in struct _win that depends on window size.
- */
-static void
-calc_win_size(session_t *ps, win *w) {
-  w->widthb = w->a.width + w->a.border_width * 2;
-  w->heightb = w->a.height + w->a.border_width * 2;
-  w->flags |= WFLAG_SIZE_CHANGE;
-}
-
 static inline win * find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
@@ -202,9 +192,9 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-static bool win_match(session_t *ps, win *w, c2_lptr_t *condlst, const c2_lptr_t **cache) {
+static bool win_match(session_t *ps, win *w, c2_lptr_t *condlst) {
 #ifdef CONFIG_C2
-    return c2_match(ps, w, condlst, cache);
+    return c2_match(ps, w, condlst, NULL);
 #else
     return false;
 #endif
@@ -228,13 +218,9 @@ static win * find_win_all(session_t *ps, const Window wid) {
 
 static inline void win_set_focused(session_t *ps, win *w);
 
-static void win_determine_shadow(session_t *ps, win *w);
-
 static void win_set_invert_color(session_t *ps, win *w, bool invert_color_new);
 
 static void win_set_blur_background(session_t *ps, win *w, bool blur_background_new);
-
-static void win_determine_blur_background(session_t *ps, win *w);
 
 static void win_mark_client(session_t *ps, win *w, Window client);
 
@@ -326,13 +312,14 @@ static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
  *
  * Return an index >= 0, or -1 if not found.
  */
-static void cxinerama_win_upd_scr(session_t *ps, win *w) {
+static void cxinerama_win_upd_scr(session_t *ps, win_id wid) {
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
     w->xinerama_scr = -1;
-    for (XineramaScreenInfo *s = ps->xinerama_scrs;
-            s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
+    for (XineramaScreenInfo *s = ps->xinerama_scrs; s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
         if (s->x_org <= w->a.x && s->y_org <= w->a.y
-                && s->x_org + s->width >= w->a.x + w->widthb
-                && s->y_org + s->height >= w->a.y + w->heightb) {
+                && s->x_org + s->width >= physical->position.x + physical->size.x
+                && s->y_org + s->height >= physical->position.y + physical->size.y) {
             w->xinerama_scr = s - ps->xinerama_scrs;
             return;
         }
@@ -461,14 +448,13 @@ should_ignore(session_t *ps, unsigned long sequence) {
  *    and number of items. A blank one on failure.
  */
 winprop_t
-wid_get_prop_adv(const session_t *ps, Window w, Atom atom, long offset,
-    long length, Atom rtype, int rformat) {
+wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat) {
   Atom type = None;
   int format = 0;
   unsigned long nitems = 0, after = 0;
   unsigned char *data = NULL;
 
-  if (Success == XGetWindowProperty(ps->dpy, w, atom, offset, length,
+  if (Success == XGetWindowProperty(xcontext->display, w, atom, offset, length,
         False, rtype, &type, &format, &nitems, &after, &data)
       && nitems && (AnyPropertyType == type || type == rtype)
       && (!rformat || format == rformat)
@@ -512,7 +498,9 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     if(w->face != NULL)
         face_unload_file(w->face);
 
-    Vector2 extents = {{w->widthb, w->heightb}};
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+
+    Vector2 extents = physical->size;
     // X has some insane notion that borders aren't part of the window.
     // Therefore a window with a border will have a bounding shape with
     // a negative upper left corner. This offset corrects for that, so we don't
@@ -621,9 +609,7 @@ static bool get_root_tile(session_t *ps) {
 
     // Get the values of background attributes
     for (int p = 0; background_props_str[p]; p++) {
-        winprop_t prop = wid_get_prop(ps, ps->root,
-                get_atom(ps, background_props_str[p]),
-                1L, XA_PIXMAP, 32);
+        winprop_t prop = wid_get_prop(&ps->psglx->xcontext, ps->root, get_atom(ps, background_props_str[p]), 1L, XA_PIXMAP, 32);
         if (prop.nitems) {
             pixmap = *prop.data.p32;
             free_winprop(&prop);
@@ -720,7 +706,7 @@ static Window find_client_win(session_t *ps, Window w) {
 }
 
 static win *
-paint_preprocess(session_t *ps, Vector* paints) {
+paint_preprocess(session_t *ps) {
     win *t = NULL;
 
     bool unredir_possible = false;
@@ -735,32 +721,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
         bool to_paint = true;
 
         // @CLEANUP: This should probably be somewhere else
-        w->fullscreen = win_is_fullscreen(ps, w);
-
-        // Restore flags from last paint if the window is being faded out
-        if (IsUnmapped == w->a.map_state) {
-            w->fade = w->fade_last;
-            win_set_invert_color(ps, w, w->invert_color_last);
-            win_set_blur_background(ps, w, w->blur_background_last);
-        }
-
-        // Give up if it's not damaged or invisible, or it's unmapped and its
-        // pixmap is gone (for example due to a ConfigureNotify), or when it's
-        // excluded
-        if(w->a.x + w->a.width < 1 || w->a.y + w->a.height < 1)
-            to_paint = false;
-        if(w->a.x >= ps->root_size.x || w->a.y >= ps->root_size.y)
-            to_paint = false;
-        /* if((IsUnmapped == w->a.map_state || w->destroyed)) */
-        /*     to_paint = false; */
-        if(w->paint_excluded)
-            to_paint = false;
-
-        // to_paint will never change afterward
-
-        if (to_paint) {
-            // @INCOMPLETE: Vary the shadow opacity
-        }
+        w->fullscreen = win_is_fullscreen(ps, *w_id);
 
         if (to_paint) {
             // (Un)redirect screen
@@ -774,49 +735,14 @@ paint_preprocess(session_t *ps, Vector* paints) {
                     unredir_possible = true;
             }
 
-            /* zone_enter(&ZONE_fetch_prop); */
             /* // If the window doesn't want to be redirected, then who are we to argue */
-            /* if(w->state != STATE_DESTROYED && w->state != STATE_DESTROYING) { */
-            /*     winprop_t prop = wid_get_prop(ps, w->id, ps->atoms.atom_bypass, 1L, XA_CARDINAL, 32); */
-            /*     // A value of 1 means that the window has taken special care to ask */
-            /*     // us not to do compositing.It would be great if we could just */
-            /*     // unredirect this specific window, or if we could just run */
-            /*     // a fastpath to pump out frames as fast as possible. I don't know if */
-            /*     // we can unredirect the specific window, and doing a fastpath will */
-            /*     // require some more refactoring. */
-            /*     // For now we just assume the developer really means it and */
-            /*     // unredirect the entire screen. -Delusional 20/03-2018 */
-            /*     if(prop.nitems && *prop.data.p32 == 1) { */
-            /*         unredir_possible = true; */
-            /*     } */
-            /*     free_winprop(&prop); */
-            /* } */
-            /* zone_leave(&ZONE_fetch_prop); */
-
-            // Reset flags
-            w->flags = 0;
         }
 
         // Avoid setting w->to_paint if w is to be freed
         bool destroyed = false;
 
-        if (to_paint) {
-            w->prev_trans = t;
-            if(t != NULL)
-                t->next_trans = w;
-            t = w;
-            vector_putBack(paints, w_id);
-        }
-
         if (!destroyed) {
             w->to_paint = to_paint;
-
-            if (w->to_paint) {
-                // Save flags
-                w->fade_last = w->fade;
-                w->invert_color_last = w->invert_color;
-                w->blur_background_last = w->blur_background;
-            }
         }
         zone_leave(&ZONE_preprocess_window);
 
@@ -847,7 +773,7 @@ paint_preprocess(session_t *ps, Vector* paints) {
 
 static void assign_depth(Swiss* em, Vector* order) {
     float z = 0;
-    float z_step = 1 / em->size;
+    float z_step = 1.0 / em->size;
     size_t index;
     win_id* w_id = vector_getLast(order, &index);
     while(w_id != NULL) {
@@ -860,83 +786,68 @@ static void assign_depth(Swiss* em, Vector* order) {
 }
 
 static void map_win(session_t *ps, win_id wid) {
-  struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-  struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
-  assert(w != NULL);
-  // Unmap overlay window if it got mapped but we are currently not
-  // in redirected state.
-  if (ps->overlay && window->id == ps->overlay && !ps->redirected) {
-    XUnmapWindow(ps->dpy, ps->overlay);
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
+    assert(w != NULL);
+    // Unmap overlay window if it got mapped but we are currently not
+    // in redirected state.
+    if (ps->overlay && window->id == ps->overlay && !ps->redirected) {
+        XUnmapWindow(ps->dpy, ps->overlay);
+        XFlush(ps->dpy);
+    }
+
+    // Don't care about window mapping if it's an InputOnly window
+    // Try avoiding mapping a window twice
+    if (InputOnly == w->a.class || IsViewable == w->a.map_state)
+        return;
+
+    assert(ps->active_win != w);
+
+    w->a.map_state = IsViewable;
+
+    cxinerama_win_upd_scr(ps, wid);
+
+    // Call XSelectInput() before reading properties so that no property
+    // changes are lost
+    XSelectInput(ps->dpy, window->id, determine_evmask(ps, window->id, WIN_EVMODE_FRAME));
+
+    // Make sure the XSelectInput() requests are sent
     XFlush(ps->dpy);
-  }
 
-  // Don't care about window mapping if it's an InputOnly window
-  // Try avoiding mapping a window twice
-  if (InputOnly == w->a.class || IsViewable == w->a.map_state)
-    return;
+    win_recheck_client(ps, w);
 
-  assert(ps->active_win != w);
+    assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
-  w->a.map_state = IsViewable;
+    // FocusIn/Out may be ignored when the window is unmapped, so we must
+    // recheck focus here
+    if (ps->o.track_focus)
+        update_ewmh_active_win(ps);
 
-  cxinerama_win_upd_scr(ps, w);
+    if (!XGetWindowAttributes(ps->dpy, window->id, &w->a)) {
+        printf_errf("Failed getting window attributes while mapping");
+        return;
+    }
 
-  // Call XSelectInput() before reading properties so that no property
-  // changes are lost
-  XSelectInput(ps->dpy, window->id, determine_evmask(ps, window->id, WIN_EVMODE_FRAME));
+    // Add a map event
+    swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
+    struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
+    map->position = (Vector2){{w->a.x, w->a.y}};
+    map->size = (Vector2){{
+        w->a.width + w->a.border_width * 2,
+        w->a.height + w->a.border_width * 2,
+    }};
 
-  // Make sure the XSelectInput() requests are sent
-  XFlush(ps->dpy);
+    // Set fading state
+    w->in_openclose = true;
 
-  win_recheck_client(ps, w);
-
-  assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
-
-  // FocusIn/Out may be ignored when the window is unmapped, so we must
-  // recheck focus here
-  if (ps->o.track_focus)
-      update_ewmh_active_win(ps);
-
-  win_determine_blur_background(ps, w);
-
-  if(ps->redirected) {
-  }
-  win_determine_shadow(ps, w);
-
-  if (!XGetWindowAttributes(ps->dpy, window->id, &w->a)) {
-      printf_errf("Failed getting window attributes while mapping");
-      return;
-  }
-  calc_win_size(ps, w);
-
-  // Add a map event
-  swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
-  struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
-  map->position = (Vector2){{w->a.x, w->a.y}};
-  map->size = (Vector2){{w->widthb, w->heightb}};
-
-  // sets w->shadow from some parameters. We use that to decide if this window
-  // has the shadow component
-  win_determine_shadow(ps, w);
-
-  // Set fading state
-  w->in_openclose = true;
-
-  w->state = STATE_WAITING;
-  swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
-
-  /* if any configure events happened while
-     the window was unmapped, then configure
-     the window to its correct place */
-  if (w->need_configure) {
-    configure_win(ps, &w->queue_configure);
-  }
+    w->state = STATE_WAITING;
+    swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
 
 #ifdef CONFIG_DBUS
-  // Send D-Bus signal
-  if (ps->o.dbus) {
-    cdbus_ev_win_mapped(ps, w);
-  }
+    // Send D-Bus signal
+    if (ps->o.dbus) {
+        cdbus_ev_win_mapped(ps, w);
+    }
 #endif
 }
 
@@ -967,43 +878,6 @@ static void unmap_win(session_t *ps, win *w) {
 #endif
 }
 
-/**
- * Determine if a window should fade on opacity change.
- */
-static void
-win_determine_fade(session_t *ps, win *w) {
-  // To prevent it from being overwritten by last-paint value if the window is
-  // unmapped on next frame, write w->fade_last as well
-  if (UNSET != w->fade_force)
-    w->fade_last = w->fade = w->fade_force;
-  else if (ps->o.no_fading_openclose && w->in_openclose)
-    w->fade_last = w->fade = false;
-  // Ignore other possible causes of fading state changes after window
-  // gets unmapped
-  else if (IsViewable != w->a.map_state) {
-  }
-  else if (win_match(ps, w, ps->o.fade_blacklist, &w->cache_fblst))
-    w->fade = false;
-  else
-    w->fade = ps->o.wintype_fade[w->window_type];
-}
-
-/**
- * Determine if a window should have shadow, and update things depending
- * on shadow state.
- */
-static void
-win_determine_shadow(session_t *ps, win *w) {
-  bool shadow_new = w->shadow;
-
-  if (IsViewable == w->a.map_state)
-    shadow_new = (ps->o.wintype_shadow[w->window_type]
-        && !win_match(ps, w, ps->o.shadow_blacklist, &w->cache_sblst)
-        && !(ps->o.respect_prop_shadow));
-
-  w->shadow = shadow_new;
-}
-
 static void
 win_set_invert_color(session_t *ps, win *w, bool invert_color_new) {
   if (w->invert_color == invert_color_new) return;
@@ -1011,82 +885,11 @@ win_set_invert_color(session_t *ps, win *w, bool invert_color_new) {
   w->invert_color = invert_color_new;
 }
 
-/**
- * Determine if a window should have color inverted.
- */
-static void
-win_determine_invert_color(session_t *ps, win *w) {
-  bool invert_color_new = w->invert_color;
-
-  if (UNSET != w->invert_color_force)
-    invert_color_new = w->invert_color_force;
-  else if (IsViewable == w->a.map_state)
-    invert_color_new = win_match(ps, w, ps->o.invert_color_list,
-        &w->cache_ivclst);
-
-  win_set_invert_color(ps, w, invert_color_new);
-}
-
 static void
 win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
   if (w->blur_background == blur_background_new) return;
 
   w->blur_background = blur_background_new;
-}
-
-/**
- * Determine if a window should have background blurred.
- */
-static void
-win_determine_blur_background(session_t *ps, win *w) {
-  if (IsViewable != w->a.map_state)
-    return;
-
-  bool blur_background_new = ps->o.blur_background
-    && !win_match(ps, w, ps->o.blur_background_blacklist, &w->cache_bbblst);
-
-  win_set_blur_background(ps, w, blur_background_new);
-}
-
-/**
- * Update window opacity according to opacity rules.
- */
-static void
-win_update_opacity_rule(session_t *ps, win *w) {
-  if (IsViewable != w->a.map_state)
-    return;
-
-#ifdef CONFIG_C2
-  // If long is 32-bit, unfortunately there's no way could we express "unset",
-  // so we just entirely don't distinguish "unset" and OPAQUE
-  double opacity = 100.0;
-  void *val = NULL;
-  if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val))
-    opacity = ((double) (long) val);
-#endif
-}
-
-/**
- * Function to be called on window data changes.
- */
-static void
-win_on_factor_change(session_t *ps, win *w) {
-  if (ps->o.shadow_blacklist)
-    win_determine_shadow(ps, w);
-  if (ps->o.fade_blacklist)
-    win_determine_fade(ps, w);
-  if (ps->o.invert_color_list)
-    win_determine_invert_color(ps, w);
-  if (ps->o.blur_background_blacklist)
-    win_determine_blur_background(ps, w);
-  if (ps->o.opacity_rules)
-    win_update_opacity_rule(ps, w);
-  if (IsViewable == w->a.map_state && ps->o.paint_blacklist)
-    w->paint_excluded = win_match(ps, w, ps->o.paint_blacklist,
-        &w->cache_pblst);
-  if (IsViewable == w->a.map_state && ps->o.unredir_if_possible_blacklist)
-    w->unredir_if_possible_excluded = win_match(ps, w,
-        ps->o.unredir_if_possible_blacklist, &w->cache_uipblst);
 }
 
 /**
@@ -1124,7 +927,7 @@ win_mark_client(session_t *ps, win *w, Window client) {
   }
 
   // Update everything related to conditions
-  win_on_factor_change(ps, w);
+  /* win_on_factor_change(ps, w); */
 }
 
 /**
@@ -1188,19 +991,12 @@ win_recheck_client(session_t *ps, win *w) {
 static bool
 add_win(session_t *ps, Window id) {
   const static win win_def = {
-    .prev_trans = NULL,
-    .next_trans = NULL,
-
     .a = { },
     .face = NULL,
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
     .damage = None,
-    .flags = 0,
-    .need_configure = false,
     .queue_configure = { },
-    .widthb = 0,
-    .heightb = 0,
     .to_paint = false,
     .in_openclose = false,
 
@@ -1213,12 +1009,6 @@ add_win(session_t *ps, Window id) {
     .class_instance = NULL,
     .class_general = NULL,
     .role = NULL,
-    .cache_sblst = NULL,
-    .cache_fblst = NULL,
-    .cache_fcblst = NULL,
-    .cache_ivclst = NULL,
-    .cache_bbblst = NULL,
-    .cache_oparule = NULL,
 
     .opacity = 0.0,
 
@@ -1298,13 +1088,15 @@ add_win(session_t *ps, Window id) {
       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
   }
 
-  calc_win_size(ps, new);
+  struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
+  physical->position = (Vector2){{new->a.x, new->a.y}};
+  physical->size = (Vector2){{
+      new->a.width + new->a.border_width * 2,
+      new->a.height + new->a.border_width * 2,
+  }};
 
   fetch_shaped_window_face(ps, slot);
 
-  struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
-  physical->position = (Vector2){{new->a.x, new->a.y}};
-  physical->size = (Vector2){{new->widthb, new->heightb}};
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
   z->z = 0;
 
@@ -1399,30 +1191,22 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
   // Other window changes
   win *w = find_win(ps, ce->window);
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-  if (!w)
+  if(w == NULL)
     return;
 
-  if (w->a.map_state == IsUnmapped) {
-    /* save the configure event for when the window maps */
-    w->need_configure = true;
-    w->queue_configure = *ce;
-    restack_win(ps, w, ce->above);
-  } else {
-    if (!(w->need_configure)) {
-      restack_win(ps, w, ce->above);
-    }
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
+  restack_win(ps, w, ce->above);
+
+  {
     bool factor_change = false;
-
-    w->need_configure = false;
 
     // If window geometry did not change, don't free extents here
     if (w->a.x != ce->x || w->a.y != ce->y
-        || w->a.width != ce->width || w->a.height != ce->height
-        || w->a.border_width != ce->border_width) {
-      factor_change = true;
+            || w->a.width != ce->width || w->a.height != ce->height
+            || w->a.border_width != ce->border_width) {
+        factor_change = true;
     }
 
     Vector2 position = {{ce->x, ce->y}};
@@ -1446,11 +1230,12 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       w->a.width = ce->width;
       w->a.height = ce->height;
       w->a.border_width = ce->border_width;
-
-      calc_win_size(ps, w);
     }
 
-    Vector2 size = {{w->widthb, w->heightb}};
+    Vector2 size = {{
+        w->a.width + w->a.border_width * 2,
+        w->a.height + w->a.border_width * 2,
+    }};
     if(swiss_hasComponent(&ps->win_list, COMPONENT_RESIZE, wid)) {
         // If we already have a resize, just override it
         // @SPEED: We might want to deduplicate before we do this
@@ -1462,10 +1247,9 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
         resize->newSize = size;
     }
 
-
     if (factor_change) {
-      cxinerama_win_upd_scr(ps, w);
-      win_on_factor_change(ps, w);
+      cxinerama_win_upd_scr(ps, wid);
+      /* win_on_factor_change(ps, w); */
     }
   }
 
@@ -1498,11 +1282,6 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     if (w == ps->active_win)
         ps->active_win = NULL;
-
-    if(w->prev_trans != NULL)
-        w->prev_trans->next_trans = w->next_trans;
-    if(w->next_trans != NULL)
-        w->next_trans->prev_trans = w->prev_trans;
 
     size_t order_index = vector_find_uint64(&ps->order, wid);
     vector_remove(&ps->order, order_index);
@@ -1659,7 +1438,7 @@ static Window
 wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
   // Get the attribute
   Window p = None;
-  winprop_t prop = wid_get_prop(ps, wid, aprop, 1L, XA_WINDOW, 32);
+  winprop_t prop = wid_get_prop(&ps->psglx->xcontext, wid, aprop, 1L, XA_WINDOW, 32);
 
   // Return it
   if (prop.nitems) {
@@ -1692,7 +1471,7 @@ static void win_set_focused(session_t *ps, win *w) {
     assert(ps->active_win == w);
 
     // Update everything related to conditions
-    win_on_factor_change(ps, w);
+    /* win_on_factor_change(ps, w); */
 
 #ifdef CONFIG_DBUS
     // Send D-Bus signal
@@ -1869,7 +1648,6 @@ void
 win_set_fade_force(session_t *ps, win *w, switch_t val) {
   if (val != w->fade_force) {
     w->fade_force = val;
-    win_determine_fade(ps, w);
     ps->skip_poll = true;
   }
 }
@@ -1892,7 +1670,6 @@ void
 win_set_invert_color_force(session_t *ps, win *w, switch_t val) {
   if (val != w->invert_color_force) {
     w->invert_color_force = val;
-    win_determine_invert_color(ps, w);
     ps->skip_poll = true;
   }
 }
@@ -1916,13 +1693,6 @@ void
 opts_set_no_fading_openclose(session_t *ps, bool newval) {
     if (newval != ps->o.no_fading_openclose) {
         ps->o.no_fading_openclose = newval;
-
-        for_components(it, &ps->win_list,
-            COMPONENT_MUD, CQ_END) {
-            win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-            win_determine_fade(ps, w);
-        }
 
         ps->skip_poll = true;
     }
@@ -2179,113 +1949,113 @@ update_ewmh_active_win(session_t *ps) {
 inline static void
 ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #ifdef DEBUG_EVENTS
-  {
-    // Print out changed atom
-    char *name = XGetAtomName(ps->dpy, ev->atom);
-    printf_dbg("  { atom = %s }\n", name);
-    cxfree(name);
-  }
+    {
+        // Print out changed atom
+        char *name = XGetAtomName(ps->dpy, ev->atom);
+        printf_dbg("  { atom = %s }\n", name);
+        cxfree(name);
+    }
 #endif
 
-  if (ps->root == ev->window) {
-    if (ps->o.track_focus && ps->atoms.atom_ewmh_active_win == ev->atom) {
-      update_ewmh_active_win(ps);
-    }
-    else {
-      // Destroy the root "image" if the wallpaper probably changed
-      for (int p = 0; background_props_str[p]; p++) {
-        if (ev->atom == get_atom(ps, background_props_str[p])) {
-          root_damaged(ps);
-          break;
+    if (ps->root == ev->window) {
+        if (ps->o.track_focus && ps->atoms.atom_ewmh_active_win == ev->atom) {
+            update_ewmh_active_win(ps);
+            return;
         }
-      }
+
+        // Destroy the root "image" if the wallpaper probably changed
+        for (int p = 0; background_props_str[p]; p++) {
+            if (ev->atom == get_atom(ps, background_props_str[p])) {
+                root_damaged(ps);
+                break;
+            }
+        }
+
+        // Unconcerned about any other proprties on root window
+        return;
     }
 
-    // Unconcerned about any other proprties on root window
-    return;
-  }
+    // WM_STATE
+    if (ev->atom == ps->atoms.atom_client) {
+        // We don't care about WM_STATE changes if this is already a client
+        // window
+        if (find_toplevel(ps, ev->window) == NULL) {
 
-  // WM_STATE
-  if (ev->atom == ps->atoms.atom_client) {
-      // We don't care about WM_STATE changes if this is already a client
-      // window
-      if (find_toplevel(ps, ev->window) == NULL) {
+            // Reset event
+            XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
 
-          // Reset event
-          XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
+            win *w_frame = find_toplevel2(ps, ev->window);
+            assert(w_frame != NULL);
 
-          win *w_frame = find_toplevel2(ps, ev->window);
-          assert(w_frame != NULL);
-
-          win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
-          struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
+            win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
+            struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
 
 
-          // wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
-          if(ev->state == PropertyNewValue) {
-              if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
-                  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
-                  if(client->id != window_frame->id) {
-                      w_frame->wmwin = false;
-                      win_unmark_client(ps, w_frame);
-                      win_mark_client(ps, w_frame, ev->window);
-                  }
-              } else {
-                  w_frame->wmwin = false;
-                  win_mark_client(ps, w_frame, ev->window);
-              }
-          }
-      }
-  }
+            // wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
+            if(ev->state == PropertyNewValue) {
+                if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
+                    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
+                    if(client->id != window_frame->id) {
+                        w_frame->wmwin = false;
+                        win_unmark_client(ps, w_frame);
+                        win_mark_client(ps, w_frame, ev->window);
+                    }
+                } else {
+                    w_frame->wmwin = false;
+                    win_mark_client(ps, w_frame, ev->window);
+                }
+            }
+        }
+        }
 
-  // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
-  // there are always some stupid applications. (#144)
-  if (ev->atom == ps->atoms.atom_win_type) {
-    win *w = NULL;
-    if ((w = find_toplevel(ps, ev->window))) {
-        win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-        swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+        // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
+        // there are always some stupid applications. (#144)
+        if (ev->atom == ps->atoms.atom_win_type) {
+            win *w = NULL;
+            if ((w = find_toplevel(ps, ev->window))) {
+                win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+                swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+            }
+        }
+
+        // If name changes
+        if (ps->o.track_wdata
+                && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
+            win *w = find_toplevel(ps, ev->window);
+            if (w && 1 == win_get_name(ps, w)) {
+                /* win_on_factor_change(ps, w); */
+            }
+        }
+
+        // If class changes
+        if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
+            win *w = find_toplevel(ps, ev->window);
+            if (w) {
+                win_get_class(ps, w);
+                /* win_on_factor_change(ps, w); */
+            }
+        }
+
+        // If role changes
+        if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
+            win *w = find_toplevel(ps, ev->window);
+            if (w && 1 == win_get_role(ps, w)) {
+                /* win_on_factor_change(ps, w); */
+            }
+        }
+
+        // Check for other atoms we are tracking
+        for (latom_t *platom = ps->track_atom_lst; platom; platom = platom->next) {
+            if (platom->atom == ev->atom) {
+                win *w = find_win(ps, ev->window);
+                if (!w)
+                    w = find_toplevel(ps, ev->window);
+                /* if (w) */
+                /* win_on_factor_change(ps, w); */
+                break;
+            }
+        }
     }
-  }
-
-  // If name changes
-  if (ps->o.track_wdata
-      && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
-    win *w = find_toplevel(ps, ev->window);
-    if (w && 1 == win_get_name(ps, w)) {
-      win_on_factor_change(ps, w);
-    }
-  }
-
-  // If class changes
-  if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
-    win *w = find_toplevel(ps, ev->window);
-    if (w) {
-      win_get_class(ps, w);
-      win_on_factor_change(ps, w);
-    }
-  }
-
-  // If role changes
-  if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
-    win *w = find_toplevel(ps, ev->window);
-    if (w && 1 == win_get_role(ps, w)) {
-      win_on_factor_change(ps, w);
-    }
-  }
-
-  // Check for other atoms we are tracking
-  for (latom_t *platom = ps->track_atom_lst; platom; platom = platom->next) {
-    if (platom->atom == ev->atom) {
-      win *w = find_win(ps, ev->window);
-      if (!w)
-        w = find_toplevel(ps, ev->window);
-      if (w)
-        win_on_factor_change(ps, w);
-      break;
-    }
-  }
-}
 
 inline static void
 ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
@@ -3605,7 +3375,9 @@ redir_start(session_t *ps) {
     if (ps->overlay)
       XMapWindow(ps->dpy, ps->overlay);
 
-    XCompositeRedirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
+    /* XCompositeRedirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual); */
+
+    /* XShapeCombineShape(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0x2800001, ShapeBounding, ShapeSubtract); */
 
     /*
     // Unredirect GL context window as this may have an effect on VSync:
@@ -3619,9 +3391,6 @@ redir_start(session_t *ps) {
     // Must call XSync() here
     XSync(ps->dpy, False);
 
-    static const enum ComponentType req_types[] = { COMPONENT_MUD, 0 };
-    struct SwissIterator it = {0};
-    swiss_getFirst(&ps->win_list, req_types, &it);
     ps->redirected = true;
   }
 }
@@ -3815,7 +3584,7 @@ mainloop(session_t *ps) {
     return true;
   }
 
-  return false;
+  /* return false; */
 
 #ifdef CONFIG_DBUS
   if (ps->o.dbus) {
@@ -4055,14 +3824,18 @@ XSynchronize(ps->dpy, 1);
   ps->vis = DefaultVisual(ps->dpy, ps->scr);
   ps->depth = DefaultDepth(ps->dpy, ps->scr);
 
-  // Start listening to events on root earlier to catch all possible
-  // root geometry changes
+  // Start listening to events on root earlier to catch all possible root
+  // geometry changes
   XSelectInput(ps->dpy, ps->root,
     SubstructureNotifyMask
     | ExposureMask
     | StructureNotifyMask
     | PropertyChangeMask);
+
   XFlush(ps->dpy);
+
+  //Fetch the root region to set shape later
+  ps->root_region = XFixesCreateRegionFromWindow(ps->dpy, ps->root, ShapeInput);
 
   ps->root_size = (Vector2) {{
       DisplayWidth(ps->dpy, ps->scr), DisplayHeight(ps->dpy, ps->scr)
@@ -4389,7 +4162,7 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
 
         if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING && w->state != STATE_DESTROYING) {
             void* val;
-            if (c2_matchd(ps, w, ps->o.opacity_rules, &w->cache_oparule, &val)) {
+            if (c2_matchd(ps, w, ps->o.opacity_rules, NULL, &val)) {
                 f->newOpacity = (double)(long)val;
                 continue;
             }
@@ -4729,7 +4502,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
             else if(ps->active_win == w)
                 newState = STATE_ACTIVATING;
             else if(IsViewable == w->a.map_state
-                    && win_match(ps, w, ps->o.focus_blacklist, &w->cache_fcblst)) {
+                    && win_match(ps, w, ps->o.focus_blacklist)) {
                 newState = STATE_ACTIVATING;
             }
         }
@@ -4812,7 +4585,7 @@ static void commit_move(Swiss* em) {
     }
 }
 
-static void commit_unmap(Swiss* em) {
+static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_UNMAP, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4827,6 +4600,22 @@ static void commit_unmap(Swiss* em) {
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
         wd_delete(&bindsTexture->drawable);
     }
+
+    // Unmapping a window causes us to stop redirecting it
+    {
+        for_components(it, em,
+                COMPONENT_UNMAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
+            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+
+            XCompositeUnredirectWindow(xcontext->display, tracksWindow->id, CompositeRedirectManual);
+        }
+        swiss_removeComponentWhere(
+            em,
+            COMPONENT_REDIRECTED,
+            (enum ComponentType[]){COMPONENT_REDIRECTED, COMPONENT_TRACKS_WINDOW, COMPONENT_UNMAP, CQ_END}
+        );
+    }
+
     swiss_removeComponentWhere(
         em,
         COMPONENT_BINDS_TEXTURE,
@@ -4834,10 +4623,36 @@ static void commit_unmap(Swiss* em) {
     );
 }
 
-static void commit_map(Swiss* em, struct X11Context* xcontext) {
+static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
+    // Mapping a window causes us to start redirecting it
+    {
+        zone_enter(&ZONE_fetch_prop);
+        for_components(it, em,
+                COMPONENT_MAP, COMPONENT_HAS_CLIENT, COMPONENT_TRACKS_WINDOW, CQ_END) {
+            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+            struct HasClientComponent* hasClient = swiss_godComponent(em, COMPONENT_HAS_CLIENT, it.id);
+
+            winprop_t prop = wid_get_prop(xcontext, hasClient->id, atoms->atom_bypass, 1L, XA_CARDINAL, 32);
+            // A value of 1 means that the window has taken special care to ask
+            // us not to do compositing.
+            if(prop.nitems == 0 || *prop.data.p32 != 1) {
+                swiss_ensureComponent(em, COMPONENT_REDIRECTED, it.id);
+            }
+            free_winprop(&prop);
+        }
+        zone_leave(&ZONE_fetch_prop);
+
+        for_components(it, em,
+                COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
+            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+
+            XCompositeRedirectWindow(xcontext->display, tracksWindow->id, CompositeRedirectManual);
+        }
+    }
+
     // Mapping a window causes it to bind from X
     for_components(it, em,
-            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, CQ_END) {
+            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
         struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
         struct BindsTextureComponent* bindsTexture = swiss_addComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
 
@@ -4907,7 +4722,7 @@ static void commit_map(Swiss* em, struct X11Context* xcontext) {
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, 0.1}};
+            tint->color = (Vector4){{1, 1, 1, .0}};
         }
     }
 
@@ -4950,7 +4765,7 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
 
         // Detect window type here
         set_ignore_next(ps);
-        winprop_t prop = wid_get_prop(ps, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
+        winprop_t prop = wid_get_prop(&ps->psglx->xcontext, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
 
         wintypeChanged->newType = WINTYPE_UNKNOWN;
 
@@ -5013,10 +4828,7 @@ static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
 void session_run(session_t *ps) {
     win *t;
 
-    Vector paints;
-    vector_init(&paints, sizeof(win_id), swiss_size(&ps->win_list));
-
-    t = paint_preprocess(ps, &paints);
+    t = paint_preprocess(ps);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -5072,8 +4884,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        vector_clear(&paints);
-        t = paint_preprocess(ps, &paints);
+        t = paint_preprocess(ps);
 
         zone_leave(&ZONE_preprocess);
 
@@ -5092,24 +4903,112 @@ void session_run(session_t *ps) {
             w->window_type = wintypeChanged->newType;
         }
 
-        for_components(it, em,
-                COMPONENT_MUD, COMPONENT_WINTYPE_CHANGE, CQ_END) {
-            struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
-            win_determine_shadow(ps, w);
-            win_determine_fade(ps, w);
-            if (ps->o.invert_color_list)
-                win_determine_invert_color(ps, w);
-            if (ps->o.opacity_rules)
-                win_update_opacity_rule(ps, w);
+        if (ps->o.shadow_blacklist) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                if (win_mapped(w)) {
+                    w->shadow = (ps->o.wintype_shadow[w->window_type]
+                            && !win_match(ps, w, ps->o.shadow_blacklist)
+                            && !(ps->o.respect_prop_shadow));
+                }
+            }
         }
 
-        commit_map(&ps->win_list, &ps->psglx->xcontext);
-        commit_unmap(&ps->win_list);
+        if (ps->o.fade_blacklist) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+                if(win_mapped(w)) {
+                    // Ignore other possible causes of fading state changes after window
+                    // gets unmapped
+                    if (win_match(ps, w, ps->o.fade_blacklist)) {
+                        w->fade = false;
+                    } else {
+                        w->fade = ps->o.wintype_fade[w->window_type];
+                    }
+                }
+            }
+        }
+
+        if (ps->o.invert_color_list) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                if(win_mapped(w)) {
+                    bool invert_color_new = w->invert_color;
+
+                    if (UNSET != w->invert_color_force) {
+                        invert_color_new = w->invert_color_force;
+                    } else if (IsViewable == w->a.map_state) {
+                        invert_color_new = win_match(ps, w, ps->o.invert_color_list);
+                    }
+
+                    win_set_invert_color(ps, w, invert_color_new);
+                }
+            }
+        }
+
+        if (ps->o.blur_background_blacklist) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                if(win_mapped(w)) {
+                    bool blur_background_new = ps->o.blur_background
+                        && !win_match(ps, w, ps->o.blur_background_blacklist);
+
+                    win_set_blur_background(ps, w, blur_background_new);
+                }
+            }
+        }
+
+        if (ps->o.paint_blacklist) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                if(win_mapped(w)) {
+                    w->paint_excluded = win_match(ps, w, ps->o.paint_blacklist);
+                }
+            }
+        }
+
+        if (ps->o.unredir_if_possible_blacklist) {
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                if(win_mapped(w)) {
+                    w->unredir_if_possible_excluded = win_match(ps, w, ps->o.unredir_if_possible_blacklist);
+                }
+            }
+        }
+
+        commit_map(&ps->win_list, &ps->atoms, &ps->psglx->xcontext);
+        commit_unmap(&ps->win_list, &ps->psglx->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
         commit_move(&ps->win_list);
         commit_resize(&ps->win_list);
+
+        {
+            XserverRegion newShape = XFixesCreateRegion(ps->dpy, NULL, 0);
+            for_components(it, em,
+                    COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+                struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+
+                if(win_mapped(w)) {
+                    XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, tracksWindow->id, ShapeBounding);
+                    XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x, physical->position.y);
+                    XFixesUnionRegion(ps->psglx->xcontext.display, newShape, newShape, windowRegion);
+                    XFixesDestroyRegion(ps->psglx->xcontext.display, windowRegion);
+                }
+            }
+            XFixesInvertRegion(ps->dpy, newShape, &(XRectangle){0, 0, ps->root_size.x, ps->root_size.y}, newShape);
+            XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
+            XFixesDestroyRegion(ps->psglx->xcontext.display, newShape);
+        }
 
         // Remove all the X events
         // @CLEANUP: Should maybe be done last in the frame

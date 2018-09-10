@@ -1003,8 +1003,9 @@ rect_is_fullscreen(session_t *ps, int x, int y, unsigned wid, unsigned hei) {
  * It's not using w->border_size for performance measures.
  */
 static inline bool
-win_is_fullscreen(session_t *ps, const win *w) {
-  return rect_is_fullscreen(ps, w->a.x, w->a.y, w->widthb, w->heightb);
+win_is_fullscreen(session_t *ps, const win_id wid) {
+    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+    return rect_is_fullscreen(ps, physical->position.x, physical->position.y, physical->size.x, physical->size.y);
 }
 
 /**
@@ -1035,9 +1036,8 @@ wid_has_prop(const session_t *ps, Window w, Atom atom) {
  * Wrapper of wid_get_prop_adv().
  */
 static inline winprop_t
-wid_get_prop(const session_t *ps, Window wid, Atom atom, long length,
-    Atom rtype, int rformat) {
-  return wid_get_prop_adv(ps, wid, atom, 0L, length, rtype, rformat);
+wid_get_prop(struct X11Context* xcontext, Window wid, Atom atom, long length, Atom rtype, int rformat) {
+    return wid_get_prop_adv(xcontext, wid, atom, 0L, length, rtype, rformat);
 }
 
 /**

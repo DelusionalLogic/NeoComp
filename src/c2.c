@@ -1255,22 +1255,36 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
             {
                 long tgt = 0;
 
+                struct PhysicalComponent* physical = swiss_godComponent(&ps->win_list, COMPONENT_PHYSICAL, wad);
+
                 // Get the value
                 // A predefined target
                 if (pleaf->predef) {
                     *perr = false;
                     switch (pleaf->predef) {
                         case C2_L_PID:      tgt = wid;                      break;
-                        case C2_L_PX:       tgt = w->a.x;                   break;
-                        case C2_L_PY:       tgt = w->a.y;                   break;
-                        case C2_L_PX2:      tgt = w->a.x + w->widthb;       break;
-                        case C2_L_PY2:      tgt = w->a.y + w->heightb;      break;
-                        case C2_L_PWIDTH:   tgt = w->a.width;               break;
-                        case C2_L_PHEIGHT:  tgt = w->a.height;              break;
-                        case C2_L_PWIDTHB:  tgt = w->widthb;                break;
-                        case C2_L_PHEIGHTB: tgt = w->heightb;               break;
-                        case C2_L_PBDW:     tgt = w->a.border_width;        break;
-                        case C2_L_PFULLSCREEN: tgt = win_is_fullscreen(ps, w); break;
+                        case C2_L_PX:
+                            tgt = physical->position.x;
+                            break;
+                        case C2_L_PY:
+                            tgt = physical->position.y;
+                            break;
+                        case C2_L_PX2:
+                            tgt = physical->position.x + physical->size.x;
+                            break;
+                        case C2_L_PY2:
+                            tgt = physical->position.y + physical->size.y;
+                            break;
+                        case C2_L_PWIDTH:
+                        case C2_L_PWIDTHB:
+                            tgt = physical->size.x;
+                            break;
+                        case C2_L_PHEIGHT:
+                        case C2_L_PHEIGHTB:
+                            tgt = physical->size.y;
+                            break;
+                        case C2_L_PBDW:     tgt = 0;        break;
+                        case C2_L_PFULLSCREEN: tgt = win_is_fullscreen(ps, wad); break;
                         case C2_L_POVREDIR: tgt = w->a.override_redirect;   break;
                         case C2_L_PFOCUSED: tgt = ps->active_win == w; break;
                         case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
