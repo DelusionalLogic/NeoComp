@@ -1018,9 +1018,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
     cdbus_reply_uint32(ps, msg, ps->overlay);
     return true;
   }
-  cdbus_m_opts_get_do(unredir_if_possible, cdbus_reply_bool);
-  cdbus_m_opts_get_do(unredir_if_possible_delay, cdbus_reply_int32);
-  cdbus_m_opts_get_do(redirected_force, cdbus_reply_enum);
   cdbus_m_opts_get_do(stoppaint_force, cdbus_reply_enum);
   cdbus_m_opts_get_do(logpath, cdbus_reply_string);
   cdbus_m_opts_get_do(synchronize, cdbus_reply_bool);
@@ -1133,15 +1130,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
     else
       goto cdbus_process_opts_set_success;
     return true;
-  }
-
-  // redirected_force
-  if (!strcmp("redirected_force", target)) {
-    cdbus_enum_t val = UNSET;
-    if (!cdbus_msg_get_arg(msg, 1, CDBUS_TYPE_ENUM, &val))
-      return false;
-    ps->o.redirected_force = val;
-    goto cdbus_process_opts_set_success;
   }
 
   // stoppaint_force

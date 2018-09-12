@@ -92,16 +92,6 @@ typedef struct _options_t {
   bool fork_after_register;
   /// Blur Level
   int blur_level;
-  /// Whether to unredirect all windows if a full-screen opaque window
-  /// is detected.
-  bool unredir_if_possible;
-  /// List of conditions of windows to ignore as a full-screen window
-  /// when determining if a window could be unredirected.
-  c2_lptr_t *unredir_if_possible_blacklist;
-  /// Delay before unredirecting screen.
-  time_ms_t unredir_if_possible_delay;
-  /// Forced redirection setting through D-Bus.
-  switch_t redirected_force;
   /// Whether to stop painting. Controlled through D-Bus.
   switch_t stoppaint_force;
   /// Whether to re-redirect screen on root size change.

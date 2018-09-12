@@ -166,8 +166,6 @@ typedef struct _win {
   bool to_paint;
   /// Whether the window is painting excluded.
   bool paint_excluded;
-  /// Whether the window is unredirect-if-possible excluded.
-  bool unredir_if_possible_excluded;
 
   // @CLEANUP: This should be replaced by a check on state
   /// Whether this window is in open/close state.

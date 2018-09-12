@@ -46,7 +46,6 @@
 DECLARE_ZONE(global);
 DECLARE_ZONE(input);
 DECLARE_ZONE(preprocess);
-DECLARE_ZONE(preprocess_window);
 DECLARE_ZONE(update);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
@@ -709,7 +708,6 @@ static win *
 paint_preprocess(session_t *ps) {
     win *t = NULL;
 
-    bool unredir_possible = false;
     // Trace whether it's the highest window to paint
     bool is_highest = true;
 
@@ -717,24 +715,12 @@ paint_preprocess(session_t *ps) {
     win_id* w_id = vector_getLast(&ps->order, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
-        zone_enter(&ZONE_preprocess_window);
         bool to_paint = true;
 
         // @CLEANUP: This should probably be somewhere else
         w->fullscreen = win_is_fullscreen(ps, *w_id);
 
         if (to_paint) {
-            // (Un)redirect screen
-            // We could definitely unredirect the screen when there's no window to
-            // paint, but this is typically unnecessary, may cause flickering when
-            // fading is enabled, and could create inconsistency when the wallpaper
-            // is not correctly set.
-            if (ps->o.unredir_if_possible && is_highest && to_paint) {
-                is_highest = false;
-                if(win_covers(w))
-                    unredir_possible = true;
-            }
-
             /* // If the window doesn't want to be redirected, then who are we to argue */
         }
 
@@ -744,27 +730,13 @@ paint_preprocess(session_t *ps) {
         if (!destroyed) {
             w->to_paint = to_paint;
         }
-        zone_leave(&ZONE_preprocess_window);
 
         w_id = vector_getPrev(&ps->order, &index);
     }
 
-
-    // If possible, unredirect all windows and stop painting
-    if (UNSET != ps->o.redirected_force)
-        unredir_possible = !ps->o.redirected_force;
-
     // If there's no window to paint, and the screen isn't redirected,
     // don't redirect it.
-    if (ps->o.unredir_if_possible && is_highest && !ps->redirected)
-        unredir_possible = true;
-    if (unredir_possible) {
-        if (ps->redirected) {
-            if (!ps->o.unredir_if_possible_delay) {
-                redir_stop(ps);
-            }
-        }
-    } else if(!ps->redirected) {
+    if(!ps->redirected) {
         redir_start(ps);
     }
 
@@ -2275,7 +2247,7 @@ usage(int ret) {
     "--detect-rounded-corners\n"
     "  Try to detect windows with rounded corners and don't consider\n"
     "  them shaped windows. Affects --shadow-ignore-shaped,\n"
-    "  --unredir-if-possible, and possibly others. You need to turn this\n"
+    "  and possibly others. You need to turn this\n"
     "  on manually if you want to match against rounded_corners in\n"
     "  conditions.\n"
     "\n"
@@ -2298,18 +2270,6 @@ usage(int ret) {
     "--respect-prop-shadow\n"
     "  Respect _COMPTON_SHADOW. This a prototype-level feature, which\n"
     "  you must not rely on.\n"
-    "\n"
-    "--unredir-if-possible\n"
-    "  Unredirect all windows if a full-screen opaque window is\n"
-    "  detected, to maximize performance for full-screen windows.\n"
-    "\n"
-    "--unredir-if-possible-delay ms\n"
-    "  Delay before unredirecting the window, in milliseconds.\n"
-    "  Defaults to 0.\n"
-    "\n"
-    "--unredir-if-possible-exclude condition\n"
-    "  Conditions of windows that shouldn't be considered full-screen\n"
-    "  for unredirecting screen.\n"
     "\n"
     "--focus-exclude condition\n"
     "  Specify a list of conditions of windows that should always be\n"
@@ -2893,12 +2853,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --vsync
   if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
     exit(1);
-  // --unredir-if-possible
-  lcfg_lookup_bool(&cfg, "unredir-if-possible",
-      &ps->o.unredir_if_possible);
-  // --unredir-if-possible-delay
-  if (lcfg_lookup_int(&cfg, "unredir-if-possible-delay", &ival))
-    ps->o.unredir_if_possible_delay = ival;
   // --inactive-dim-fixed
   lcfg_lookup_bool(&cfg, "inactive-dim-fixed", &ps->o.inactive_dim_fixed);
   // --shadow-exclude
@@ -2913,8 +2867,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   parse_cfg_condlst(ps, &cfg, &ps->o.blur_background_blacklist, "blur-background-exclude");
   // --opacity-rule
   parse_cfg_condlst_opct(ps, &cfg, "opacity-rule");
-  // --unredir-if-possible-exclude
-  parse_cfg_condlst(ps, &cfg, &ps->o.unredir_if_possible_blacklist, "unredir-if-possible-exclude");
   // --blur-background
   lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
   // --blur-background-fixed
@@ -2992,7 +2944,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "paint-on-overlay", no_argument, NULL, 273 },
     { "use-ewmh-active-win", no_argument, NULL, 276 },
     { "respect-prop-shadow", no_argument, NULL, 277 },
-    { "unredir-if-possible", no_argument, NULL, 278 },
     { "focus-exclude", required_argument, NULL, 279 },
     { "inactive-dim-fixed", no_argument, NULL, 280 },
     { "blur-background", no_argument, NULL, 283 },
@@ -3012,8 +2963,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "opacity-rule", required_argument, NULL, 304 },
     { "shadow-exclude-reg", required_argument, NULL, 305 },
     { "xinerama-shadow-crop", no_argument, NULL, 307 },
-    { "unredir-if-possible-exclude", required_argument, NULL, 308 },
-    { "unredir-if-possible-delay", required_argument, NULL, 309 },
     { "write-pid-path", required_argument, NULL, 310 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "no-fading-destroyed-argb", no_argument, NULL, 315 },
@@ -3154,7 +3103,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
           exit(1);
         break;
       P_CASEBOOL(277, respect_prop_shadow);
-      P_CASEBOOL(278, unredir_if_possible);
       case 279:
         // --focus-exclude
         condlst_add(ps, &ps->o.focus_blacklist, optarg);
@@ -3204,11 +3152,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.paint_blacklist, optarg);
         break;
       P_CASEBOOL(307, xinerama_shadow_crop);
-      case 308:
-        // --unredir-if-possible-exclude
-        condlst_add(ps, &ps->o.unredir_if_possible_blacklist, optarg);
-        break;
-      P_CASELONG(309, unredir_if_possible_delay);
       case 310:
         // --write-pid-path
         ps->o.write_pid_path = mstrcpy(optarg);
@@ -3691,10 +3634,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .fork_after_register = false,
       .synchronize = false,
       .blur_level = 0,
-      .unredir_if_possible = false,
-      .unredir_if_possible_blacklist = NULL,
-      .unredir_if_possible_delay = 0,
-      .redirected_force = UNSET,
       .stoppaint_force = UNSET,
       .dbus = false,
       .benchmark = 0,
@@ -4075,7 +4014,6 @@ void session_destroy(session_t *ps) {
   free_wincondlst(&ps->o.blur_background_blacklist);
   free_wincondlst(&ps->o.opacity_rules);
   free_wincondlst(&ps->o.paint_blacklist);
-  free_wincondlst(&ps->o.unredir_if_possible_blacklist);
 #endif
 
   // Free tracked atom list
@@ -4312,6 +4250,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     }
 
     XUngrabServer(xcontext->display);
+    glXWaitX();
 }
 
 static void commit_opacity_change(Swiss* em, double fade_time) {
@@ -4673,7 +4612,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
     // Create a texture when mapping windows without one
     for_components(it, em,
-            COMPONENT_MAP, CQ_NOT, COMPONENT_TEXTURED, CQ_END) {
+            COMPONENT_MAP, COMPONENT_REDIRECTED, CQ_NOT, COMPONENT_TEXTURED, CQ_END) {
         struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
 
         struct TexturedComponent* textured = swiss_addComponent(em, COMPONENT_TEXTURED, it.id);
@@ -4744,6 +4683,12 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         blur_cache_resize(blur, &map->size);
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
+
+    // After a map we'd like to immediately bind the window.
+    for_components(it, em,
+            COMPONENT_MAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
     }
 
     for_components(it, em,
@@ -4974,16 +4919,6 @@ void session_run(session_t *ps) {
             }
         }
 
-        if (ps->o.unredir_if_possible_blacklist) {
-            for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(w)) {
-                    w->unredir_if_possible_excluded = win_match(ps, w, ps->o.unredir_if_possible_blacklist);
-                }
-            }
-        }
-
         commit_map(&ps->win_list, &ps->atoms, &ps->psglx->xcontext);
         commit_unmap(&ps->win_list, &ps->psglx->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
@@ -5000,7 +4935,7 @@ void session_run(session_t *ps) {
 
                 if(win_mapped(w)) {
                     XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, tracksWindow->id, ShapeBounding);
-                    XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x, physical->position.y);
+                    XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
                     XFixesUnionRegion(ps->psglx->xcontext.display, newShape, newShape, windowRegion);
                     XFixesDestroyRegion(ps->psglx->xcontext.display, windowRegion);
                 }

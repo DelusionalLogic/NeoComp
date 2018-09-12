@@ -1344,7 +1344,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                 }
                 // If it's an atom type property, convert atom to string
                 else if (C2_L_TATOM == pleaf->type) {
-                    winprop_t prop = wid_get_prop_adv(ps, wid, pleaf->tgtatom,
+                    winprop_t prop = wid_get_prop_adv(&ps->psglx->xcontext, wid, pleaf->tgtatom,
                             idx, 1L, c2_get_atom_type(pleaf), pleaf->format);
                     Atom atom = winprop_get_int(prop);
                     if (atom) {

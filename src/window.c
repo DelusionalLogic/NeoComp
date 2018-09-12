@@ -63,8 +63,7 @@ bool win_mapped(win* w) {
 
 bool win_covers(win* w) {
     return w->solid
-        && w->fullscreen
-        && !w->unredir_if_possible_excluded;
+        && w->fullscreen;
 }
 
 void fade_init(struct Fading* fade, double value) {
