@@ -1910,7 +1910,7 @@ update_ewmh_active_win(session_t *ps) {
   win *w = find_win_all(ps, wid);
 
   if(w == NULL) {
-      printf_errf("Window with the id %lu was not found", wid);
+      printf_errf("Window with the id %zu was not found", wid);
       return;
   }
 
@@ -4560,6 +4560,19 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
         COMPONENT_BINDS_TEXTURE,
         (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
     );
+
+    for_components(it, em,
+            COMPONENT_MUD, COMPONENT_UNMAP, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        // Fading out
+        // @HACK If we are being destroyed, we don't want to stop doing that
+        if(w->state == STATE_DESTROYING) {
+            swiss_removeComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+            swiss_removeComponent(em, COMPONENT_HAS_CLIENT, it.id);
+            w->state = STATE_HIDING;
+        }
+    }
 }
 
 static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
@@ -4602,7 +4615,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
     // Resize textures when mapping a window with a texture
     for_components(it, em,
-            COMPONENT_MAP, COMPONENT_TEXTURED, CQ_END) {
+            COMPONENT_MAP, COMPONENT_REDIRECTED, COMPONENT_TEXTURED, CQ_END) {
         struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
 
@@ -4628,7 +4641,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
     // When we map a window, and blur/shadow isn't there, we want to add them.
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_SHADOW, CQ_END) {
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_SHADOW, CQ_END) {
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
         if(w->shadow) {
@@ -4642,7 +4655,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
     }
 
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_BLUR, CQ_END) {
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
         if(w->blur_background) {
