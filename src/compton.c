@@ -708,9 +708,6 @@ static win *
 paint_preprocess(session_t *ps) {
     win *t = NULL;
 
-    // Trace whether it's the highest window to paint
-    bool is_highest = true;
-
     size_t index;
     win_id* w_id = vector_getLast(&ps->order, &index);
     while(w_id != NULL) {
