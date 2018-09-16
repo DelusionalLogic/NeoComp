@@ -12,9 +12,10 @@ float rand(in vec2 co){
 }
 
 void main(void){
-    vec2 uv = fragmentUV;
-    gl_FragColor = vec4(color, 1);
-    gl_FragColor *= opacity;
     vec2 screen_uv = gl_FragCoord.xy / viewport;
-    gl_FragColor.rgb *= vec3(1 - ((rand(screen_uv) - .5) * .2));
+    if(rand(screen_uv) < .85)
+        discard;
+
+    gl_FragColor = vec4(color, opacity);
+    /* gl_FragColor *= opacity; */
 }

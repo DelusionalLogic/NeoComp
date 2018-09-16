@@ -99,6 +99,7 @@ void text_draw(const struct Font* font, const char* text, const Vector2* positio
 void text_draw_colored(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale, const Vector3* color) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
     struct face* face = assets_load("window.face");
 
     struct shader_program* text_program = assets_load("text.shader");

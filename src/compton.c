@@ -4581,7 +4581,6 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         zone_enter(&ZONE_fetch_prop);
         for_components(it, em,
                 COMPONENT_MAP, COMPONENT_HAS_CLIENT, COMPONENT_TRACKS_WINDOW, CQ_END) {
-            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
             struct HasClientComponent* hasClient = swiss_godComponent(em, COMPONENT_HAS_CLIENT, it.id);
 
             winprop_t prop = wid_get_prop(xcontext, hasClient->id, atoms->atom_bypass, 1L, XA_CARDINAL, 32);
@@ -4674,7 +4673,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, .0}};
+            tint->color = (Vector4){{1, 1, 1, .2}};
         }
     }
 
