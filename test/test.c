@@ -888,6 +888,21 @@ struct TestResult binaryZSearch__return_an_index_larger_than_size__all_values_ar
     assertEq(res, 5);
 }
 
+struct TestResult binaryZSearch__return_an_index_larger_than_size__last_value_is_equal() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+    Vector wids;
+    vector_init(&wids, sizeof(win_id), 2);
+
+    make_z(&swiss, &wids, (double[]){5., 6., 7., 8., 9.}, 5);
+
+    size_t res = binaryZSearch(&swiss, &wids, 9.0);
+
+    assertEq(res, 5);
+}
+
 struct TestResult binaryZSearch__return_0__all_values_are_larger() {
     Swiss swiss;
     swiss_clearComponentSizes(&swiss);
@@ -926,11 +941,11 @@ struct TestResult binaryZSearch__return_smallest_value_larger_than_needle__needl
     Vector wids;
     vector_init(&wids, sizeof(win_id), 2);
 
-    make_z(&swiss, &wids, (double[]){0., 1., 2., 3., 3., 3., 3., 7., 8., 9.}, 10);
+    make_z(&swiss, &wids, (double[]){0., 1., 2., 2.2, 3., 3., 3., 3., 7., 8., 9.}, 11);
 
     size_t res = binaryZSearch(&swiss, &wids, 2.3);
 
-    assertEq(res, 3);
+    assertEq(res, 4);
 }
 
 int main(int argc, char** argv) {
@@ -1021,6 +1036,7 @@ int main(int argc, char** argv) {
     TEST(binaryZSearch__return_0__all_values_are_larger);
     TEST(binaryZSearch__return_rightmost_element__several_values_are_equal);
     TEST(binaryZSearch__return_smallest_value_larger_than_needle__needle_is_not_a_value);
+    TEST(binaryZSearch__return_an_index_larger_than_size__last_value_is_equal);
 
     return test_end();
 }

@@ -143,10 +143,8 @@ enum WindowState {
 
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
-  // Core members
-  /// Window attributes.
-  XWindowAttributes a;
-
+    float border_size;
+    bool override_redirect;
   struct face* face;
 
   enum WindowState state;

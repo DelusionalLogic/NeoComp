@@ -1285,7 +1285,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                             break;
                         case C2_L_PBDW:     tgt = 0;        break;
                         case C2_L_PFULLSCREEN: tgt = win_is_fullscreen(ps, wad); break;
-                        case C2_L_POVREDIR: tgt = w->a.override_redirect;   break;
+                        case C2_L_POVREDIR: tgt = w->override_redirect;   break;
                         case C2_L_PFOCUSED: tgt = ps->active_win == w; break;
                         case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
                         case C2_L_PCLIENT: {
@@ -1298,7 +1298,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                 }
                 // A raw window property
                 else {
-                    winprop_t prop = wid_get_prop_adv(ps, wid, pleaf->tgtatom,
+                    winprop_t prop = wid_get_prop_adv(&ps->psglx->xcontext, wid, pleaf->tgtatom,
                             idx, 1L, c2_get_atom_type(pleaf), pleaf->format);
                     if (prop.nitems) {
                         *perr = false;
@@ -1520,7 +1520,7 @@ static bool c2_match_once(session_t *ps, win *w, const c2_ptr_t cond) {
  */
 bool c2_matchd(session_t *ps, win *w, const c2_lptr_t *condlst,
         const c2_lptr_t **cache, void **pdata) {
-    assert(IsViewable == w->a.map_state);
+    assert(win_mapped(w));
 
     // Check if the cached entry matches firstly
     if (cache && *cache && c2_match_once(ps, w, (*cache)->ptr)) {

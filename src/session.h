@@ -309,8 +309,6 @@ typedef struct _session_t {
     bool idling;
     /// Program start time.
     struct timeval time_start;
-    /// Whether all windows are currently redirected.
-    bool redirected;
     /// Head pointer of the error ignore linked list.
     ignore_t *ignore_head;
     /// Pointer to the <code>next</code> member of tail element of the error

@@ -933,7 +933,7 @@ static inline win *
 find_focused(session_t *ps) {
   if (!ps->o.track_focus) return NULL;
 
-  if (ps->active_win && ps->active_win->a.map_state == IsViewable)
+  if (ps->active_win && win_mapped(ps->active_win))
     return ps->active_win;
   return NULL;
 }

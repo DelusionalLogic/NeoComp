@@ -316,7 +316,7 @@ static void cxinerama_win_upd_scr(session_t *ps, win_id wid) {
     struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
     w->xinerama_scr = -1;
     for (XineramaScreenInfo *s = ps->xinerama_scrs; s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
-        if (s->x_org <= w->a.x && s->y_org <= w->a.y
+        if (s->x_org <= physical->position.x && s->y_org <= physical->position.y
                 && s->x_org + s->width >= physical->position.x + physical->size.x
                 && s->y_org + s->height >= physical->position.y + physical->size.y) {
             w->xinerama_scr = s - ps->xinerama_scrs;
@@ -504,7 +504,7 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     // Therefore a window with a border will have a bounding shape with
     // a negative upper left corner. This offset corrects for that, so we don't
     // have to deal with it downstream
-    Vector2 offset = {{-w->a.border_width, -w->a.border_width}};
+    Vector2 offset = {{-w->border_size, -w->border_size}};
 
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, window->id, ShapeBounding);
@@ -556,13 +556,13 @@ determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
 
   // Check if it's a mapped frame window
   if (WIN_EVMODE_FRAME == mode
-      || ((w = find_win(ps, wid)) && IsViewable == w->a.map_state)) {
+      || ((w = find_win(ps, wid)) && win_mapped(w))) {
     evmask |= PropertyChangeMask;
   }
 
   // Check if it's a mapped client window
   if (WIN_EVMODE_CLIENT == mode
-      || ((w = find_toplevel(ps, wid)) && IsViewable == w->a.map_state)) {
+      || ((w = find_toplevel(ps, wid)) && win_mapped(w))) {
     if (ps->o.track_wdata || ps->track_atom_lst || ps->o.detect_client_opacity)
       evmask |= PropertyChangeMask;
   }
@@ -731,12 +731,6 @@ paint_preprocess(session_t *ps) {
         w_id = vector_getPrev(&ps->order, &index);
     }
 
-    // If there's no window to paint, and the screen isn't redirected,
-    // don't redirect it.
-    if(!ps->redirected) {
-        redir_start(ps);
-    }
-
     return t;
 }
 
@@ -758,21 +752,21 @@ static void map_win(session_t *ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     assert(w != NULL);
-    // Unmap overlay window if it got mapped but we are currently not
-    // in redirected state.
-    if (ps->overlay && window->id == ps->overlay && !ps->redirected) {
-        XUnmapWindow(ps->dpy, ps->overlay);
-        XFlush(ps->dpy);
+
+    XWindowAttributes attribs;
+    if (!XGetWindowAttributes(ps->dpy, window->id, &attribs)) {
+        printf_errf("Failed getting window attributes while mapping");
+        return;
     }
+    w->border_size = attribs.border_width;
+    w->override_redirect = attribs.override_redirect;
 
     // Don't care about window mapping if it's an InputOnly window
     // Try avoiding mapping a window twice
-    if (InputOnly == w->a.class || IsViewable == w->a.map_state)
+    if (InputOnly == attribs.class || win_mapped(w))
         return;
 
     assert(ps->active_win != w);
-
-    w->a.map_state = IsViewable;
 
     cxinerama_win_upd_scr(ps, wid);
 
@@ -792,18 +786,13 @@ static void map_win(session_t *ps, win_id wid) {
     if (ps->o.track_focus)
         update_ewmh_active_win(ps);
 
-    if (!XGetWindowAttributes(ps->dpy, window->id, &w->a)) {
-        printf_errf("Failed getting window attributes while mapping");
-        return;
-    }
-
     // Add a map event
     swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
     struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
-    map->position = (Vector2){{w->a.x, w->a.y}};
+    map->position = (Vector2){{attribs.x, attribs.y}};
     map->size = (Vector2){{
-        w->a.width + w->a.border_width * 2,
-        w->a.height + w->a.border_width * 2,
+        attribs.width + w->border_size * 2,
+        attribs.height + w->border_size * 2,
     }};
 
     // Set fading state
@@ -821,14 +810,12 @@ static void map_win(session_t *ps, win_id wid) {
 }
 
 static void unmap_win(session_t *ps, win *w) {
-    if (!w || IsUnmapped == w->a.map_state) return;
+    if (!w || !win_mapped(w)) return;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     // Set focus out
     if(ps->active_win == w)
         ps->active_win = NULL;
-
-    w->a.map_state = IsUnmapped;
 
     w->state = STATE_HIDING;
 
@@ -877,7 +864,7 @@ win_mark_client(session_t *ps, win *w, Window client) {
 
   // If the window isn't mapped yet, stop here, as the function will be
   // called in map_win()
-  if (IsViewable != w->a.map_state)
+  if (!win_mapped(w))
     return;
 
   XSelectInput(ps->dpy, client,
@@ -942,7 +929,7 @@ win_recheck_client(session_t *ps, win *w) {
   // client window
   if (!cw) {
     cw = window->id;
-    w->wmwin = !w->a.override_redirect;
+    w->wmwin = !w->override_redirect;
 #ifdef DEBUG_CLIENTWIN
     printf_dbgf("(%#010lx): client self (%s)\n", w->id,
         (w->wmwin ? "wmwin": "override-redirected"));
@@ -960,7 +947,8 @@ win_recheck_client(session_t *ps, win *w) {
 static bool
 add_win(session_t *ps, Window id) {
   const static win win_def = {
-    .a = { },
+    .border_size = 0,
+    .override_redirect = false,
     .face = NULL,
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
@@ -1029,16 +1017,20 @@ add_win(session_t *ps, Window id) {
     return false;
   }
 
+  XWindowAttributes attribs;
+
   // Fill structure
   set_ignore_next(ps);
-  if (!XGetWindowAttributes(ps->dpy, id, &new->a)
-      || IsUnviewable == new->a.map_state) {
+  if (!XGetWindowAttributes(ps->dpy, id, &attribs)
+      || IsUnviewable == attribs.map_state) {
       // Failed to get window attributes probably means the window is gone
       // already. IsUnviewable means the window is already reparented
       // elsewhere.
       swiss_remove(&ps->win_list, slot);
     return false;
   }
+  new->border_size = attribs.border_width;
+  new->override_redirect = attribs.override_redirect;
 
   // Notify compton when the shape of a window changes
   if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
@@ -1046,22 +1038,17 @@ add_win(session_t *ps, Window id) {
       XShapeSelectInput(ps->dpy, id, ShapeNotifyMask);
   }
 
-  // Delay window mapping
-  int map_state = new->a.map_state;
-  assert(IsViewable == map_state || IsUnmapped == map_state);
-  new->a.map_state = IsUnmapped;
-
-  if (InputOutput == new->a.class) {
+  if (InputOutput == attribs.class) {
       // Create Damage for window
       set_ignore_next(ps);
       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
   }
 
   struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
-  physical->position = (Vector2){{new->a.x, new->a.y}};
+  physical->position = (Vector2){{attribs.x, attribs.y}};
   physical->size = (Vector2){{
-      new->a.width + new->a.border_width * 2,
-      new->a.height + new->a.border_width * 2,
+      attribs.width + new->border_size * 2,
+      attribs.height + new->border_size * 2,
   }};
 
   fetch_shaped_window_face(ps, slot);
@@ -1078,7 +1065,8 @@ add_win(session_t *ps, Window id) {
   }
 #endif
 
-  if (IsViewable == map_state) {
+  // Already mapped
+  if (IsViewable == attribs.map_state) {
       map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, new));
   }
 
@@ -1139,7 +1127,7 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
     }};
 
     // Re-redirect screen if required
-    if (ps->o.reredir_on_root_change && ps->redirected) {
+    if (ps->o.reredir_on_root_change) {
       redir_stop(ps);
       redir_start(ps);
     }
@@ -1169,15 +1157,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
   restack_win(ps, w, ce->above);
 
   {
-    bool factor_change = false;
-
-    // If window geometry did not change, don't free extents here
-    if (w->a.x != ce->x || w->a.y != ce->y
-            || w->a.width != ce->width || w->a.height != ce->height
-            || w->a.border_width != ce->border_width) {
-        factor_change = true;
-    }
-
     Vector2 position = {{ce->x, ce->y}};
     struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
     if(swiss_hasComponent(&ps->win_list, COMPONENT_MOVE, wid)) {
@@ -1191,19 +1170,11 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
         move->newPosition = position;
     }
 
-    w->a.x = ce->x;
-    w->a.y = ce->y;
-
-    if (w->a.width != ce->width || w->a.height != ce->height
-        || w->a.border_width != ce->border_width) {
-      w->a.width = ce->width;
-      w->a.height = ce->height;
-      w->a.border_width = ce->border_width;
-    }
+    w->border_size = ce->border_width;
 
     Vector2 size = {{
-        w->a.width + w->a.border_width * 2,
-        w->a.height + w->a.border_width * 2,
+        ce->width + w->border_size * 2,
+        ce->height + w->border_size * 2,
     }};
     if(swiss_hasComponent(&ps->win_list, COMPONENT_RESIZE, wid)) {
         // If we already have a resize, just override it
@@ -1216,15 +1187,12 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
         resize->newSize = size;
     }
 
-    if (factor_change) {
-      cxinerama_win_upd_scr(ps, wid);
-      /* win_on_factor_change(ps, w); */
-    }
+    cxinerama_win_upd_scr(ps, wid);
   }
 
   // override_redirect flag cannot be changed after window creation, as far
   // as I know, so there's no point to re-match windows here.
-  w->a.override_redirect = ce->override_redirect;
+  w->override_redirect = ce->override_redirect;
 }
 
 static void
@@ -1258,11 +1226,12 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
     swiss_remove(&ps->win_list, wid);
 }
 
-static void destroy_win(session_t *ps, struct _win* w) {
+static void destroy_win(session_t *ps, win_id wid) {
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+
     // You can only destroy a window that is already hiding or invisible
     assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
 
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     w->state = STATE_DESTROYING;
 
 #ifdef CONFIG_DBUS
@@ -1281,30 +1250,30 @@ root_damaged(session_t *ps) {
   get_root_tile(ps);
 }
 
-static void
-damage_win(session_t *ps, XDamageNotifyEvent *de) {
-  /*
-  if (ps->root == de->drawable) {
-    root_damaged();
-    return;
-  } */
+static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
+    /*
+       if (ps->root == de->drawable) {
+       root_damaged();
+       return;
+       } */
 
 
-  win *w = find_win(ps, de->drawable);
+    win *w = find_win(ps, de->drawable);
 
-  if (!w) return;
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    if (!w)
+        return;
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-  if (IsViewable != w->a.map_state)
-    return;
+    if (!win_mapped(w))
+        return;
 
-  //Reset the XDamage region, so we continue to recieve new damage
-  XDamageSubtract(ps->dpy, w->damage, None, None);
+    //Reset the XDamage region, so we continue to recieve new damage
+    XDamageSubtract(ps->dpy, w->damage, None, None);
 
-  swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
-  // @CLEANUP: We shouldn't damage the shadow here. It's more of an update
-  // thing. Maybe make a function for quick or?
-  swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
+    swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
+    // @CLEANUP: We shouldn't damage the shadow here. It's more of an update
+    // thing. Maybe make a function for quick or?
+    swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
@@ -1424,13 +1393,13 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
  */
 static void win_set_focused(session_t *ps, win *w) {
     // Unmapped windows will have their focused state reset on map
-    if (IsUnmapped == w->a.map_state)
+    if (!win_mapped(w))
         return;
 
     if (ps->active_win == w) return;
 
     if (ps->active_win) {
-        assert(ps->active_win->a.map_state != IsUnmapped);
+        assert(win_mapped(ps->active_win));
 
         ps->active_win = NULL;
     }
@@ -1815,7 +1784,9 @@ static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
     if(w == NULL)
         return;
 
-    destroy_win(ps, w);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
+    destroy_win(ps, wid);
 }
 
 static void ev_map_notify(session_t *ps, XMapEvent *ev) {
@@ -1842,7 +1813,8 @@ static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
 
     // If reparented anywhere else, we remove it. (We don't care about subwindows)
     win *w = find_win(ps, ev->window);
-    destroy_win(ps, w);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    destroy_win(ps, wid);
 
     // Reset event mask in case something wrong happens
     XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
@@ -2357,9 +2329,7 @@ register_cm(session_t *ps) {
     return false;
   }
 
-  // Unredirect the window if it's redirected, just in case
-  if (ps->redirected)
-    XCompositeUnredirectWindow(ps->dpy, ps->reg_win, CompositeRedirectManual);
+  XCompositeUnredirectWindow(ps->dpy, ps->reg_win, CompositeRedirectManual);
 
   {
     XClassHint *h = XAllocClassHint();
@@ -3302,9 +3272,7 @@ init_filters(session_t *ps) {
 /**
  * Redirect all windows.
  */
-static void
-redir_start(session_t *ps) {
-  if (!ps->redirected) {
+static void redir_start(session_t *ps) {
 #ifdef DEBUG_REDIR
     print_timestamp(ps);
     printf_dbgf("(): Screen redirected.\n");
@@ -3313,7 +3281,7 @@ redir_start(session_t *ps) {
     // Map overlay window. Done firstly according to this:
     // https://bugzilla.gnome.org/show_bug.cgi?id=597014
     if (ps->overlay)
-      XMapWindow(ps->dpy, ps->overlay);
+        XMapWindow(ps->dpy, ps->overlay);
 
     /* XCompositeRedirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual); */
 
@@ -3324,15 +3292,12 @@ redir_start(session_t *ps) {
     // < http://dri.freedesktop.org/wiki/CompositeSwap >
     XCompositeUnredirectWindow(ps->dpy, ps->reg_win, CompositeRedirectManual);
     if (ps->o.paint_on_overlay && ps->overlay) {
-      XCompositeUnredirectWindow(ps->dpy, ps->overlay,
-          CompositeRedirectManual);
+    XCompositeUnredirectWindow(ps->dpy, ps->overlay,
+    CompositeRedirectManual);
     } */
 
     // Must call XSync() here
     XSync(ps->dpy, False);
-
-    ps->redirected = true;
-  }
 }
 
 /**
@@ -3482,9 +3447,7 @@ timeout_reset(session_t *ps, timeout_t *ptmout) {
 /**
  * Unredirect all windows.
  */
-static void
-redir_stop(session_t *ps) {
-  if (ps->redirected) {
+static void redir_stop(session_t *ps) {
 #ifdef DEBUG_REDIR
     print_timestamp(ps);
     printf_dbgf("(): Screen unredirected.\n");
@@ -3492,13 +3455,10 @@ redir_stop(session_t *ps) {
     XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
     // Unmap overlay window
     if (ps->overlay)
-      XUnmapWindow(ps->dpy, ps->overlay);
+        XUnmapWindow(ps->dpy, ps->overlay);
 
     // Must call XSync() here
     XSync(ps->dpy, False);
-
-    ps->redirected = false;
-  }
 }
 
 /**
@@ -3678,7 +3638,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .tmout_lst = NULL,
 
     .time_start = { 0, 0 },
-    .redirected = false,
     .idling = false,
     .ignore_head = NULL,
     .ignore_tail = NULL,
@@ -3972,7 +3931,7 @@ void session_destroy(session_t *ps) {
           w->face = NULL;
       }
 
-      if (IsViewable == w->a.map_state && w->state != STATE_DESTROYING)
+      if (win_mapped(w) && w->state != STATE_DESTROYING)
           win_ev_stop(ps, w);
 
   }
@@ -4437,8 +4396,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
                 newState = STATE_ACTIVATING;
             else if(ps->active_win == w)
                 newState = STATE_ACTIVATING;
-            else if(IsViewable == w->a.map_state
-                    && win_match(ps, w, ps->o.focus_blacklist)) {
+            else if(win_mapped(w) && win_match(ps, w, ps->o.focus_blacklist)) {
                 newState = STATE_ACTIVATING;
             }
         }
@@ -4745,7 +4703,7 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
         // override-redirect windows or windows without WM_TRANSIENT_FOR as
         // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
         if (wintypeChanged->newType == WINTYPE_UNKNOWN) {
-            if (w->a.override_redirect || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
+            if (w->override_redirect || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
                 w->window_type = WINTYPE_NORMAL;
             else
                 w->window_type = WINTYPE_DIALOG;
@@ -4896,7 +4854,7 @@ void session_run(session_t *ps) {
 
                     if (UNSET != w->invert_color_force) {
                         invert_color_new = w->invert_color_force;
-                    } else if (IsViewable == w->a.map_state) {
+                    } else if (win_mapped(w)) {
                         invert_color_new = win_match(ps, w, ps->o.invert_color_list);
                     }
 
@@ -5024,7 +4982,7 @@ void session_run(session_t *ps) {
 
         Vector opaque_shadow;
         vector_init(&opaque_shadow, sizeof(win_id), ps->order.size);
-        fetchSortedWindowsWith(&ps->win_list, &opaque_shadow, 
+        fetchSortedWindowsWith(&ps->win_list, &opaque_shadow,
                 COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_OPACITY, COMPONENT_SHADOW, CQ_END);
 
         zone_enter(&ZONE_effect_textures);

@@ -327,7 +327,7 @@ size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle) {
     {
         win_id id = *(win_id*)vector_get(candidates, high);
         struct ZComponent* z = swiss_getComponent(em, COMPONENT_Z, id);
-        if(z->z < needle) {
+        if(z->z <= needle) {
             return len;
         }
     }
@@ -365,6 +365,8 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
 
     win_id* wid = vector_get(windows, index);
     while(wid != NULL) {
+        struct ZComponent* oz = swiss_getComponent(win_list, COMPONENT_Z, *wid);
+        assert(oz->z > z->z);
         if(win_overlap(win_list, overlap, *wid))
             vector_putBack(overlaps, wid);
         wid = vector_getNext(windows, &index);
