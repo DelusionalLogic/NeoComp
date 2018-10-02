@@ -39,6 +39,7 @@
 
 #include "profiler/zone.h"
 #include "profiler/render.h"
+#include "profiler/dump_events.h"
 
 
 // === Global constants ===
@@ -46,7 +47,20 @@
 DECLARE_ZONE(global);
 DECLARE_ZONE(input);
 DECLARE_ZONE(preprocess);
+
 DECLARE_ZONE(update);
+DECLARE_ZONE(update_z);
+DECLARE_ZONE(update_wintype);
+DECLARE_ZONE(update_shadow_blacklist);
+DECLARE_ZONE(update_fade_blacklist);
+DECLARE_ZONE(update_invert_list);
+DECLARE_ZONE(update_blur_blacklist);
+DECLARE_ZONE(update_paint_blacklist);
+DECLARE_ZONE(input_react);
+DECLARE_ZONE(make_cutout);
+DECLARE_ZONE(remove_input);
+DECLARE_ZONE(prop_blur_damage);
+
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
@@ -4738,6 +4752,9 @@ static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
  * @param ps current session
  */
 void session_run(session_t *ps) {
+    struct ProfilerWriterSession profSess;
+    profilerWriter_init(&profSess);
+
     win *t;
 
     t = paint_preprocess(ps);
@@ -4802,8 +4819,11 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update);
 
+        zone_enter(&ZONE_update_z);
         assign_depth(&ps->win_list, &ps->order);
+        zone_leave(&ZONE_update_z);
 
+        zone_enter(&ZONE_update_wintype);
         // Process all the events added by X
         fill_wintype_changes(&ps->win_list, ps);
 
@@ -4814,9 +4834,11 @@ void session_run(session_t *ps) {
 
             w->window_type = wintypeChanged->newType;
         }
+        zone_leave(&ZONE_update_wintype);
 
 
         if (ps->o.shadow_blacklist) {
+            zone_enter(&ZONE_update_shadow_blacklist);
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4826,9 +4848,11 @@ void session_run(session_t *ps) {
                             && !(ps->o.respect_prop_shadow));
                 }
             }
+            zone_leave(&ZONE_update_shadow_blacklist);
         }
 
         if (ps->o.fade_blacklist) {
+            zone_enter(&ZONE_update_fade_blacklist);
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4843,9 +4867,11 @@ void session_run(session_t *ps) {
                     }
                 }
             }
+            zone_leave(&ZONE_update_fade_blacklist);
         }
 
         if (ps->o.invert_color_list) {
+            zone_enter(&ZONE_update_invert_list);
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4861,9 +4887,11 @@ void session_run(session_t *ps) {
                     win_set_invert_color(ps, w, invert_color_new);
                 }
             }
+            zone_leave(&ZONE_update_invert_list);
         }
 
         if (ps->o.blur_background_blacklist) {
+            zone_enter(&ZONE_update_blur_blacklist);
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4874,9 +4902,11 @@ void session_run(session_t *ps) {
                     win_set_blur_background(ps, w, blur_background_new);
                 }
             }
+            zone_leave(&ZONE_update_blur_blacklist);
         }
 
         if (ps->o.paint_blacklist) {
+            zone_enter(&ZONE_update_paint_blacklist);
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4884,14 +4914,18 @@ void session_run(session_t *ps) {
                     w->paint_excluded = win_match(ps, w, ps->o.paint_blacklist);
                 }
             }
+            zone_leave(&ZONE_update_paint_blacklist);
         }
 
+        zone_enter(&ZONE_input_react);
         commit_map(&ps->win_list, &ps->atoms, &ps->psglx->xcontext);
         commit_unmap(&ps->win_list, &ps->psglx->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
         commit_move(&ps->win_list);
         commit_resize(&ps->win_list);
+        zone_leave(&ZONE_input_react);
 
+        zone_enter(&ZONE_make_cutout);
         {
             XserverRegion newShape = XFixesCreateRegion(ps->dpy, NULL, 0);
             for_components(it, em,
@@ -4911,7 +4945,9 @@ void session_run(session_t *ps) {
             XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
             XFixesDestroyRegion(ps->psglx->xcontext.display, newShape);
         }
+        zone_leave(&ZONE_make_cutout);
 
+        zone_enter(&ZONE_remove_input);
         // Remove all the X events
         // @CLEANUP: Should maybe be done last in the frame
         swiss_resetComponent(&ps->win_list, COMPONENT_MAP);
@@ -4922,7 +4958,9 @@ void session_run(session_t *ps) {
             COMPONENT_RESIZE,
             (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
         );
+        zone_leave(&ZONE_remove_input);
 
+        zone_enter(&ZONE_prop_blur_damage);
         // Damage the blur of windows on top of damaged windows
         for_components(it, &ps->win_list,
             COMPONENT_CONTENTS_DAMAGED, CQ_END) {
@@ -4940,6 +4978,7 @@ void session_run(session_t *ps) {
                 other_id = vector_getNext(&ps->order, &order_slot);
             }
         }
+        zone_leave(&ZONE_prop_blur_damage);
 
         zone_enter(&ZONE_update_textures);
         update_window_textures(&ps->win_list, &ps->psglx->xcontext, &ps->psglx->blur.fbo);
@@ -5044,6 +5083,7 @@ void session_run(session_t *ps) {
 
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark) {
+                profilerWriter_kill(&profSess);
                 session_destroy(ps);
                 exit(0);
             }
@@ -5058,7 +5098,8 @@ void session_run(session_t *ps) {
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef DEBUG_PROFILE
-        profiler_render(event_stream);
+        /* profiler_render(event_stream); */
+        profilerWriter_emitFrame(&profSess, event_stream);
 #endif
 
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));
@@ -5066,4 +5107,6 @@ void session_run(session_t *ps) {
 
         lastTime = currentTime;
     }
+
+    profilerWriter_kill(&profSess);
 }

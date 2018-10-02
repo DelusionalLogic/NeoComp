@@ -7,11 +7,13 @@
 struct ZoneEventStream stream;
 size_t event_cursor;
 
+#define CLOCK_TYPE CLOCK_MONOTONIC
+
 static void zone_event(struct ProgramZone* zone, enum ZoneEventType type, struct ZoneEvent* event) {
     event->zone = zone;
     event->type = type;
 
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &event->time) != 0) {
+    if(clock_gettime(CLOCK_TYPE, &event->time) != 0) {
         printf("Failed setting time for the event %s\n", zone->name);
         return;
     }
@@ -48,7 +50,7 @@ void zone_leave_raw(struct ProgramZone* zone, char* location) {
 }
 
 void zone_start(struct ProgramZone* zone) {
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stream.start) != 0) {
+    if(clock_gettime(CLOCK_TYPE, &stream.start) != 0) {
         printf("Failed setting start for the stream %s\n", zone->name);
         return;
     }
@@ -59,7 +61,7 @@ struct ZoneEventStream* zone_package(struct ProgramZone* zone) {
     stream.events_num = event_cursor;
     event_cursor = 0;
 
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stream.end) != 0) {
+    if(clock_gettime(CLOCK_TYPE, &stream.end) != 0) {
         printf("Failed setting end for the stream %s\n", zone->name);
         return NULL;
     }

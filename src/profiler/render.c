@@ -13,7 +13,7 @@
 #define NS_PER_MS  1000000L
 #define NS_PER_SEC 1000000000L
 #define US_PER_SEC 1000000L
-#define MS_PER_SEC 1000
+#define MS_PER_SEC 1000L
 
 struct Block {
     size_t enter_event;
