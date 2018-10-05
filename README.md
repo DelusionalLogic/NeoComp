@@ -9,7 +9,7 @@ quickly as possible.
 It's currently very much in development (Compton is extremely crufty and
 rigid), so I don't expect it to be stable.
 
-### How to build
+## Building
 
 To build, make sure you have the dependencies (yeah I know) then run:
 
@@ -24,9 +24,9 @@ $ make install
 
 ## Usage
 
-Please refer to the Asciidoc man pages (`man/compton.1.asciidoc` & `man/compton-trans.1.asciidoc`) for more details and examples.
-
-Note a sample configuration file `compton.sample.conf` is included in the repository. (The sample configuration is in need of updating).
+The man pages are completely out of date, but still your best bet. Some
+options from the man pages have been removed, and some added. The code
+is your best bet.
 
 ## License
 

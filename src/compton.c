@@ -68,6 +68,7 @@ DECLARE_ZONE(update_shadow);
 DECLARE_ZONE(fetch_prop);
 
 DECLARE_ZONE(update_fade);
+
 DECLARE_ZONE(update_textures);
 
 // From the header {{{
@@ -1010,7 +1011,7 @@ add_win(session_t *ps, Window id) {
 
   {
       struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
-      fade_init(&fo->fade, 100.0);
+      fade_init(&fo->fade, 0.0);
   }
 
   {
