@@ -36,6 +36,7 @@ struct WindowDrawable {
 
 struct FocusChangedComponent {
     double newOpacity;
+    double newDim;
 };
 
 struct WintypeChangedComponent {
@@ -123,8 +124,13 @@ struct FadesOpacityComponent {
     struct Fading fade;
 };
 
+struct FadesDimComponent {
+	struct Fading fade;
+};
+
 struct OpacityComponent {
     double opacity;
+	double dim;
 };
 
 extern const char* const StateNames[];
