@@ -3700,6 +3700,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_DIM, sizeof(struct FadesDimComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TINT, sizeof(struct TintComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct OpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
@@ -4066,6 +4067,7 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
         // Try obeying window type opacity
         if(ps->o.wintype_opacity[w->window_type] != -1.0) {
             f->newOpacity = ps->o.wintype_opacity[w->window_type];
+            f->newDim = 100.0;
             continue;
         }
 
@@ -4073,21 +4075,25 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
             void* val;
             if (c2_matchd(ps, w, ps->o.opacity_rules, NULL, &val)) {
                 f->newOpacity = (double)(long)val;
+                f->newDim = 100.0;
                 continue;
             }
         }
 
         f->newOpacity = 100.0;
+        f->newDim = 100.0;
 
         // Respect inactive_opacity in some cases
         if (ps->o.inactive_opacity && (w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE)) {
             f->newOpacity = ps->o.inactive_opacity;
+            f->newDim = 10.0;
             continue;
         }
 
         // Respect active_opacity only when the window is physically focused
         if (ps->o.active_opacity && ps->active_win == w) {
             f->newOpacity = ps->o.active_opacity;
+            f->newDim = 100.0;
         }
     }
 }
@@ -4095,19 +4101,38 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
 // @CLEANUP: This shouldn't be here
 bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     bool skip_poll = false;
+
+    Vector fadeable;
+    vector_init(&fadeable, sizeof(struct Fading*), 64);
+
+    // Collect everything fadeable
     for_components(it, em,
         COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        struct Fading* fade = &fo->fade;
+        vector_putBack(&fadeable, &fade);
+    }
+    for_components(it, em,
+        COMPONENT_FADES_DIM, CQ_END) {
+        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+        struct Fading* fade = &fo->fade;
+        vector_putBack(&fadeable, &fade);
+    }
 
-        fo->fade.value = fo->fade.keyframes[fo->fade.head].target;
+    // Actually fade them
+    size_t index = 0;
+    struct Fading** fade_ptr = vector_getFirst(&fadeable, &index);
+    while(fade_ptr != NULL) {
+        struct Fading* fade = *fade_ptr;
+        fade->value = fade->keyframes[fade->head].target;
 
-        if(!fade_done(&fo->fade)) {
+        if(!fade_done(fade)) {
             // @CLEANUP: Maybe a while loop?
-            for(size_t i = fo->fade.head; i != fo->fade.tail; ) {
+            for(size_t i = fade->head; i != fade->tail; ) {
                 // Increment before the body to skip head and process tail
                 i = (i+1) % FADE_KEYFRAMES;
 
-                struct FadeKeyframe* keyframe = &fo->fade.keyframes[i];
+                struct FadeKeyframe* keyframe = &fade->keyframes[i];
                 if(!keyframe->ignore){
                     keyframe->time += dt;
                 } else {
@@ -4119,19 +4144,25 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
                     // We're done, clean out the time and set this as the head
                     keyframe->time = 0.0;
                     keyframe->duration = -1;
-                    fo->fade.head = i;
+                    fade->head = i;
 
                     // Force the value. We are still going to blend it with stuff
                     // on top of this
-                    fo->fade.value = keyframe->target;
+                    fade->value = keyframe->target;
                 } else {
                     double t = bezier_getSplineValue(curve, x);
-                    fo->fade.value = lerp(fo->fade.value, keyframe->target, t);
+                    fade->value = lerp(fade->value, keyframe->target, t);
                 }
             }
+
+            // We had a least one fade that did something
             skip_poll = true;
         }
+
+        fade_ptr = vector_getNext(&fadeable, &index);
     }
+
+    vector_kill(&fadeable);
     return skip_poll;
 }
 
@@ -4251,6 +4282,13 @@ static void damage_blur_over_fade(Swiss* em) {
 
     for_components(it, em, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        if(!fade_done(&fo->fade)) {
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
+    for_components(it, em, COMPONENT_FADES_DIM, CQ_END) {
+        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
         if(!fade_done(&fo->fade)) {
             uniqueChanged += changes[it.id] ? 0 : 1;
             changes[it.id] = true;
@@ -4472,6 +4510,12 @@ static void start_focus_fade(Swiss* em, double fade_time) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
         fade_keyframe(&fo->fade, f->newOpacity, fade_time);
+    }
+    for_components(it, em,
+            COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_DIM, CQ_END) {
+        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+        fade_keyframe(&fo->fade, f->newDim, fade_time);
     }
 }
 
