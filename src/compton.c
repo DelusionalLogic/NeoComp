@@ -4243,25 +4243,61 @@ static void damage_blur_over_fade(Swiss* em) {
     }
     vector_qsort(&order, window_zcmp, em);
 
-    for_components(it, em,
-            COMPONENT_FADES_OPACITY, CQ_END) {
+    // @HACK @IMPROVEMENT: This should rather be done with a (dynamically
+    // sized) bitfield. We can extract it from the swiss datastructure, which
+    // uses a bunch of bitfields. - Jesper Jensen 06/10-2018
+    bool* changes = calloc(sizeof(bool) * em->capacity, 1);
+    size_t uniqueChanged = 0;
+
+    for_components(it, em, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-
         if(!fade_done(&fo->fade)) {
-            // If the fade isn't done, then damage the blur of everyone above
-            size_t order_slot = vector_find_uint64(&order, it.id);
-            assert(order_slot >= 0);
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
 
-            win_id* other_id = vector_getPrev(&order, &order_slot);
+    struct ChangeRecord {
+        size_t order_slot;
+        size_t id;
+    };
+
+    // @HACK AD-HOC struct of 2 size_t
+    struct ChangeRecord* order_slots = malloc(sizeof(struct ChangeRecord) * uniqueChanged);
+    {
+        size_t nextSlot = 0;
+        for(size_t i = 0; i < em->capacity; i++) {
+            if(!changes[i])
+                continue;
+
+            order_slots[nextSlot] = (struct ChangeRecord){
+                .order_slot = vector_find_uint64(&order, i),
+                .id = i,
+            };
+            nextSlot++;
+        }
+        assert(nextSlot == uniqueChanged);
+    }
+    free(changes);
+
+    {
+        for(size_t i = 0; i < uniqueChanged; i++) {
+            struct ChangeRecord* change = &order_slots[i];
+            assert(change->order_slot >= 0);
+
+            size_t index = change->order_slot;
+            win_id* other_id = vector_getPrev(&order, &index);
+            // order_slot is changed from here because getPrev is an iterator
             while(other_id != NULL) {
-                if(win_overlap(em, it.id, *other_id)) {
+                if(win_overlap(em, change->id, *other_id)) {
                     swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
                 }
 
-                other_id = vector_getPrev(&order, &order_slot);
+                other_id = vector_getPrev(&order, &index);
             }
         }
     }
+    free(order_slots);
 
     vector_kill(&order);
 }
