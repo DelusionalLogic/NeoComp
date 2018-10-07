@@ -2827,6 +2827,9 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
       &ps->o.inactive_opacity_override);
   // --inactive-dim
   config_lookup_float(&cfg, "inactive-dim", &ps->o.inactive_dim);
+  // --dim-fade-time
+  if (config_lookup_float(&cfg, "dim-fade-time", &dval))
+      ps->o.dim_fade_time = dval;
   // --mark-wmwin-focused
   lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
   // --xinerama-shadow-crop
@@ -2918,6 +2921,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "inactive-dim", required_argument, NULL, 261 },
     { "mark-wmwin-focused", no_argument, NULL, 262 },
     { "shadow-exclude", required_argument, NULL, 263 },
+    { "dim-fade-time", required_argument, NULL, 264 },
     { "no-fading-openclose", no_argument, NULL, 265 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
     { "detect-rounded-corners", no_argument, NULL, 267 },
@@ -3076,6 +3080,10 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 263:
         // --shadow-exclude
         condlst_add(ps, &ps->o.shadow_blacklist, optarg);
+        break;
+      case 264:
+        // --inactive-dim
+        ps->o.dim_fade_time = atof(optarg);
         break;
       P_CASEBOOL(265, no_fading_openclose);
       P_CASEBOOL(268, detect_client_opacity);
@@ -3635,6 +3643,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .blur_background_blacklist = NULL,
       .inactive_dim = 100.0,
       .inactive_dim_fixed = false,
+      .dim_fade_time = 1000.0,
       .invert_color_list = NULL,
       .opacity_rules = NULL,
 
@@ -4513,7 +4522,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 }
 
-static void start_focus_fade(Swiss* em, double fade_time) {
+static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
@@ -4524,7 +4533,7 @@ static void start_focus_fade(Swiss* em, double fade_time) {
             COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_DIM, CQ_END) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
         struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
-        fade_keyframe(&fo->fade, f->newDim, fade_time);
+        fade_keyframe(&fo->fade, f->newDim, dim_fade_time);
     }
 }
 
@@ -5076,7 +5085,7 @@ void session_run(session_t *ps) {
 
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);
-        start_focus_fade(&ps->win_list, ps->o.opacity_fade_time);
+        start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.dim_fade_time);
         swiss_resetComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE);
 
         zone_enter(&ZONE_update_fade);
