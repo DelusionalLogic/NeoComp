@@ -90,10 +90,10 @@ struct ZComponent {
 
 /// A structure representing margins around a rectangle.
 typedef struct {
-  int top;
-  int left;
-  int bottom;
-  int right;
+    int top;
+    int left;
+    int bottom;
+    int right;
 } margin_t;
 
 #define FADE_KEYFRAMES 10
@@ -125,12 +125,15 @@ struct FadesOpacityComponent {
 };
 
 struct FadesDimComponent {
-	struct Fading fade;
+    struct Fading fade;
 };
 
 struct OpacityComponent {
     double opacity;
-	double dim;
+};
+
+struct DimComponent {
+    double dim;
 };
 
 extern const char* const StateNames[];
