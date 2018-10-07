@@ -174,8 +174,9 @@ typedef struct _options_t {
   bool blur_background_fixed;
   /// Background blur blacklist. A linked list of conditions.
   c2_lptr_t *blur_background_blacklist;
-  /// How much to dim an inactive window. 0.0 - 1.0, 0 to disable.
+  /// How much to dim an inactive window. 0.0 - 100.0.
   double inactive_dim;
+  double dim_fade_time;
   /// Whether to use fixed inactive dim opacity, instead of deciding
   /// based on window opacity.
   bool inactive_dim_fixed;
