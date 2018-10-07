@@ -166,6 +166,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         // Content
         if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+            struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
             struct shader_program* global_program = assets_load("global.shader");
             if(global_program->shader_type_info != &global_info) {
                 printf_errf("Shader was not a global shader");
@@ -177,12 +178,13 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             shader_set_future_uniform_sampler(global_type->tex_scr, 0);
 
+            shader_set_future_uniform_bool(global_type->invert, w->invert_color);
+            shader_set_future_uniform_bool(global_type->flip, textured->texture.flipped);
+            shader_set_future_uniform_float(global_type->opacity, (float)(opacity->opacity / 100.0));
+            shader_set_future_uniform_float(global_type->dim, dim->dim/100.0);
+
             shader_use(global_program);
             zone_enter_extra(&ZONE_paint_window, "%s", w->name);
-
-            shader_set_uniform_bool(global_type->invert, w->invert_color);
-            shader_set_uniform_bool(global_type->flip, textured->texture.flipped);
-            shader_set_uniform_float(global_type->opacity, (float)(opacity->opacity / 100.0));
 
             // Bind texture
             texture_bind(&textured->texture, GL_TEXTURE0);
@@ -286,12 +288,14 @@ void windowlist_draw(session_t* ps, Vector* order) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
+        struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
 
         zone_enter_extra(&ZONE_paint_window, "%s", w->name);
 
         shader_set_uniform_bool(global_type->invert, w->invert_color);
         shader_set_uniform_bool(global_type->flip, textured->texture.flipped);
+        shader_set_uniform_float(global_type->dim, dim->dim/100.0);
 
         // Bind texture
         texture_bind(&textured->texture, GL_TEXTURE0);

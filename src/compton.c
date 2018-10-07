@@ -1015,6 +1015,12 @@ add_win(session_t *ps, Window id) {
   }
 
   {
+      struct FadesDimComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_DIM, slot);
+      fade_init(&fo->fade, 0.0);
+      swiss_addComponent(&ps->win_list, COMPONENT_DIM, slot);
+  }
+
+  {
       struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
       window->id = id;
   }
@@ -2207,7 +2213,7 @@ usage(int ret) {
     "  Inactive opacity set by -i overrides value of _NET_WM_OPACITY.\n"
     "\n"
     "--inactive-dim value\n"
-    "  Dim inactive windows. (0.0 - 1.0, defaults to 0)\n"
+    "  Dim inactive windows. (0.0 - 1.0)\n"
     "\n"
     "--active-opacity opacity\n"
     "  Default opacity for active windows. (0.0 - 1.0)\n"
@@ -2258,9 +2264,6 @@ usage(int ret) {
     "--focus-exclude condition\n"
     "  Specify a list of conditions of windows that should always be\n"
     "  considered focused.\n"
-    "\n"
-    "--inactive-dim-fixed\n"
-    "  Use fixed inactive dim value.\n"
     "\n"
     "--blur-background\n"
     "  Blur background of semi-transparent / ARGB windows. Bad in\n"
@@ -2835,8 +2838,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --vsync
   if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
     exit(1);
-  // --inactive-dim-fixed
-  lcfg_lookup_bool(&cfg, "inactive-dim-fixed", &ps->o.inactive_dim_fixed);
   // --shadow-exclude
   parse_cfg_condlst(ps, &cfg, &ps->o.shadow_blacklist, "shadow-exclude");
   // --fade-exclude
@@ -2927,7 +2928,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "use-ewmh-active-win", no_argument, NULL, 276 },
     { "respect-prop-shadow", no_argument, NULL, 277 },
     { "focus-exclude", required_argument, NULL, 279 },
-    { "inactive-dim-fixed", no_argument, NULL, 280 },
     { "blur-background", no_argument, NULL, 283 },
     { "blur-background-fixed", no_argument, NULL, 285 },
     { "dbus", no_argument, NULL, 286 },
@@ -3089,7 +3089,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --focus-exclude
         condlst_add(ps, &ps->o.focus_blacklist, optarg);
         break;
-      P_CASEBOOL(280, inactive_dim_fixed);
       P_CASEBOOL(283, blur_background);
       P_CASEBOOL(285, blur_background_fixed);
       P_CASEBOOL(286, dbus);
@@ -3154,7 +3153,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   free(lc_numeric_old);
 
   // Range checking and option assignments
-  ps->o.inactive_dim = normalize_d(ps->o.inactive_dim);
+  ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
   if (shadow_enable)
     wintype_arr_enable(ps->o.wintype_shadow);
@@ -3634,7 +3633,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .blur_background = false,
       .blur_background_fixed = false,
       .blur_background_blacklist = NULL,
-      .inactive_dim = 0.0,
+      .inactive_dim = 100.0,
       .inactive_dim_fixed = false,
       .invert_color_list = NULL,
       .opacity_rules = NULL,
@@ -3699,10 +3698,14 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_TRACKS_WINDOW, sizeof(struct TracksWindowComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
-  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
-  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_DIM, sizeof(struct FadesDimComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TINT, sizeof(struct TintComponent));
+
   swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct OpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+
+  swiss_setComponentSize(&ps->win_list, COMPONENT_DIM, sizeof(struct DimComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_DIM, sizeof(struct FadesDimComponent));
+
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHADOW, sizeof(struct glx_shadow_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHADOW);
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
@@ -4084,9 +4087,9 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
         f->newDim = 100.0;
 
         // Respect inactive_opacity in some cases
-        if (ps->o.inactive_opacity && (w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE)) {
+        if (w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE) {
             f->newOpacity = ps->o.inactive_opacity;
-            f->newDim = 10.0;
+            f->newDim = ps->o.inactive_dim;
             continue;
         }
 
@@ -4437,8 +4440,8 @@ static void remove_texture_invis_windows(Swiss* em) {
 static void syncronize_fade_opacity(Swiss* em) {
     for_components(it, em,
             COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        if(fo->fade.value != 1.0) {
+    struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+    if(fo->fade.value < 100.0) {
             swiss_ensureComponent(em, COMPONENT_OPACITY, it.id);
         }
     }
@@ -4452,9 +4455,17 @@ static void syncronize_fade_opacity(Swiss* em) {
     for_components(it, em,
             COMPONENT_OPACITY, CQ_END) {
         struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
-        if(opacity->opacity == 100.0) {
+        if(opacity->opacity >= 100.0) {
             swiss_removeComponent(em, COMPONENT_OPACITY, it.id);
         }
+    }
+
+    for_components(it, em,
+            COMPONENT_DIM, COMPONENT_FADES_DIM, CQ_END) {
+        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+        struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
+
+        dim->dim = fo->fade.value;
     }
 }
 

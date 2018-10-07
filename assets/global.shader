@@ -11,6 +11,6 @@ uniform flip bool false
 uniform tex_scr sampler
 
 uniform invert bool false
-uniform dim float 0.0
+uniform dim float 1.0
 uniform opacity float 1.0
 uniform uvscale vec2 1.0,1.0
