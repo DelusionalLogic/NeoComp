@@ -390,6 +390,7 @@ static struct TestResult swiss__grow__allocating() {
 
 static struct TestResult swiss__shrink__removing_item() {
     Swiss swiss;
+    swiss_enableAllAutoRemove(&swiss);
     swiss_clearComponentSizes(&swiss);
     swiss_init(&swiss, 1);
     win_id id = swiss_allocate(&swiss);
