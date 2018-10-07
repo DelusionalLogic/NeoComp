@@ -79,7 +79,7 @@ endif
 
 # ==== D-Bus ====
 # Enables support for --dbus (D-Bus remote control)
-ifeq "$(NO_DBUS)" ""
+ifeq "$(NO_DBUS)" "y"
   CFG += -DCONFIG_DBUS
   PACKAGES += dbus-1
   SOURCES += dbus.c
