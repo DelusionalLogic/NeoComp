@@ -4300,7 +4300,6 @@ static void damage_blur_over_fade(Swiss* em) {
         size_t id;
     };
 
-    // @HACK AD-HOC struct of 2 size_t
     struct ChangeRecord* order_slots = malloc(sizeof(struct ChangeRecord) * uniqueChanged);
     {
         size_t nextSlot = 0;
@@ -4325,7 +4324,6 @@ static void damage_blur_over_fade(Swiss* em) {
 
             size_t index = change->order_slot;
             win_id* other_id = vector_getPrev(&order, &index);
-            // order_slot is changed from here because getPrev is an iterator
             while(other_id != NULL) {
                 if(win_overlap(em, change->id, *other_id)) {
                     swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
