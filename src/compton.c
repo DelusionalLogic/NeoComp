@@ -503,10 +503,13 @@ void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vecto
 
         vec2_div(&mrect->pos, extents);
         vec2_div(&mrect->size, extents);
+
+        assert(mrect->size.x <= 1.0);
+        assert(mrect->size.y <= 1.0);
     }
 
 }
-
+/*
 static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     if(w->face != NULL)
@@ -542,6 +545,7 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
 
     w->face = face;
 }
+*/
 
 /**
  * Add a pattern to a condition linked list.
@@ -964,7 +968,6 @@ add_win(session_t *ps, Window id) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
-    .face = NULL,
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
     .damage = None,
@@ -1025,6 +1028,12 @@ add_win(session_t *ps, Window id) {
       window->id = id;
   }
 
+  {
+      struct ShapedComponent* shaped = swiss_addComponent(&ps->win_list, COMPONENT_SHAPED, slot);
+      shaped->face = NULL;
+  }
+  swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
+
   swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
@@ -1071,8 +1080,6 @@ add_win(session_t *ps, Window id) {
       attribs.width + new->border_size * 2,
       attribs.height + new->border_size * 2,
   }};
-
-  fetch_shaped_window_face(ps, slot);
 
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
   z->z = 0;
@@ -2029,7 +2036,7 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    fetch_shaped_window_face(ps, wid);
+    swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
 
@@ -3720,6 +3727,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_BLUR);
   swiss_setComponentSize(&ps->win_list, COMPONENT_WINTYPE_CHANGE, sizeof(struct WintypeChangedComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPED, sizeof(struct ShapedComponent));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPED);
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -3953,11 +3962,6 @@ void session_destroy(session_t *ps) {
   for_components(it, &ps->win_list,
       COMPONENT_MUD, CQ_END) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-
-      if(w->face != NULL) {
-          face_unload_file(w->face);
-          w->face = NULL;
-      }
 
       if (win_mapped(w) && w->state != STATE_DESTROYING)
           win_ev_stop(ps, w);
@@ -4217,7 +4221,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     glXWaitX();
 
     while(!it.done) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
 
@@ -4254,7 +4258,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
 
-        draw_rect(w->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
+        draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
 
         view = old_view;
 
@@ -4539,6 +4543,11 @@ static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) 
 
 static void commit_resize(Swiss* em) {
     for_components(it, em,
+            COMPONENT_RESIZE, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
+    }
+
+    for_components(it, em,
             COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
         struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
@@ -4574,6 +4583,57 @@ static void commit_resize(Swiss* em) {
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
         physical->size = resize->newSize;
+    }
+}
+
+static void commit_reshape(Swiss* em, struct X11Context* context) {
+    for_components(it, em,
+            COMPONENT_PHYSICAL, COMPONENT_TRACKS_WINDOW, COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
+        struct TracksWindowComponent* window = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+
+        // @HACK @MUD: The first half of this would be better placed in the X11
+        // input processor.
+
+        if(shaped->face != NULL)
+            face_unload_file(shaped->face);
+
+        XWindowAttributes attribs;
+        if (!XGetWindowAttributes(context->display, window->id, &attribs)) {
+            printf_errf("Failed getting window attributes while mapping");
+            return;
+        }
+
+        Vector2 extents = {{attribs.width + attribs.border_width * 2, attribs.height + attribs.border_width * 2}};
+        // X has some insane notion that borders aren't part of the window.
+        // Therefore a window with a border will have a bounding shape with
+        // a negative upper left corner. This offset corrects for that, so we don't
+        // have to deal with it downstream
+        Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
+
+        XserverRegion window_region = XFixesCreateRegionFromWindow(context->display, window->id, ShapeBounding);
+
+        XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
+        XserverRegion default_clip_region = XFixesCreateRegion(context->display, &default_clip, 1);
+        XFixesIntersectRegion(context->display, window_region, window_region, default_clip_region);
+
+        int rect_count;
+        XRectangle* rects = XFixesFetchRegion(context->display, window_region, &rect_count);
+
+        XFixesDestroyRegion(context->display, window_region);
+
+        Vector mrects;
+        vector_init(&mrects, sizeof(struct Rect), rect_count);
+
+        convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &mrects);
+
+        struct face* face = malloc(sizeof(struct face));
+        // Triangulate the rectangles into a triangle vertex stream
+        face_init_rects(face, &mrects);
+        vector_kill(&mrects);
+        face_upload(face);
+
+        shaped->face = face;
     }
 }
 
@@ -4741,7 +4801,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, .2}};
+            tint->color = (Vector4){{1, 1, 1, .0}};
         }
     }
 
@@ -5022,6 +5082,7 @@ void session_run(session_t *ps) {
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
         commit_move(&ps->win_list);
         commit_resize(&ps->win_list);
+        commit_reshape(&ps->win_list, &ps->psglx->xcontext);
         zone_leave(&ZONE_input_react);
 
         zone_enter(&ZONE_make_cutout);
@@ -5057,6 +5118,7 @@ void session_run(session_t *ps) {
             COMPONENT_RESIZE,
             (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
         );
+        swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
         zone_leave(&ZONE_remove_input);
 
         zone_enter(&ZONE_prop_blur_damage);
@@ -5157,6 +5219,8 @@ void session_run(session_t *ps) {
             paint_root(ps);
 
             windowlist_drawTransparent(ps, &transparent);
+
+            /* windowlist_drawDebug(&ps->win_list, ps); */
 
             vector_kill(&opaque_shadow);
             vector_kill(&transparent);

@@ -94,11 +94,12 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
     for_components(it, &ps->win_list,
-        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW, CQ_END) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
+        COMPONENT_SHAPED, CQ_END) {
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
 
         framebuffer_resetTarget(&framebuffer);
         framebuffer_targetTexture(&framebuffer, &shadow->texture);
@@ -129,7 +130,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         shader_use(shadow_program);
 
         Vector3 pos = vec3_from_vec2(&shadow->border, 0.0);
-        draw_rect(w->face, shadow_type->mvp, pos, physical->size);
+        draw_rect(shaped->face, shadow_type->mvp, pos, physical->size);
 
         view = old_view;
 
@@ -161,9 +162,10 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     glEnable(GL_STENCIL_TEST);
 
     for_components(it, &ps->win_list,
-        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW, CQ_END) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
+        COMPONENT_SHAPED, CQ_END) {
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
 
         framebuffer_resetTarget(&framebuffer);
         framebuffer_targetTexture(&framebuffer, &shadow->effect);
@@ -179,7 +181,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        draw_tex(w->face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
+        draw_tex(shaped->face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
 
         view = old_view;
     }
