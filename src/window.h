@@ -136,6 +136,14 @@ struct DimComponent {
     double dim;
 };
 
+struct ShapedComponent {
+    struct face* face;
+};
+
+struct ShapeChangedEvent {
+    Vector rects;
+};
+
 extern const char* const StateNames[];
 
 enum WindowState {
@@ -154,7 +162,6 @@ enum WindowState {
 typedef struct _win {
     float border_size;
     bool override_redirect;
-  struct face* face;
 
   enum WindowState state;
 

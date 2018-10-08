@@ -15,6 +15,8 @@ void main() {
     float luma = contrib.r + contrib.g + contrib.b;
     gl_FragColor.rgb += (1.0 - dim) * (vec3(luma) - gl_FragColor.rgb);
 
+    gl_FragColor.rgb *= .2 * dim + .8;
+
     if(invert) {
         gl_FragColor.rgb = vec3(gl_FragColor.a) - gl_FragColor.rgb;
     }

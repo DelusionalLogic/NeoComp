@@ -36,7 +36,7 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
         size_t index;
         win_id* w_id = vector_getFirst(opaque, &index);
         while(w_id != NULL) {
-            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+            struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
             struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
             struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
 
@@ -46,7 +46,7 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
                 struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
                 Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
 
-                draw_tex(w->face, &blur->texture[0], &dglPos, &physical->size);
+                draw_tex(shaped->face, &blur->texture[0], &dglPos, &physical->size);
             }
 
             w_id = vector_getNext(opaque, &index);
@@ -71,6 +71,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
@@ -98,7 +99,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             /* Vector4 color = {{opacity->opacity/100, opacity->opacity/100, opacity->opacity/100, opacity->opacity/100}}; */
             /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
-            draw_rect(w->face, passthough_type->mvp, dglPos, physical->size);
+            draw_rect(shaped->face, passthough_type->mvp, dglPos, physical->size);
         }
 
         // Tint
@@ -126,7 +127,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
-                draw_rect(w->face, shader_type->mvp, winpos, physical->size);
+                draw_rect(shaped->face, shader_type->mvp, winpos, physical->size);
             }
         }
 
@@ -158,7 +159,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
                 Vector2 rsize = shadow->texture.size;
 
-                draw_rect(w->face, shader_type->mvp, tdrpos, rsize);
+                draw_rect(shaped->face, shader_type->mvp, tdrpos, rsize);
             }
         }
 
@@ -195,7 +196,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
                 /* Vector4 color = {{0.0, 1.0, 0.4, opacity->opacity/100}}; */
                 /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
-                draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
+                draw_rect(shaped->face, global_type->mvp, winpos, textured->texture.size);
             }
 
             zone_leave(&ZONE_paint_window);
@@ -234,7 +235,7 @@ void windowlist_drawTint(session_t* ps) {
 
     for_components(it, &ps->win_list,
             COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z, CQ_END) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
         struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
@@ -248,7 +249,7 @@ void windowlist_drawTint(session_t* ps) {
 
             /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
             /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
-            draw_rect(w->face, shader_type->mvp, winpos, physical->size);
+            draw_rect(shaped->face, shader_type->mvp, winpos, physical->size);
         }
     }
 
@@ -287,6 +288,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
@@ -306,7 +308,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
 
             /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
             /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
-            draw_rect(w->face, global_type->mvp, winpos, textured->texture.size);
+            draw_rect(shaped->face, global_type->mvp, winpos, textured->texture.size);
         }
 
         zone_leave(&ZONE_paint_window);
@@ -532,4 +534,55 @@ void windowlist_updateBlur(session_t* ps) {
     vector_kill(&to_blur);
 
     swiss_resetComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED);
+}
+
+void windowlist_drawDebug(Swiss* em, session_t* ps) {
+    Vector2 pen;
+    Vector2 scale = {{1, 1}};
+
+    for_components(it, em,
+            COMPONENT_PHYSICAL, COMPONENT_TEXTURED, COMPONENT_BLUR, CQ_END) {
+        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+
+        pen = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+
+        {
+            char* text;
+            asprintf(&text, "Size : %fx%f", physical->size.x, physical->size.y);
+
+            Vector2 size = {{0}};
+            text_size(&debug_font, text, &scale, &size);
+            pen.y += size.y;
+
+            text_draw(&debug_font, text, &pen, &scale);
+
+            free(text);
+        }
+        {
+            char* text;
+            asprintf(&text, "Texture Size : %fx%f", textured->texture.size.x, textured->texture.size.y);
+
+            Vector2 size = {{0}};
+            text_size(&debug_font, text, &scale, &size);
+            pen.y += size.y;
+
+            text_draw(&debug_font, text, &pen, &scale);
+
+            free(text);
+        }
+        {
+            char* text;
+            asprintf(&text, "Blur Size : %fx%f", blur->texture[0].size.x, blur->texture[0].size.y);
+
+            Vector2 size = {{0}};
+            text_size(&debug_font, text, &scale, &size);
+            pen.y += size.y;
+
+            text_draw(&debug_font, text, &pen, &scale);
+
+            free(text);
+        }
+    }
 }

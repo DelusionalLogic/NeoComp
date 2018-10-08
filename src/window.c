@@ -250,19 +250,6 @@ static void win_draw_debug(session_t* ps, win* w) {
         free(text);
     }
 
-    {
-        char* text;
-        asprintf(&text, "verts: %zu", w->face->vertex_buffer.size / 3);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen.y -= size.y;
-
-        text_draw(&debug_font, text, &pen, &scale);
-
-        free(text);
-    }
-
     if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, wid)) {
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, wid);
         char* text;
