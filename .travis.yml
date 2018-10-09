@@ -1,0 +1,14 @@
+sudo: required
+language: C
+
+services:
+    - docker
+
+before_install:
+    - sudo chown 1000:1000 -R .
+
+script:
+    - docker run -v "$PWD:/app" delusional/neocomp
+
+notifications:
+    email: false

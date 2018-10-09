@@ -140,7 +140,7 @@ struct ShapedComponent {
     struct face* face;
 };
 
-struct ShapeChangedEvent {
+struct ShapeDamagedEvent {
     Vector rects;
 };
 

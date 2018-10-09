@@ -3729,6 +3729,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_WINTYPE_CHANGE, sizeof(struct WintypeChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPED, sizeof(struct ShapedComponent));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPED);
+  swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPE_DAMAGED, sizeof(struct ShapeDamagedEvent));
+  swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -3992,6 +3994,18 @@ void session_destroy(session_t *ps) {
       blur_cache_delete(blur);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_BLUR);
+  for_components(it, &ps->win_list,
+      COMPONENT_SHAPED, CQ_END) {
+      struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
+      face_unload_file(shaped->face);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_SHAPED);
+  for_components(it, &ps->win_list,
+      COMPONENT_SHAPE_DAMAGED, CQ_END) {
+      struct ShapeDamagedEvent* damaged = swiss_getComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, it.id);
+      vector_kill(&damaged->rects);
+  }
+  swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
 
 #ifdef CONFIG_C2
   // Free blacklists
@@ -4355,23 +4369,41 @@ static void damage_blur_over_fade(Swiss* em) {
 }
 
 static void finish_destroyed_windows(Swiss* em, session_t* ps) {
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
+    for_components(it, em, COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-
-        if(w->state == STATE_DESTROYED) {
-            blur_cache_delete(blur);
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            shadow_cache_delete(shadow);
+            swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
         }
     }
 
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
+    for_components(it, em, COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            blur_cache_delete(blur);
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+        }
+    }
+
+    for_components(it, em, COMPONENT_MUD, COMPONENT_TINT, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+            swiss_removeComponent(em, COMPONENT_TINT, it.id);
+        }
+    }
+
+    // Destroy shaped components of destroyed windows
+    for_components(it, em,
+            COMPONENT_MUD, COMPONENT_SHAPED, CQ_END) {
+        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
 
         if(w->state == STATE_DESTROYED) {
-            shadow_cache_delete(shadow);
+            if(shaped->face != NULL)
+                face_unload_file(shaped->face);
+            swiss_removeComponent(em, COMPONENT_SHAPED, it.id);
         }
     }
 
@@ -4408,31 +4440,6 @@ static void transition_faded_entities(Swiss* em) {
 
                 // @RESEARCH: Are we leaking memory from the cache/shadow here?
             }
-        }
-    }
-
-    for_components(it, em, COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
-            shadow_cache_delete(shadow);
-            swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
-        }
-    }
-
-    for_components(it, em, COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
-            blur_cache_delete(blur);
-            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-        }
-    }
-
-    for_components(it, em, COMPONENT_MUD, COMPONENT_TINT, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
-            swiss_removeComponent(em, COMPONENT_TINT, it.id);
         }
     }
 }
@@ -4588,49 +4595,17 @@ static void commit_resize(Swiss* em) {
 
 static void commit_reshape(Swiss* em, struct X11Context* context) {
     for_components(it, em,
-            COMPONENT_PHYSICAL, COMPONENT_TRACKS_WINDOW, COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+            COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
-        struct TracksWindowComponent* window = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-
-        // @HACK @MUD: The first half of this would be better placed in the X11
-        // input processor.
+        struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
 
         if(shaped->face != NULL)
             face_unload_file(shaped->face);
 
-        XWindowAttributes attribs;
-        if (!XGetWindowAttributes(context->display, window->id, &attribs)) {
-            printf_errf("Failed getting window attributes while mapping");
-            return;
-        }
-
-        Vector2 extents = {{attribs.width + attribs.border_width * 2, attribs.height + attribs.border_width * 2}};
-        // X has some insane notion that borders aren't part of the window.
-        // Therefore a window with a border will have a bounding shape with
-        // a negative upper left corner. This offset corrects for that, so we don't
-        // have to deal with it downstream
-        Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
-
-        XserverRegion window_region = XFixesCreateRegionFromWindow(context->display, window->id, ShapeBounding);
-
-        XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
-        XserverRegion default_clip_region = XFixesCreateRegion(context->display, &default_clip, 1);
-        XFixesIntersectRegion(context->display, window_region, window_region, default_clip_region);
-
-        int rect_count;
-        XRectangle* rects = XFixesFetchRegion(context->display, window_region, &rect_count);
-
-        XFixesDestroyRegion(context->display, window_region);
-
-        Vector mrects;
-        vector_init(&mrects, sizeof(struct Rect), rect_count);
-
-        convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &mrects);
-
         struct face* face = malloc(sizeof(struct face));
         // Triangulate the rectangles into a triangle vertex stream
-        face_init_rects(face, &mrects);
-        vector_kill(&mrects);
+        face_init_rects(face, &shapeDamaged->rects);
+        vector_kill(&shapeDamaged->rects);
         face_upload(face);
 
         shaped->face = face;
@@ -4941,6 +4916,45 @@ void session_run(session_t *ps) {
 
         while (mainloop(ps));
 
+        Swiss* em = &ps->win_list;
+
+        for_components(it, em,
+                COMPONENT_PHYSICAL, COMPONENT_TRACKS_WINDOW, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+            struct TracksWindowComponent* window = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+            struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+
+            // @HACK @MUD: The first half of this would be better placed in the X11
+            // input processor.
+
+            XWindowAttributes attribs;
+            if (!XGetWindowAttributes(ps->psglx->xcontext.display, window->id, &attribs)) {
+                printf_errf("Failed getting window attributes while mapping");
+                return;
+            }
+
+            Vector2 extents = {{attribs.width + attribs.border_width * 2, attribs.height + attribs.border_width * 2}};
+            // X has some insane notion that borders aren't part of the window.
+            // Therefore a window with a border will have a bounding shape with
+            // a negative upper left corner. This offset corrects for that, so we don't
+            // have to deal with it downstream
+            Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
+
+            XserverRegion window_region = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, window->id, ShapeBounding);
+
+            XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
+            XserverRegion default_clip_region = XFixesCreateRegion(ps->psglx->xcontext.display, &default_clip, 1);
+            XFixesIntersectRegion(ps->psglx->xcontext.display, window_region, window_region, default_clip_region);
+
+            int rect_count;
+            XRectangle* rects = XFixesFetchRegion(ps->psglx->xcontext.display, window_region, &rect_count);
+
+            XFixesDestroyRegion(ps->psglx->xcontext.display, window_region);
+
+            vector_init(&shapeDamaged->rects, sizeof(struct Rect), rect_count);
+
+            convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &shapeDamaged->rects);
+        }
+
         zone_leave(&ZONE_input);
 
         // Placed after mainloop to avoid counting input time
@@ -4967,8 +4981,6 @@ void session_run(session_t *ps) {
 
         // idling will be turned off during paint_preprocess() if needed
         ps->idling = true;
-
-        Swiss* em = &ps->win_list;
 
         zone_enter(&ZONE_preprocess);
 
@@ -5118,7 +5130,13 @@ void session_run(session_t *ps) {
             COMPONENT_RESIZE,
             (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
         );
+
+        for_components(it, em, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+            struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+            vector_kill(&shapeDamaged->rects);
+        }
         swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
+
         zone_leave(&ZONE_remove_input);
 
         zone_enter(&ZONE_prop_blur_damage);
