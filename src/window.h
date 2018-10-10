@@ -176,8 +176,6 @@ typedef struct _win {
   bool need_configure;
   /// Queued <code>ConfigureNotify</code> when the window is unmapped.
   XConfigureEvent queue_configure;
-  /// Whether this window is to be painted.
-  bool to_paint;
   /// Whether the window is painting excluded.
   bool paint_excluded;
 

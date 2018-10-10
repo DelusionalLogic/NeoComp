@@ -160,7 +160,7 @@ glx_init(session_t *ps, bool need_render) {
 #endif
 
   }
-  char* version = glGetString(GL_VERSION);
+  const GLubyte* version = glGetString(GL_VERSION);
   printf("Opengl version %s\n", version);
 
   // Ensure we have a stencil buffer. X Fixes does not guarantee rectangles

@@ -108,6 +108,7 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
+#if 0
 static void win_draw_debug(session_t* ps, win* w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
@@ -298,24 +299,7 @@ static void win_draw_debug(session_t* ps, win* w) {
 
     glEnable(GL_DEPTH_TEST);
 }
-
-void win_draw(session_t* ps, win* w, float z) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-
-    Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
-
-    // Blur the backbuffer behind the window to make transparent areas blurred.
-    // @PERFORMANCE: We are also blurring things that are opaque.. Are we?
-    if (w->blur_background && (!w->solid || ps->o.blur_background_frame)) {
-        Vector3 dglPos = vec3_from_vec2(&glPos, z - 0.00001);
-
-        glEnable(GL_BLEND);
-        glDepthMask(GL_FALSE);
-    }
-
-    /* win_draw_debug(ps, w, z); */
-}
+#endif
 
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid) {
     assert(drawable != NULL);

@@ -723,34 +723,17 @@ static Window find_client_win(session_t *ps, Window w) {
     return ret;
 }
 
-static win *
-paint_preprocess(session_t *ps) {
-    win *t = NULL;
-
+static void paint_preprocess(session_t *ps) {
     size_t index;
     win_id* w_id = vector_getLast(&ps->order, &index);
     while(w_id != NULL) {
         struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
-        bool to_paint = true;
 
         // @CLEANUP: This should probably be somewhere else
         w->fullscreen = win_is_fullscreen(ps, *w_id);
 
-        if (to_paint) {
-            /* // If the window doesn't want to be redirected, then who are we to argue */
-        }
-
-        // Avoid setting w->to_paint if w is to be freed
-        bool destroyed = false;
-
-        if (!destroyed) {
-            w->to_paint = to_paint;
-        }
-
         w_id = vector_getPrev(&ps->order, &index);
     }
-
-    return t;
 }
 
 static void assign_depth(Swiss* em, Vector* order) {
@@ -972,7 +955,6 @@ add_win(session_t *ps, Window id) {
     .xinerama_scr = -1,
     .damage = None,
     .queue_configure = { },
-    .to_paint = false,
     .in_openclose = false,
 
     .window_type = WINTYPE_UNKNOWN,
@@ -3861,11 +3843,6 @@ XSynchronize(ps->dpy, 1);
 
   atoms_get(ps, &ps->atoms);
 
-  {
-    XRenderPictureAttributes pa;
-    pa.subwindow_mode = IncludeInferiors;
-  }
-
   // Initialize filters, must be preceded by OpenGL context creation
   if (!init_filters(ps))
     exit(1);
@@ -4889,9 +4866,8 @@ void session_run(session_t *ps) {
     struct ProfilerWriterSession profSess;
     profilerWriter_init(&profSess);
 
-    win *t;
 
-    t = paint_preprocess(ps);
+    paint_preprocess(ps);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -4984,7 +4960,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        t = paint_preprocess(ps);
+        paint_preprocess(ps);
 
         zone_leave(&ZONE_preprocess);
 

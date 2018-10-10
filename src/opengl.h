@@ -109,7 +109,7 @@ static inline bool glx_hasglext(session_t *ps, const char *ext) {
     GLint n;
     glGetIntegerv(GL_NUM_EXTENSIONS, &n);
     for(int i = 0; i < n; i++) {
-        const char* extension = glGetStringi(GL_EXTENSIONS, i);
+        const char* extension = (char*)glGetStringi(GL_EXTENSIONS, i);
         if(strcmp(ext, extension)) {
             return true;
         }

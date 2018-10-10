@@ -62,12 +62,6 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
     return;
 }
 
-static bool win_viewable(win* w) {
-    return w->state == STATE_DEACTIVATING || w->state == STATE_ACTIVATING
-        || w->state == STATE_ACTIVE || w->state == STATE_INACTIVE
-        || w->state == STATE_HIDING || w->state == STATE_DESTROYING;
-}
-
 void windowlist_updateShadow(session_t* ps, Vector* paints) {
     Vector shadow_updates;
     vector_init(&shadow_updates, sizeof(win_id), paints->size);

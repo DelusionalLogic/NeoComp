@@ -26,7 +26,6 @@
 // #define DEBUG_ALLOC_REG  1
 // #define DEBUG_FRAME      1
 // #define DEBUG_LEADER     1
-// #define DEBUG_C2         1
 // #define DEBUG_GLX        1
 // #define DEBUG_GLX_GLSL   1
 // #define DEBUG_GLX_ERR    1
@@ -45,10 +44,6 @@
 // #define CONFIG_C2 1
 // Whether to enable GLX Sync support.
 // #define CONFIG_GLX_XSYNC 1
-
-#if !defined(CONFIG_C2) && defined(DEBUG_C2)
-#error Cannot enable c2 debugging without c2 support.
-#endif
 
 #ifndef COMPTON_VERSION
 #define COMPTON_VERSION "unknown"

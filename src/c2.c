@@ -74,9 +74,11 @@ static int strcmp_wd(const char *needle, const char *src) {
     }
 }
 
+#ifndef NODEBUG
 static bool c2_ptr_isempty(const c2_ptr_t p) {
     return !(p.isbranch ? (bool) p.b: (bool) p.l);
 }
+#endif
 
 static void c2_ptr_reset(c2_ptr_t *pp) {
     if (pp) {
@@ -138,6 +140,7 @@ static void c2_freep(c2_ptr_t *pp) {
     }
 }
 
+#ifdef DEBUG_WINMATCH
 static void c2_dump_raw(c2_ptr_t p);
 
 static void c2_dump(c2_ptr_t p) {
@@ -145,6 +148,7 @@ static void c2_dump(c2_ptr_t p) {
     printf("\n");
     fflush(stdout);
 }
+#endif
 
 static int c2_parse_legacy(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult) {
     unsigned plen = strlen(pattern + offset);
@@ -280,11 +284,6 @@ c2_lptr_t * c2_parsed(session_t *ps, c2_lptr_t **pcondlst, const char *pattern,
             plptr->next = *pcondlst;
             *pcondlst = plptr;
         }
-
-#ifdef DEBUG_C2
-        printf_dbgf("(\"%s\"): ", pattern);
-        c2_dump(plptr->ptr);
-#endif
 
         return plptr;
     }
@@ -1079,6 +1078,7 @@ c2_free_lptr(c2_lptr_t *lp) {
 /**
  * Get a string representation of a rule target.
  */
+#if DEBUG_WINMATCH
 static const char *
 c2h_dump_str_tgt(const c2_l_t *pleaf) {
     if (pleaf->predef)
@@ -1107,8 +1107,7 @@ c2h_dump_str_type(const c2_l_t *pleaf) {
 /**
  * Dump a condition tree.
  */
-static void
-c2_dump_raw(c2_ptr_t p) {
+static void c2_dump_raw(c2_ptr_t p) {
     // For a branch
     if (p.isbranch) {
         const c2_b_t * const pbranch = p.b;
@@ -1197,6 +1196,7 @@ c2_dump_raw(c2_ptr_t p) {
         }
     }
 }
+#endif
 
 /**
  * Get the type atom of a condition.
