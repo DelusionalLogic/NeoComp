@@ -163,86 +163,43 @@ typedef struct _win {
     float border_size;
     bool override_redirect;
 
-  enum WindowState state;
+    enum WindowState state;
 
-  /// Xinerama screen this window is on.
-  int xinerama_scr;
+    /// Xinerama screen this window is on.
+    int xinerama_scr;
 
-  /// Damage of the window.
-  Damage damage;
+    /// Damage of the window.
+    Damage damage;
 
-  /// Whether there's a pending <code>ConfigureNotify</code> happening
-  /// when the window is unmapped.
-  bool need_configure;
-  /// Queued <code>ConfigureNotify</code> when the window is unmapped.
-  XConfigureEvent queue_configure;
-  /// Whether the window is painting excluded.
-  bool paint_excluded;
+    /// Whether the window is painting excluded.
+    bool paint_excluded;
 
-  // @CLEANUP: This should be replaced by a check on state
-  /// Whether this window is in open/close state.
-  bool in_openclose;
+    /// Is fullscreen
+    bool fullscreen;
 
-  /// Is fullscreen
-  bool fullscreen;
-  /// Is solid;
-  bool solid;
+    // Client window related members
+    /// Type of the window.
+    wintype_t window_type;
+    /// Whether it looks like a WM window. We consider a window WM window if
+    /// it does not have a decedent with WM_STATE and it is not override-
+    /// redirected itself.
+    bool wmwin;
 
-  // Client window related members
-  /// Type of the window.
-  wintype_t window_type;
-  /// Whether it looks like a WM window. We consider a window WM window if
-  /// it does not have a decedent with WM_STATE and it is not override-
-  /// redirected itself.
-  bool wmwin;
+    // Blacklist related members
+    /// Name of the window.
+    char *name;
+    /// Window instance class of the window.
+    char *class_instance;
+    /// Window general class of the window.
+    char *class_general;
+    /// <code>WM_WINDOW_ROLE</code> value of the window.
+    char *role;
 
-  // Focus-related members
-  /// Override value of window focus state. Set by D-Bus method calls.
-  switch_t focused_force;
-
-  // Blacklist related members
-  /// Name of the window.
-  char *name;
-  /// Window instance class of the window.
-  char *class_instance;
-  /// Window general class of the window.
-  char *class_general;
-  /// <code>WM_WINDOW_ROLE</code> value of the window.
-  char *role;
-
-  // Current window opacity.
-  double opacity;
-
-  /// Do not fade if it's false. Change on window type change.
-  bool fade;
-  /// Fade state on last paint.
-  bool fade_last;
-  /// Override value of window fade state. Set by D-Bus method calls.
-  switch_t fade_force;
-
-  // Shadow-related members
-  /// Whether a window has shadow. Calculated.
-  bool shadow;
-
-  // Dim-related members
-  /// Whether the window is to be dimmed.
-  bool dim;
-
-  /// Whether to invert window color.
-  bool invert_color;
-  /// Color inversion state on last paint.
-  bool invert_color_last;
-  /// Override value of window color inversion state. Set by D-Bus method
-  /// calls.
-  switch_t invert_color_force;
-
-  /// Whether to blur window background.
-  bool blur_background;
-  /// Background state on last paint.
-  bool blur_background_last;
-
-  bool stencil_damaged;
-  struct RenderBuffer stencil;
+    bool fade;
+    bool shadow;
+    bool dim;
+    bool invert_color;
+    bool blur_background;
 } win;
 
 int window_zcmp(const void* a, const void* b, void* userdata);
@@ -250,7 +207,6 @@ bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
 bool win_overlap(Swiss* em, win_id w1, win_id w2);
 bool win_mapped(win* w);
-bool win_covers(win* w);
 bool win_is_solid(win* w);
 
 void fade_keyframe(struct Fading* fade, double opacity, double duration);

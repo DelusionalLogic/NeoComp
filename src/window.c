@@ -61,11 +61,6 @@ bool win_mapped(win* w) {
         || w->state == STATE_WAITING;
 }
 
-bool win_covers(win* w) {
-    return w->solid
-        && w->fullscreen;
-}
-
 void fade_init(struct Fading* fade, double value) {
     fade->head = 0;
     fade->tail = 0;

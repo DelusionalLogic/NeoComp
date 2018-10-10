@@ -797,9 +797,6 @@ static void map_win(session_t *ps, win_id wid) {
         attribs.height + w->border_size * 2,
     }};
 
-    // Set fading state
-    w->in_openclose = true;
-
     w->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
 
@@ -822,8 +819,6 @@ static void unmap_win(session_t *ps, win *w) {
     w->state = STATE_HIDING;
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
-
-    w->in_openclose = true;
 
     // don't care about properties anymore
     win_ev_stop(ps, w);
@@ -954,35 +949,20 @@ add_win(session_t *ps, Window id) {
     .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
     .damage = None,
-    .queue_configure = { },
-    .in_openclose = false,
 
     .window_type = WINTYPE_UNKNOWN,
     .wmwin = false,
-
-    .focused_force = UNSET,
 
     .name = NULL,
     .class_instance = NULL,
     .class_general = NULL,
     .role = NULL,
 
-    .opacity = 0.0,
-
     .fade = false,
-    .fade_force = UNSET,
-
     .shadow = false,
-
     .dim = false,
-
     .invert_color = false,
-    .invert_color_force = UNSET,
-
     .blur_background = false,
-
-    .stencil = {0},
-    .stencil_damaged = true,
   };
 
   // Reject overlay window and already added windows
@@ -4404,13 +4384,9 @@ static void transition_faded_entities(Swiss* em) {
         if(fade_done(&fo->fade)) {
             if(w->state == STATE_ACTIVATING) {
                 w->state = STATE_ACTIVE;
-
-                w->in_openclose = false;
             } else if(w->state == STATE_DEACTIVATING) {
                 w->state = STATE_INACTIVE;
             } else if(w->state == STATE_HIDING) {
-                w->in_openclose = false;
-
                 w->state = STATE_INVISIBLE;
             } else if(w->state == STATE_DESTROYING) {
                 w->state = STATE_DESTROYED;
@@ -4479,21 +4455,16 @@ static void update_focused_state(Swiss* em, session_t* ps) {
 
         enum WindowState newState;
 
-        // If the window has forced focus we don't need any further calculation
-        if (UNSET != w->focused_force) {
-            newState = w->focused_force ? STATE_ACTIVATING : STATE_DEACTIVATING;
-        } else {
-            newState = STATE_DEACTIVATING;
+        newState = STATE_DEACTIVATING;
 
-            if(ps->o.wintype_focus[w->window_type])
-                newState = STATE_ACTIVATING;
-            else if(ps->o.mark_wmwin_focused && w->wmwin)
-                newState = STATE_ACTIVATING;
-            else if(ps->active_win == w)
-                newState = STATE_ACTIVATING;
-            else if(win_mapped(w) && win_match(ps, w, ps->o.focus_blacklist)) {
-                newState = STATE_ACTIVATING;
-            }
+        if(ps->o.wintype_focus[w->window_type])
+            newState = STATE_ACTIVATING;
+        else if(ps->o.mark_wmwin_focused && w->wmwin)
+            newState = STATE_ACTIVATING;
+        else if(ps->active_win == w)
+            newState = STATE_ACTIVATING;
+        else if(win_mapped(w) && win_match(ps, w, ps->o.focus_blacklist)) {
+            newState = STATE_ACTIVATING;
         }
 
         // If a window is inactive and we are deactivating, then there's no change
@@ -5023,14 +4994,7 @@ void session_run(session_t *ps) {
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
                 if(win_mapped(w)) {
-                    bool invert_color_new = w->invert_color;
-
-                    if (UNSET != w->invert_color_force) {
-                        invert_color_new = w->invert_color_force;
-                    } else if (win_mapped(w)) {
-                        invert_color_new = win_match(ps, w, ps->o.invert_color_list);
-                    }
-
+                    bool invert_color_new = win_match(ps, w, ps->o.invert_color_list);
                     win_set_invert_color(ps, w, invert_color_new);
                 }
             }
