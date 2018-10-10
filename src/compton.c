@@ -568,25 +568,29 @@ condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern) {
 /**
  * Determine the event mask for a window.
  */
-static long
-determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
-  long evmask = NoEventMask;
-  win *w = NULL;
+static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
+    long evmask = NoEventMask;
+    win *w = NULL;
 
-  // Check if it's a mapped frame window
-  if (WIN_EVMODE_FRAME == mode
-      || ((w = find_win(ps, wid)) && win_mapped(w))) {
-    evmask |= PropertyChangeMask;
-  }
+    bool isMapped = false;
+    if((w = find_win(ps, wid))) {
+        win_id eid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+        if(win_mapped(&ps->win_list, eid))
+            isMapped = true;
+    }
 
-  // Check if it's a mapped client window
-  if (WIN_EVMODE_CLIENT == mode
-      || ((w = find_toplevel(ps, wid)) && win_mapped(w))) {
-    if (ps->o.track_wdata || ps->track_atom_lst || ps->o.detect_client_opacity)
-      evmask |= PropertyChangeMask;
-  }
+    // Check if it's a mapped frame window
+    if (WIN_EVMODE_FRAME == mode || isMapped) {
+        evmask |= PropertyChangeMask;
+    }
 
-  return evmask;
+    // Check if it's a mapped client window
+    if (WIN_EVMODE_CLIENT == mode || isMapped) {
+        if (ps->o.track_wdata || ps->track_atom_lst || ps->o.detect_client_opacity)
+            evmask |= PropertyChangeMask;
+    }
+
+    return evmask;
 }
 
 /**
@@ -765,7 +769,7 @@ static void map_win(session_t *ps, win_id wid) {
 
     // Don't care about window mapping if it's an InputOnly window
     // Try avoiding mapping a window twice
-    if (InputOnly == attribs.class || win_mapped(w))
+    if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
         return;
 
     assert(ps->active_win != w);
@@ -797,7 +801,8 @@ static void map_win(session_t *ps, win_id wid) {
         attribs.height + w->border_size * 2,
     }};
 
-    w->state = STATE_WAITING;
+    struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
 
 #ifdef CONFIG_DBUS
@@ -809,14 +814,20 @@ static void map_win(session_t *ps, win_id wid) {
 }
 
 static void unmap_win(session_t *ps, win *w) {
-    if (!w || !win_mapped(w)) return;
+    if(w == NULL)
+        return;
+
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
+    if (!win_mapped(&ps->win_list, wid))
+        return;
 
     // Set focus out
     if(ps->active_win == w)
         ps->active_win = NULL;
 
-    w->state = STATE_HIDING;
+    struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_HIDING;
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
 
@@ -861,7 +872,7 @@ win_mark_client(session_t *ps, win *w, Window client) {
 
   // If the window isn't mapped yet, stop here, as the function will be
   // called in map_win()
-  if (!win_mapped(w))
+  if (!win_mapped(&ps->win_list, wid))
     return;
 
   XSelectInput(ps->dpy, client,
@@ -946,7 +957,6 @@ add_win(session_t *ps, Window id) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
-    .state = STATE_INVISIBLE,
     .xinerama_scr = -1,
     .damage = None,
 
@@ -973,6 +983,11 @@ add_win(session_t *ps, Window id) {
   // Allocate and initialize the new win structure
   win_id slot = swiss_allocate(&ps->win_list);
   win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
+
+  {
+      struct StatefulComponent* stateful = swiss_addComponent(&ps->win_list, COMPONENT_STATEFUL, slot);
+      stateful->state = STATE_INVISIBLE;
+  }
 
   {
       struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
@@ -1217,12 +1232,11 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
 }
 
 static void destroy_win(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-
+    struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
     // You can only destroy a window that is already hiding or invisible
-    assert(w->state == STATE_HIDING || w->state == STATE_INVISIBLE);
+    assert(stateful->state == STATE_HIDING || stateful->state == STATE_INVISIBLE);
 
-    w->state = STATE_DESTROYING;
+    stateful->state = STATE_DESTROYING;
 
 #ifdef CONFIG_DBUS
     // Send D-Bus signal
@@ -1254,7 +1268,7 @@ static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
         return;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    if (!win_mapped(w))
+  if (!win_mapped(&ps->win_list, wid))
         return;
 
     //Reset the XDamage region, so we continue to recieve new damage
@@ -1382,14 +1396,16 @@ wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
  * Set real focused state of a window.
  */
 static void win_set_focused(session_t *ps, win *w) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
     // Unmapped windows will have their focused state reset on map
-    if (!win_mapped(w))
+    if (!win_mapped(&ps->win_list, wid))
         return;
 
     if (ps->active_win == w) return;
 
     if (ps->active_win) {
-        assert(win_mapped(ps->active_win));
+        assert(win_mapped(&ps->win_list, wid));
 
         ps->active_win = NULL;
     }
@@ -3693,6 +3709,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPED);
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPE_DAMAGED, sizeof(struct ShapeDamagedEvent));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
+  swiss_setComponentSize(&ps->win_list, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -3919,10 +3936,11 @@ void session_destroy(session_t *ps) {
 
   // Free window linked list
   for_components(it, &ps->win_list,
-      COMPONENT_MUD, CQ_END) {
+      COMPONENT_MUD, COMPONENT_STATEFUL, CQ_END) {
       win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+      struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
-      if (win_mapped(w) && w->state != STATE_DESTROYING)
+      if (win_mapped(&ps->win_list, it.id) && stateful->state != STATE_DESTROYING)
           win_ev_stop(ps, w);
 
   }
@@ -4047,9 +4065,10 @@ void session_destroy(session_t *ps) {
 
 void calculate_window_opacity(session_t* ps, Swiss* em) {
     for_components(it, &ps->win_list,
-        COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, CQ_END) {
+        COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
         // Try obeying window type opacity
         if(ps->o.wintype_opacity[w->window_type] != -1.0) {
@@ -4058,7 +4077,7 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
             continue;
         }
 
-        if(w->state != STATE_INVISIBLE && w->state != STATE_HIDING && w->state != STATE_DESTROYING) {
+        if(stateful->state != STATE_INVISIBLE && stateful->state != STATE_HIDING && stateful->state != STATE_DESTROYING) {
             void* val;
             if (c2_matchd(ps, w, ps->o.opacity_rules, NULL, &val)) {
                 f->newOpacity = (double)(long)val;
@@ -4071,7 +4090,7 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
         f->newDim = 100.0;
 
         // Respect inactive_opacity in some cases
-        if (w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE) {
+        if (stateful->state == STATE_DEACTIVATING || stateful->state == STATE_INACTIVE) {
             f->newOpacity = ps->o.inactive_opacity;
             f->newDim = ps->o.inactive_dim;
             continue;
@@ -4326,38 +4345,41 @@ static void damage_blur_over_fade(Swiss* em) {
 }
 
 static void finish_destroyed_windows(Swiss* em, session_t* ps) {
-    for_components(it, em, COMPONENT_MUD, COMPONENT_SHADOW, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_SHADOW, CQ_END) {
         struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
             shadow_cache_delete(shadow);
             swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
         }
     }
 
-    for_components(it, em, COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
             blur_cache_delete(blur);
             swiss_removeComponent(em, COMPONENT_BLUR, it.id);
         }
     }
 
-    for_components(it, em, COMPONENT_MUD, COMPONENT_TINT, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        if(w->state == STATE_DESTROYED || w->state == STATE_INVISIBLE) {
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_TINT, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
             swiss_removeComponent(em, COMPONENT_TINT, it.id);
         }
     }
 
     // Destroy shaped components of destroyed windows
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_SHAPED, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, COMPONENT_SHAPED, CQ_END) {
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
-        if(w->state == STATE_DESTROYED) {
+        if(stateful->state == STATE_DESTROYED) {
             if(shaped->face != NULL)
                 face_unload_file(shaped->face);
             swiss_removeComponent(em, COMPONENT_SHAPED, it.id);
@@ -4365,10 +4387,10 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
     }
 
     for_components(it, em,
-            COMPONENT_MUD, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
-        if(w->state == STATE_DESTROYED) {
+        if(stateful->state == STATE_DESTROYED) {
             finish_destroy_win(ps, it.id);
         }
     }
@@ -4377,20 +4399,19 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
 static void transition_faded_entities(Swiss* em) {
     // Update state when fading complete
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_FADES_OPACITY, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
         if(fade_done(&fo->fade)) {
-            if(w->state == STATE_ACTIVATING) {
-                w->state = STATE_ACTIVE;
-            } else if(w->state == STATE_DEACTIVATING) {
-                w->state = STATE_INACTIVE;
-            } else if(w->state == STATE_HIDING) {
-                w->state = STATE_INVISIBLE;
-            } else if(w->state == STATE_DESTROYING) {
-                w->state = STATE_DESTROYED;
-
+            if(stateful->state == STATE_ACTIVATING) {
+                stateful->state = STATE_ACTIVE;
+            } else if(stateful->state == STATE_DEACTIVATING) {
+                stateful->state = STATE_INACTIVE;
+            } else if(stateful->state == STATE_HIDING) {
+                stateful->state = STATE_INVISIBLE;
+            } else if(stateful->state == STATE_DESTROYING) {
+                stateful->state = STATE_DESTROYED;
                 // @RESEARCH: Are we leaking memory from the cache/shadow here?
             }
         }
@@ -4398,11 +4419,11 @@ static void transition_faded_entities(Swiss* em) {
 }
 
 static void remove_texture_invis_windows(Swiss* em) {
-    for_components(it, em, COMPONENT_MUD, COMPONENT_TEXTURED, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_TEXTURED, CQ_END) {
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
-        if(w->state == STATE_INVISIBLE || w->state == STATE_DESTROYED) {
+        if(stateful->state == STATE_INVISIBLE || stateful->state == STATE_DESTROYED) {
             texture_delete(&textured->texture);
             renderbuffer_delete(&textured->stencil);
             swiss_removeComponent(em, COMPONENT_TEXTURED, it.id);
@@ -4444,12 +4465,13 @@ static void syncronize_fade_opacity(Swiss* em) {
 
 static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
-            COMPONENT_MUD, CQ_END) {
+            COMPONENT_MUD, COMPONENT_STATEFUL, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
         // We are don't track focus from these states
-        if(w->state == STATE_HIDING || w->state == STATE_INVISIBLE
-                || w->state == STATE_DESTROYING || w->state == STATE_DESTROYED) {
+        if(stateful->state == STATE_HIDING || stateful->state == STATE_INVISIBLE
+                || stateful->state == STATE_DESTROYING || stateful->state == STATE_DESTROYED) {
             continue;
         }
 
@@ -4463,19 +4485,19 @@ static void update_focused_state(Swiss* em, session_t* ps) {
             newState = STATE_ACTIVATING;
         else if(ps->active_win == w)
             newState = STATE_ACTIVATING;
-        else if(win_mapped(w) && win_match(ps, w, ps->o.focus_blacklist)) {
+        else if(win_mapped(em, it.id) && win_match(ps, w, ps->o.focus_blacklist)) {
             newState = STATE_ACTIVATING;
         }
 
         // If a window is inactive and we are deactivating, then there's no change
-        if(newState == STATE_DEACTIVATING && w->state == STATE_INACTIVE)
+        if(newState == STATE_DEACTIVATING && stateful->state == STATE_INACTIVE)
             continue;
         // Likewise for active
-        if(newState == STATE_ACTIVATING && w->state == STATE_ACTIVE)
+        if(newState == STATE_ACTIVATING && stateful->state == STATE_ACTIVE)
             continue;
 
-        if(newState != w->state) {
-            w->state = newState;
+        if(newState != stateful->state) {
+            stateful->state = newState;
             swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
         }
     }
@@ -4577,13 +4599,13 @@ static void commit_move(Swiss* em) {
 
 static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_UNMAP, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
         // Fading out
         // @HACK If we are being destroyed, we don't want to stop doing that
-        if(w->state != STATE_DESTROYING)
-            w->state = STATE_HIDING;
+        if(stateful->state != STATE_DESTROYING)
+            stateful->state = STATE_HIDING;
     }
     for_components(it, em,
             COMPONENT_UNMAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
@@ -4613,15 +4635,15 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
     );
 
     for_components(it, em,
-            COMPONENT_MUD, COMPONENT_UNMAP, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
         // Fading out
         // @HACK If we are being destroyed, we don't want to stop doing that
-        if(w->state == STATE_DESTROYING) {
+        if(stateful->state == STATE_DESTROYING) {
             swiss_removeComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
             swiss_removeComponent(em, COMPONENT_HAS_CLIENT, it.id);
-            w->state = STATE_HIDING;
+            stateful->state = STATE_HIDING;
         }
     }
 }
@@ -4960,7 +4982,7 @@ void session_run(session_t *ps) {
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if (win_mapped(w)) {
+                if (win_mapped(em, it.id)) {
                     w->shadow = (ps->o.wintype_shadow[w->window_type]
                             && !win_match(ps, w, ps->o.shadow_blacklist)
                             && !(ps->o.respect_prop_shadow));
@@ -4975,7 +4997,7 @@ void session_run(session_t *ps) {
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
-                if(win_mapped(w)) {
+                if(win_mapped(em, it.id)) {
                     // Ignore other possible causes of fading state changes after window
                     // gets unmapped
                     if (win_match(ps, w, ps->o.fade_blacklist)) {
@@ -4993,7 +5015,7 @@ void session_run(session_t *ps) {
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(w)) {
+                if(win_mapped(em, it.id)) {
                     bool invert_color_new = win_match(ps, w, ps->o.invert_color_list);
                     win_set_invert_color(ps, w, invert_color_new);
                 }
@@ -5006,7 +5028,7 @@ void session_run(session_t *ps) {
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(w)) {
+                if(win_mapped(em, it.id)) {
                     bool blur_background_new = ps->o.blur_background
                         && !win_match(ps, w, ps->o.blur_background_blacklist);
 
@@ -5021,7 +5043,7 @@ void session_run(session_t *ps) {
             for_components(it, em,
                     COMPONENT_MUD, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(w)) {
+                if(win_mapped(em, it.id)) {
                     w->paint_excluded = win_match(ps, w, ps->o.paint_blacklist);
                 }
             }
@@ -5042,11 +5064,10 @@ void session_run(session_t *ps) {
             XserverRegion newShape = XFixesCreateRegion(ps->dpy, NULL, 0);
             for_components(it, em,
                     COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
                 struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
                 struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
-                if(win_mapped(w)) {
+                if(win_mapped(em, it.id)) {
                     XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, tracksWindow->id, ShapeBounding);
                     XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
                     XFixesUnionRegion(ps->psglx->xcontext.display, newShape, newShape, windowRegion);

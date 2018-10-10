@@ -55,10 +55,11 @@ bool win_overlap(Swiss* em, win_id w1, win_id w2) {
     return true;
 }
 
-bool win_mapped(win* w) {
-    return w->state == STATE_ACTIVATING || w->state == STATE_ACTIVE
-        || w->state == STATE_DEACTIVATING || w->state == STATE_INACTIVE
-        || w->state == STATE_WAITING;
+bool win_mapped(Swiss* em, win_id wid) {
+    struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, wid);
+    return stateful->state == STATE_ACTIVATING || stateful->state == STATE_ACTIVE
+        || stateful->state == STATE_DEACTIVATING || stateful->state == STATE_INACTIVE
+        || stateful->state == STATE_WAITING;
 }
 
 void fade_init(struct Fading* fade, double value) {

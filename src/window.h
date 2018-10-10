@@ -158,12 +158,14 @@ enum WindowState {
     STATE_DESTROYED,
 };
 
+struct StatefulComponent { 
+    enum WindowState state;
+};
+
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
     float border_size;
     bool override_redirect;
-
-    enum WindowState state;
 
     /// Xinerama screen this window is on.
     int xinerama_scr;
@@ -206,7 +208,7 @@ int window_zcmp(const void* a, const void* b, void* userdata);
 bool win_calculate_blur(struct blur* blur, struct _session_t* ps, win* w);
 
 bool win_overlap(Swiss* em, win_id w1, win_id w2);
-bool win_mapped(win* w);
+bool win_mapped(Swiss* em, win_id wid);
 bool win_is_solid(win* w);
 
 void fade_keyframe(struct Fading* fade, double opacity, double duration);

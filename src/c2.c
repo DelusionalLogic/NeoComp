@@ -1520,7 +1520,8 @@ static bool c2_match_once(session_t *ps, win *w, const c2_ptr_t cond) {
  */
 bool c2_matchd(session_t *ps, win *w, const c2_lptr_t *condlst,
         const c2_lptr_t **cache, void **pdata) {
-    assert(win_mapped(w));
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    assert(win_mapped(&ps->win_list, wid));
 
     // Check if the cached entry matches firstly
     if (cache && *cache && c2_match_once(ps, w, (*cache)->ptr)) {

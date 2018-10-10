@@ -900,12 +900,12 @@ static inline win * find_toplevel(session_t *ps, Window id) {
         return NULL;
 
     for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_HAS_CLIENT, CQ_END) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            COMPONENT_STATEFUL, COMPONENT_HAS_CLIENT, CQ_END) {
         struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
-        if (client->id == id && w->state != STATE_DESTROYING)
-            return w;
+        if (client->id == id && stateful->state != STATE_DESTROYING)
+            return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
     }
 
     return NULL;
@@ -917,20 +917,6 @@ static inline win * find_toplevel(session_t *ps, Window id) {
 static inline bool
 glx_has_context(session_t *ps) {
   return ps->psglx && ps->psglx->context;
-}
-
-/**
- * Find out the currently focused window.
- *
- * @return struct _win object of the found window, NULL if not found
- */
-static inline win *
-find_focused(session_t *ps) {
-  if (!ps->o.track_focus) return NULL;
-
-  if (ps->active_win && win_mapped(ps->active_win))
-    return ps->active_win;
-  return NULL;
 }
 
 /**
