@@ -32,7 +32,6 @@ struct MetaComponent {
 
 enum ComponentType {
     COMPONENT_META, // Special component used for bookkeeping
-    COMPONENT_END = COMPONENT_META ,
     COMPONENT_MUD, // The goal is to eliminate this one
     COMPONENT_PHYSICAL,
     COMPONENT_Z,
@@ -48,8 +47,8 @@ enum ComponentType {
     COMPONENT_DIM,
     COMPONENT_FADES_DIM,
     COMPONENT_REDIRECTED,
-	COMPONENT_SHAPED,
-	COMPONENT_STATEFUL,
+    COMPONENT_SHAPED,
+    COMPONENT_STATEFUL,
 
     // Messages
     COMPONENT_MAP,

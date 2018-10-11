@@ -7,7 +7,7 @@ void main() {
     vec2 uv = fragmentUV;
     vec4 texcol = texture2D(tex_scr, uv);
 
-    if(texcol.a <= .00001) {
+    if(texcol.a == .0) {
         discard;
     }
 

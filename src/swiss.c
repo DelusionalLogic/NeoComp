@@ -52,8 +52,7 @@ static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, 
     uint64_t finalKey = index->freelist[COMPONENT_META][bucket];
 
     bool flip = false;
-    // @CLEANUP: We want to remove COMPONENT_END at some point, replace with CQ_END
-    for(int i = 0; types[i] != COMPONENT_END && types[i] != CQ_END; i++) {
+    for(int i = 0; types[i] != CQ_END; i++) {
         if(types[i] == CQ_NOT) {
             flip = true;
             continue;

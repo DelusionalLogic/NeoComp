@@ -984,6 +984,23 @@ add_win(session_t *ps, Window id) {
   win_id slot = swiss_allocate(&ps->win_list);
   win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
 
+  if (!new) {
+    printf_errf("(%#010lx): Failed to allocate memory for the new window.", id);
+    return false;
+  }
+
+  XWindowAttributes attribs;
+
+  // Fill structure
+  set_ignore_next(ps);
+  if (!XGetWindowAttributes(ps->dpy, id, &attribs) || IsUnviewable == attribs.map_state) {
+      // Failed to get window attributes probably means the window is gone
+      // already. IsUnviewable means the window is already reparented
+      // elsewhere.
+      swiss_remove(&ps->win_list, slot);
+    return false;
+  }
+
   {
       struct StatefulComponent* stateful = swiss_addComponent(&ps->win_list, COMPONENT_STATEFUL, slot);
       stateful->state = STATE_INVISIBLE;
@@ -1012,6 +1029,7 @@ add_win(session_t *ps, Window id) {
   swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
 
   swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
+  swiss_addComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
 
@@ -1019,23 +1037,6 @@ add_win(session_t *ps, Window id) {
   printf_dbgf("(%#010lx): %p\n", id, new);
 #endif
 
-  if (!new) {
-    printf_errf("(%#010lx): Failed to allocate memory for the new window.", id);
-    return false;
-  }
-
-  XWindowAttributes attribs;
-
-  // Fill structure
-  set_ignore_next(ps);
-  if (!XGetWindowAttributes(ps->dpy, id, &attribs)
-      || IsUnviewable == attribs.map_state) {
-      // Failed to get window attributes probably means the window is gone
-      // already. IsUnviewable means the window is already reparented
-      // elsewhere.
-      swiss_remove(&ps->win_list, slot);
-    return false;
-  }
   new->border_size = attribs.border_width;
   new->override_redirect = attribs.override_redirect;
 
