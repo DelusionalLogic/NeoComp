@@ -276,7 +276,7 @@ glx_destroy(session_t *ps) {
     ps->psglx->fbconfigs[i] = NULL;
   }
 
-  xorgContext_delete(&ps->psglx->xcontext);
+  xorgContext_delete(&ps->xcontext);
 
   framebuffer_delete(&ps->psglx->stencil_fbo);
 

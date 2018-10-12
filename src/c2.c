@@ -948,7 +948,7 @@ c2_l_postprocess(session_t *ps, c2_l_t *pleaf) {
 
     // Get target atom if it's not a predefined one
     if (!pleaf->predef) {
-        pleaf->tgtatom = get_atom(ps, pleaf->tgt);
+        pleaf->tgtatom = get_atom(&ps->xcontext, pleaf->tgt);
         if (!pleaf->tgtatom) {
             c2_error("Failed to get atom for target \"%s\".", pleaf->tgt);
             return false;
@@ -958,20 +958,17 @@ c2_l_postprocess(session_t *ps, c2_l_t *pleaf) {
     // Insert target Atom into atom track list
     if (pleaf->tgtatom) {
         bool found = false;
-        for (latom_t *platom = ps->track_atom_lst; platom;
-                platom = platom->next) {
-            if (pleaf->tgtatom == platom->atom) {
+        size_t index = 0;
+        Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
+        while(atom != NULL) {
+            if (pleaf->tgtatom == *atom) {
                 found = true;
                 break;
             }
+            atom = vector_getNext(&ps->atoms.extra, &index);
         }
         if (!found) {
-            latom_t *pnew = malloc(sizeof(latom_t));
-            if (!pnew)
-                printf_errfq(1, "(): Failed to allocate memory for new track atom.");
-            pnew->next = ps->track_atom_lst;
-            pnew->atom = pleaf->tgtatom;
-            ps->track_atom_lst = pnew;
+            vector_putBack(&ps->atoms.extra, &pleaf->tgtatom);
         }
     }
 
@@ -1298,7 +1295,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                 }
                 // A raw window property
                 else {
-                    winprop_t prop = wid_get_prop_adv(&ps->psglx->xcontext, wid, pleaf->tgtatom,
+                    winprop_t prop = wid_get_prop_adv(&ps->xcontext, wid, pleaf->tgtatom,
                             idx, 1L, c2_get_atom_type(pleaf), pleaf->format);
                     if (prop.nitems) {
                         *perr = false;
@@ -1344,7 +1341,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                 }
                 // If it's an atom type property, convert atom to string
                 else if (C2_L_TATOM == pleaf->type) {
-                    winprop_t prop = wid_get_prop_adv(&ps->psglx->xcontext, wid, pleaf->tgtatom,
+                    winprop_t prop = wid_get_prop_adv(&ps->xcontext, wid, pleaf->tgtatom,
                             idx, 1L, c2_get_atom_type(pleaf), pleaf->format);
                     Atom atom = winprop_get_int(prop);
                     if (atom) {

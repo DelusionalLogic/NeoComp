@@ -1,6 +1,8 @@
 #pragma once
 
+#include "vector.h"
 #include "wintypes.h"
+#include "xorg.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -33,7 +35,10 @@ struct Atoms {
   Atom atom_win_type;
   // Array of atoms of all possible window types.
   Atom atoms_wintypes[NUM_WINTYPES];
+
+  Vector extra;
 };
 
-Atom get_atom(struct _session_t* ps, const char* atom_name);
-void atoms_get(struct _session_t* ps, struct Atoms* atoms);
+Atom get_atom(struct X11Context* context, const char* atom_name);
+void atoms_init(struct Atoms* atoms, struct X11Context* context);
+void atoms_kill(struct Atoms* atoms);

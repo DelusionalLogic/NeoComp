@@ -252,8 +252,6 @@ typedef struct {
   /// FBConfig-s for GLX pixmap of different depths.
   glx_fbconfig_t *fbconfigs[OPENGL_MAX_DEPTH + 1];
 
-  struct X11Context xcontext;
-
   // @MEMORY @PERFORMANCE: We don't need a dedicated FBO for just stencil, but
   // for right now I don't want to bother with that
   struct Framebuffer stencil_fbo;
@@ -344,8 +342,6 @@ typedef struct _session_t {
 
     // === Atoms ===
     struct Atoms atoms;
-    /// Linked list of additional atoms to track.
-    latom_t *track_atom_lst;
 
 #ifdef CONFIG_DBUS
     // === DBus related ===
@@ -354,6 +350,8 @@ typedef struct _session_t {
     // DBus service name.
     char *dbus_service;
 #endif
+
+  struct X11Context xcontext;
 } session_t;
 
 winprop_t

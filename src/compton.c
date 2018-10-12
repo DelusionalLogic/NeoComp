@@ -585,8 +585,9 @@ static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
     }
 
     // Check if it's a mapped client window
+    // @INCOMPLETE: PropertyChangeMask should also be set if we are tracking extra atoms
     if (WIN_EVMODE_CLIENT == mode || isMapped) {
-        if (ps->o.track_wdata || ps->track_atom_lst || ps->o.detect_client_opacity)
+        if (ps->o.track_wdata /* || ps->track_atom_lst */ || ps->o.detect_client_opacity)
             evmask |= PropertyChangeMask;
     }
 
@@ -631,7 +632,8 @@ static bool get_root_tile(session_t *ps) {
 
     // Get the values of background attributes
     for (int p = 0; background_props_str[p]; p++) {
-        winprop_t prop = wid_get_prop(&ps->psglx->xcontext, ps->root, get_atom(ps, background_props_str[p]), 1L, XA_PIXMAP, 32);
+        Atom prop_atom = get_atom(&ps->xcontext, background_props_str[p]);
+        winprop_t prop = wid_get_prop(&ps->xcontext, ps->root, prop_atom, 1L, XA_PIXMAP, 32);
         if (prop.nitems) {
             pixmap = *prop.data.p32;
             free_winprop(&prop);
@@ -665,8 +667,8 @@ static bool get_root_tile(session_t *ps) {
     }
 
     XWindowAttributes attribs;
-    XGetWindowAttributes(ps->psglx->xcontext.display, ps->root, &attribs);
-    GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->psglx->xcontext, XVisualIDFromVisual(attribs.visual));
+    XGetWindowAttributes(ps->xcontext.display, ps->root, &attribs);
+    GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->xcontext, XVisualIDFromVisual(attribs.visual));
 
     if(!xtexture_bind(&ps->root_texture, fbconfig, pixmap)) {
         printf_errf("Failed binding the root texture to gl");
@@ -1381,7 +1383,7 @@ static Window
 wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
   // Get the attribute
   Window p = None;
-  winprop_t prop = wid_get_prop(&ps->psglx->xcontext, wid, aprop, 1L, XA_WINDOW, 32);
+  winprop_t prop = wid_get_prop(&ps->xcontext, wid, aprop, 1L, XA_WINDOW, 32);
 
   // Return it
   if (prop.nitems) {
@@ -1913,7 +1915,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
         // Destroy the root "image" if the wallpaper probably changed
         for (int p = 0; background_props_str[p]; p++) {
-            if (ev->atom == get_atom(ps, background_props_str[p])) {
+            if (ev->atom == get_atom(&ps->xcontext, background_props_str[p])) {
                 root_damaged(ps);
                 break;
             }
@@ -1993,14 +1995,18 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
         }
 
         // Check for other atoms we are tracking
-        for (latom_t *platom = ps->track_atom_lst; platom; platom = platom->next) {
-            if (platom->atom == ev->atom) {
-                win *w = find_win(ps, ev->window);
-                if (!w)
-                    w = find_toplevel(ps, ev->window);
-                /* if (w) */
-                /* win_on_factor_change(ps, w); */
-                break;
+        {
+            size_t index = 0;
+            Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
+            while(atom != NULL) {
+                if (*atom == ev->atom) {
+                    win *w = find_win(ps, ev->window);
+                    if (!w)
+                        w = find_toplevel(ps, ev->window);
+                    /* if (w) */
+                    /* win_on_factor_change(ps, w); */
+                }
+                atom = vector_getNext(&ps->atoms.extra, &index);
             }
         }
     }
@@ -2350,14 +2356,14 @@ register_cm(session_t *ps) {
   {
     long pid = getpid();
     if (!XChangeProperty(ps->dpy, ps->reg_win,
-          get_atom(ps, "_NET_WM_PID"), XA_CARDINAL, 32, PropModeReplace,
+          get_atom(&ps->xcontext, "_NET_WM_PID"), XA_CARDINAL, 32, PropModeReplace,
           (unsigned char *) &pid, 1)) {
       printf_errf("(): Failed to set _NET_WM_PID.");
     }
   }
 
   // Set COMPTON_VERSION
-  if (!wid_set_text_prop(ps, ps->reg_win, get_atom(ps, "COMPTON_VERSION"), COMPTON_VERSION)) {
+  if (!wid_set_text_prop(ps, ps->reg_win, get_atom(&ps->xcontext, "COMPTON_VERSION"), COMPTON_VERSION)) {
     printf_errf("(): Failed to set COMPTON_VERSION.");
   }
 
@@ -2374,7 +2380,7 @@ register_cm(session_t *ps) {
     char *buf = malloc(len);
     snprintf(buf, len, REGISTER_PROP "%d", ps->scr);
     buf[len - 1] = '\0';
-    XSetSelectionOwner(ps->dpy, get_atom(ps, buf), ps->reg_win, 0);
+    XSetSelectionOwner(ps->dpy, get_atom(&ps->xcontext, buf), ps->reg_win, 0);
     free(buf);
   }
 
@@ -3190,7 +3196,7 @@ vsync_opengl_swc_init(session_t *ps) {
         printf_errf("Failed to get EXT_swap_control function.");
         return false;
     }
-    ps->psglx->glXSwapIntervalProc(ps->psglx->xcontext.display, glXGetCurrentDrawable(), 1);
+    ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 1);
 
     return true;
 }
@@ -3199,7 +3205,7 @@ static void
 vsync_opengl_swc_deinit(session_t *ps) {
   // The standard says it doesn't accept 0, but in fact it probably does
   if (glx_has_context(ps) && ps->psglx->glXSwapIntervalProc)
-      ps->psglx->glXSwapIntervalProc(ps->psglx->xcontext.display, glXGetCurrentDrawable(), 0);
+      ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 0);
 }
 
 /**
@@ -3655,8 +3661,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .win_list = {0},
     .active_win = NULL,
 
-    .track_atom_lst = NULL,
-
 #ifdef CONFIG_DBUS
     .dbus_conn = NULL,
     .dbus_service = NULL,
@@ -3776,6 +3780,13 @@ XSynchronize(ps->dpy, 1);
     ps->o.display_repr = display_repr;
   }
 
+  if(!xorgContext_init(&ps->xcontext, ps->dpy, ps->scr)) {
+    printf_errf("Failed initializing the xorg context");
+    exit(1);
+  }
+
+  atoms_init(&ps->atoms, &ps->xcontext);
+
   // Second pass
   get_cfg(ps, argc, argv, false);
 
@@ -3805,12 +3816,7 @@ XSynchronize(ps->dpy, 1);
   if (!glx_init(ps, true))
     exit(1);
 
-  if(!xorgContext_init(&ps->psglx->xcontext, ps->dpy, ps->scr)) {
-    printf_errf("Failed initializing the xorg context");
-    exit(1);
-  }
-
-  if(xorgContext_capabilities(&ps->capabilities, &ps->psglx->xcontext) != 0) {
+  if(xorgContext_capabilities(&ps->capabilities, &ps->xcontext) != 0) {
       printf_errf("Failed getting xorg capabilities");
       exit(1);
   }
@@ -3839,8 +3845,6 @@ XSynchronize(ps->dpy, 1);
 
   bezier_init(&ps->curve, 0.4, 0.0, 0.2, 1);
 
-  atoms_get(ps, &ps->atoms);
-
   // Initialize filters, must be preceded by OpenGL context creation
   if (!init_filters(ps))
     exit(1);
@@ -3849,7 +3853,7 @@ XSynchronize(ps->dpy, 1);
 
   XGrabServer(ps->dpy);
 
-  xtexture_init(&ps->root_texture, &ps->psglx->xcontext);
+  xtexture_init(&ps->root_texture, &ps->xcontext);
   get_root_tile(ps);
 
   redir_start(ps);
@@ -3995,15 +3999,7 @@ void session_destroy(session_t *ps) {
 #endif
 
   // Free tracked atom list
-  {
-    latom_t *next = NULL;
-    for (latom_t *this = ps->track_atom_lst; this; this = next) {
-      next = this->next;
-      free(this);
-    }
-
-    ps->track_atom_lst = NULL;
-  }
+  atoms_kill(&ps->atoms);
 
   // Free ignore linked list
   {
@@ -4031,7 +4027,7 @@ void session_destroy(session_t *ps) {
   free(ps->pfds_except);
   free_xinerama_info(ps);
 
-  xorgContext_delete(&ps->psglx->xcontext);
+  xorgContext_delete(&ps->xcontext);
 
   glx_destroy(ps);
 
@@ -4796,7 +4792,7 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
 
         // Detect window type here
         set_ignore_next(ps);
-        winprop_t prop = wid_get_prop(&ps->psglx->xcontext, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
+        winprop_t prop = wid_get_prop(&ps->xcontext, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
 
         wintypeChanged->newType = WINTYPE_UNKNOWN;
 
@@ -4897,7 +4893,7 @@ void session_run(session_t *ps) {
             // input processor.
 
             XWindowAttributes attribs;
-            if (!XGetWindowAttributes(ps->psglx->xcontext.display, window->id, &attribs)) {
+            if (!XGetWindowAttributes(ps->xcontext.display, window->id, &attribs)) {
                 printf_errf("Failed getting window attributes while mapping");
                 return;
             }
@@ -4909,21 +4905,24 @@ void session_run(session_t *ps) {
             // have to deal with it downstream
             Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
 
-            XserverRegion window_region = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, window->id, ShapeBounding);
+            XserverRegion window_region = XFixesCreateRegionFromWindow(ps->xcontext.display, window->id, ShapeBounding);
 
             XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
-            XserverRegion default_clip_region = XFixesCreateRegion(ps->psglx->xcontext.display, &default_clip, 1);
-            XFixesIntersectRegion(ps->psglx->xcontext.display, window_region, window_region, default_clip_region);
+            XserverRegion default_clip_region = XFixesCreateRegion(ps->xcontext.display, &default_clip, 1);
+            XFixesIntersectRegion(ps->xcontext.display, window_region, window_region, default_clip_region);
 
             int rect_count;
-            XRectangle* rects = XFixesFetchRegion(ps->psglx->xcontext.display, window_region, &rect_count);
+            XRectangle* rects = XFixesFetchRegion(ps->xcontext.display, window_region, &rect_count);
 
-            XFixesDestroyRegion(ps->psglx->xcontext.display, window_region);
+            XFixesDestroyRegion(ps->xcontext.display, window_region);
 
             vector_init(&shapeDamaged->rects, sizeof(struct Rect), rect_count);
 
             convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &shapeDamaged->rects);
         }
+
+        // Process all the events added by X
+        fill_wintype_changes(&ps->win_list, ps);
 
         zone_leave(&ZONE_input);
 
@@ -4965,8 +4964,6 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_z);
 
         zone_enter(&ZONE_update_wintype);
-        // Process all the events added by X
-        fill_wintype_changes(&ps->win_list, ps);
 
         for_components(it, em,
                 COMPONENT_WINTYPE_CHANGE, CQ_END) {
@@ -5052,12 +5049,12 @@ void session_run(session_t *ps) {
         }
 
         zone_enter(&ZONE_input_react);
-        commit_map(&ps->win_list, &ps->atoms, &ps->psglx->xcontext);
-        commit_unmap(&ps->win_list, &ps->psglx->xcontext);
+        commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
+        commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
         commit_move(&ps->win_list);
         commit_resize(&ps->win_list);
-        commit_reshape(&ps->win_list, &ps->psglx->xcontext);
+        commit_reshape(&ps->win_list, &ps->xcontext);
         zone_leave(&ZONE_input_react);
 
         zone_enter(&ZONE_make_cutout);
@@ -5069,15 +5066,15 @@ void session_run(session_t *ps) {
                 struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
                 if(win_mapped(em, it.id)) {
-                    XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->psglx->xcontext.display, tracksWindow->id, ShapeBounding);
+                    XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->xcontext.display, tracksWindow->id, ShapeBounding);
                     XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
-                    XFixesUnionRegion(ps->psglx->xcontext.display, newShape, newShape, windowRegion);
-                    XFixesDestroyRegion(ps->psglx->xcontext.display, windowRegion);
+                    XFixesUnionRegion(ps->xcontext.display, newShape, newShape, windowRegion);
+                    XFixesDestroyRegion(ps->xcontext.display, windowRegion);
                 }
             }
             XFixesInvertRegion(ps->dpy, newShape, &(XRectangle){0, 0, ps->root_size.x, ps->root_size.y}, newShape);
             XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
-            XFixesDestroyRegion(ps->psglx->xcontext.display, newShape);
+            XFixesDestroyRegion(ps->xcontext.display, newShape);
         }
         zone_leave(&ZONE_make_cutout);
 
@@ -5122,7 +5119,7 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_prop_blur_damage);
 
         zone_enter(&ZONE_update_textures);
-        update_window_textures(&ps->win_list, &ps->psglx->xcontext, &ps->psglx->blur.fbo);
+        update_window_textures(&ps->win_list, &ps->xcontext, &ps->psglx->blur.fbo);
         zone_leave(&ZONE_update_textures);
 
         update_focused_state(&ps->win_list, ps);

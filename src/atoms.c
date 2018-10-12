@@ -2,50 +2,56 @@
 
 #include "session.h"
 
-Atom get_atom(struct _session_t* ps, const char* atom_name) {
-  return XInternAtom(ps->dpy, atom_name, False);
+Atom get_atom(struct X11Context* context, const char* atom_name) {
+  return XInternAtom(context->display, atom_name, False);
 }
 
-void atoms_get(struct _session_t* ps, struct Atoms* atoms) {
-    ps->atoms.atom_client = get_atom(ps, "WM_STATE");
-    ps->atoms.atom_name = XA_WM_NAME;
-    ps->atoms.atom_name_ewmh = get_atom(ps, "_NET_WM_NAME");
-    ps->atoms.atom_class = XA_WM_CLASS;
-    ps->atoms.atom_role = get_atom(ps, "WM_WINDOW_ROLE");
-    ps->atoms.atom_transient = XA_WM_TRANSIENT_FOR;
-    ps->atoms.atom_client_leader = get_atom(ps, "WM_CLIENT_LEADER");
-    ps->atoms.atom_ewmh_active_win = get_atom(ps, "_NET_ACTIVE_WINDOW");
-    ps->atoms.atom_compton_shadow = get_atom(ps, "_COMPTON_SHADOW");
-    ps->atoms.atom_bypass = get_atom(ps, "_NET_WM_BYPASS_COMPOSITOR");
+void atoms_init(struct Atoms* atoms, struct X11Context* context) {
+    atoms->atom_client = get_atom(context, "WM_STATE");
+    atoms->atom_name = XA_WM_NAME;
+    atoms->atom_name_ewmh = get_atom(context, "_NET_WM_NAME");
+    atoms->atom_class = XA_WM_CLASS;
+    atoms->atom_role = get_atom(context, "WM_WINDOW_ROLE");
+    atoms->atom_transient = XA_WM_TRANSIENT_FOR;
+    atoms->atom_client_leader = get_atom(context, "WM_CLIENT_LEADER");
+    atoms->atom_ewmh_active_win = get_atom(context, "_NET_ACTIVE_WINDOW");
+    atoms->atom_compton_shadow = get_atom(context, "_COMPTON_SHADOW");
+    atoms->atom_bypass = get_atom(context, "_NET_WM_BYPASS_COMPOSITOR");
 
-    ps->atoms.atom_win_type = get_atom(ps, "_NET_WM_WINDOW_TYPE");
-    ps->atoms.atoms_wintypes[WINTYPE_UNKNOWN] = 0;
-    ps->atoms.atoms_wintypes[WINTYPE_DESKTOP] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_DESKTOP");
-    ps->atoms.atoms_wintypes[WINTYPE_DOCK] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_DOCK");
-    ps->atoms.atoms_wintypes[WINTYPE_TOOLBAR] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_TOOLBAR");
-    ps->atoms.atoms_wintypes[WINTYPE_MENU] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_MENU");
-    ps->atoms.atoms_wintypes[WINTYPE_UTILITY] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_UTILITY");
-    ps->atoms.atoms_wintypes[WINTYPE_SPLASH] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_SPLASH");
-    ps->atoms.atoms_wintypes[WINTYPE_DIALOG] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_DIALOG");
-    ps->atoms.atoms_wintypes[WINTYPE_NORMAL] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_NORMAL");
-    ps->atoms.atoms_wintypes[WINTYPE_DROPDOWN_MENU] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU");
-    ps->atoms.atoms_wintypes[WINTYPE_POPUP_MENU] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_POPUP_MENU");
-    ps->atoms.atoms_wintypes[WINTYPE_TOOLTIP] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_TOOLTIP");
-    ps->atoms.atoms_wintypes[WINTYPE_NOTIFY] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_NOTIFICATION");
-    ps->atoms.atoms_wintypes[WINTYPE_COMBO] = get_atom(ps,
-                  "_NET_WM_WINDOW_TYPE_COMBO");
-    ps->atoms.atoms_wintypes[WINTYPE_DND] = get_atom(ps,
+    atoms->atom_win_type = get_atom(context, "_NET_WM_WINDOW_TYPE");
+    atoms->atoms_wintypes[WINTYPE_UNKNOWN] = 0;
+    atoms->atoms_wintypes[WINTYPE_DESKTOP] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_DESKTOP");
+    atoms->atoms_wintypes[WINTYPE_DOCK] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_DOCK");
+    atoms->atoms_wintypes[WINTYPE_TOOLBAR] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_TOOLBAR");
+    atoms->atoms_wintypes[WINTYPE_MENU] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_MENU");
+    atoms->atoms_wintypes[WINTYPE_UTILITY] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_UTILITY");
+    atoms->atoms_wintypes[WINTYPE_SPLASH] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_SPLASH");
+    atoms->atoms_wintypes[WINTYPE_DIALOG] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_DIALOG");
+    atoms->atoms_wintypes[WINTYPE_NORMAL] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_NORMAL");
+    atoms->atoms_wintypes[WINTYPE_DROPDOWN_MENU] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU");
+    atoms->atoms_wintypes[WINTYPE_POPUP_MENU] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_POPUP_MENU");
+    atoms->atoms_wintypes[WINTYPE_TOOLTIP] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_TOOLTIP");
+    atoms->atoms_wintypes[WINTYPE_NOTIFY] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_NOTIFICATION");
+    atoms->atoms_wintypes[WINTYPE_COMBO] = get_atom(context,
+               "_NET_WM_WINDOW_TYPE_COMBO");
+    atoms->atoms_wintypes[WINTYPE_DND] = get_atom(context,
                   "_NET_WM_WINDOW_TYPE_DND");
+
+    vector_init(&atoms->extra, sizeof(Atom), 4);
+}
+
+void atoms_kill(struct Atoms* atoms) {
+    vector_kill(&atoms->extra);
 }

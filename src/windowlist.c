@@ -373,6 +373,8 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
     while(wid != NULL) {
         struct ZComponent* oz = swiss_getComponent(win_list, COMPONENT_Z, *wid);
         assert(oz->z > z->z);
+        // @IMPROVE: windows that don't overlap can still contribute to the background
+        // an example is shadow
         if(win_overlap(win_list, overlap, *wid))
             vector_putBack(overlaps, wid);
         wid = vector_getNext(windows, &index);
