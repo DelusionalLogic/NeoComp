@@ -539,52 +539,216 @@ void windowlist_updateBlur(session_t* ps) {
 }
 
 void windowlist_drawDebug(Swiss* em, session_t* ps) {
-    Vector2 pen;
+    Vector2* pens = malloc(em->size * sizeof(Vector2));
     Vector2 scale = {{1, 1}};
 
     for_components(it, em,
-            COMPONENT_PHYSICAL, COMPONENT_TEXTURED, COMPONENT_BLUR, CQ_END) {
+            COMPONENT_PHYSICAL, CQ_END) {
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        pens[it.id] = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+    }
+
+    {
+        struct face* face = assets_load("window.face");
+        for_components(it, em,
+                COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+            // @HACK @CLEANUP: we need a better way to debugdraw components that
+            // might not be there. Maybe query if they are there and add some
+            // custom panel or something?
+            struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+
+            Vector2* pen = &pens[it.id];
+
+            Vector2 barSize = {{200, 25}};
+            Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
+            Vector4 bgColor = {{.1, .1, .1, .4}};
+            for(size_t i = fo->fade.head; i != fo->fade.tail; ) {
+                // Increment before the body to skip head and process tail
+                i = (i+1) % FADE_KEYFRAMES;
+
+                struct FadeKeyframe* keyframe = &fo->fade.keyframes[i];
+
+                double x = keyframe->time / keyframe->duration;
+
+                Vector3 pos3 = vec3_from_vec2(pen, 1.0);
+                draw_colored_rect(face, &pos3, &barSize, &bgColor);
+                Vector3 filledPos3 = pos3;
+                filledPos3.x += 5;
+                filledPos3.y += 5;
+                Vector2 filledSize = barSize;
+                filledSize.x -= 10;
+                filledSize.y -= 10;
+                filledSize.x *= x;
+                draw_colored_rect(face, &filledPos3, &filledSize, &fgColor);
+
+                pen->y += 10;
+                pen->x += 10;
+
+                char* text;
+                asprintf(&text, "slot %zu Target: %f", i, keyframe->target);
+                text_draw(&debug_font, text, pen, &scale);
+                free(text);
+
+                pen->x -= 10;
+                pen->y += barSize.y - 10;
+            }
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
+        Vector2* pen = &pens[it.id];
+        char* text;
+        asprintf(&text, "Opacity : %f", opacity->opacity);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y += size.y;
+
+        text_draw(&debug_font, text, pen, &scale);
+
+        free(text);
+    }
+
+    // Dim {{{
+    {
+        struct face* face = assets_load("window.face");
+        for_components(it, em,
+                COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+            // @HACK @CLEANUP: we need a better way to debugdraw components that
+            // might not be there. Maybe query if they are there and add some
+            // custom panel or something?
+            struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+
+            Vector2* pen = &pens[it.id];
+
+            Vector2 barSize = {{200, 25}};
+            Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
+            Vector4 bgColor = {{.1, .1, .1, .4}};
+            for(size_t i = fo->fade.head; i != fo->fade.tail; ) {
+                // Increment before the body to skip head and process tail
+                i = (i+1) % FADE_KEYFRAMES;
+
+                struct FadeKeyframe* keyframe = &fo->fade.keyframes[i];
+
+                double x = keyframe->time / keyframe->duration;
+
+                Vector3 pos3 = vec3_from_vec2(pen, 1.0);
+                draw_colored_rect(face, &pos3, &barSize, &bgColor);
+                Vector3 filledPos3 = pos3;
+                filledPos3.x += 5;
+                filledPos3.y += 5;
+                Vector2 filledSize = barSize;
+                filledSize.x -= 10;
+                filledSize.y -= 10;
+                filledSize.x *= x;
+                draw_colored_rect(face, &filledPos3, &filledSize, &fgColor);
+
+                pen->y += 10;
+                pen->x += 10;
+
+                char* text;
+                asprintf(&text, "slot %zu Target: %f", i, keyframe->target);
+                text_draw(&debug_font, text, pen, &scale);
+                free(text);
+
+                pen->x -= 10;
+                pen->y += barSize.y - 10;
+            }
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+        struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
+        Vector2* pen = &pens[it.id];
+        char* text;
+        asprintf(&text, "Dim : %f", dim->dim);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y += size.y;
+
+        text_draw(&debug_font, text, pen, &scale);
+
+        free(text);
+    }
+    // }}}
+
+    for_components(it, em,
+            COMPONENT_PHYSICAL, CQ_END) {
+        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        Vector2 winPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+        pens[it.id] = (Vector2){{winPos.x, winPos.y + physical->size.y - 20}};
+    }
+
+
+    for_components(it, em,
+            COMPONENT_PHYSICAL, CQ_END) {
+        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        Vector2* pen = &pens[it.id];
+
+        char* text;
+        asprintf(&text, "Size : %fx%f", physical->size.x, physical->size.y);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y -= size.y;
+
+        text_draw(&debug_font, text, pen, &scale);
+
+        free(text);
+    }
+
+    for_components(it, em,
+            COMPONENT_STATEFUL, CQ_END) {
+        struct StatefulComponent* state = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+        Vector2* pen = &pens[it.id];
+
+        char* text;
+        asprintf(&text, "State: %s", StateNames[state->state]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y -= size.y;
+
+        text_draw(&debug_font, text, pen, &scale);
+
+        free(text);
+    }
+
+    for_components(it, em,
+            COMPONENT_TEXTURED, CQ_END) {
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
+
+        Vector2* pen = &pens[it.id];
+        char* text;
+        asprintf(&text, "Texture Size : %fx%f", textured->texture.size.x, textured->texture.size.y);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y -= size.y;
+
+        text_draw(&debug_font, text, pen, &scale);
+
+        free(text);
+    }
+
+    for_components(it, em,
+            COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
 
-        pen = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+        Vector2* pen = &pens[it.id];
+        char* text;
+        asprintf(&text, "Blur Size : %fx%f", blur->texture[0].size.x, blur->texture[0].size.y);
 
-        {
-            char* text;
-            asprintf(&text, "Size : %fx%f", physical->size.x, physical->size.y);
+        Vector2 size = {{0}};
+        text_size(&debug_font, text, &scale, &size);
+        pen->y -= size.y;
 
-            Vector2 size = {{0}};
-            text_size(&debug_font, text, &scale, &size);
-            pen.y += size.y;
+        text_draw(&debug_font, text, pen, &scale);
 
-            text_draw(&debug_font, text, &pen, &scale);
-
-            free(text);
-        }
-        {
-            char* text;
-            asprintf(&text, "Texture Size : %fx%f", textured->texture.size.x, textured->texture.size.y);
-
-            Vector2 size = {{0}};
-            text_size(&debug_font, text, &scale, &size);
-            pen.y += size.y;
-
-            text_draw(&debug_font, text, &pen, &scale);
-
-            free(text);
-        }
-        {
-            char* text;
-            asprintf(&text, "Blur Size : %fx%f", blur->texture[0].size.x, blur->texture[0].size.y);
-
-            Vector2 size = {{0}};
-            text_size(&debug_font, text, &scale, &size);
-            pen.y += size.y;
-
-            text_draw(&debug_font, text, &pen, &scale);
-
-            free(text);
-        }
+        free(text);
     }
 }

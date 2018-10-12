@@ -5197,7 +5197,7 @@ void session_run(session_t *ps) {
 
             windowlist_drawTransparent(ps, &transparent);
 
-            /* windowlist_drawDebug(&ps->win_list, ps); */
+            windowlist_drawDebug(&ps->win_list, ps);
 
             vector_kill(&opaque_shadow);
             vector_kill(&transparent);
