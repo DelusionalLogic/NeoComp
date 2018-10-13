@@ -4590,7 +4590,7 @@ static void commit_move(Swiss* em) {
     }
 }
 
-static void commit_destroy(Swiss* em, struct X11Context* xcontext) {
+void commit_destroy(Swiss* em) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_DESTROY, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
@@ -5053,7 +5053,7 @@ void session_run(session_t *ps) {
         }
 
         zone_enter(&ZONE_input_react);
-        commit_destroy(&ps->win_list, &ps->xcontext);
+        commit_destroy(&ps->win_list);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);

@@ -118,7 +118,7 @@ static struct TestResult vector__have_no_data__killed() {
 
     vector_kill(&vector);
 
-    assertEq(vector.data, NULL);
+    assertEq(vector.data, 0x42424242);
 }
 
 static struct TestResult vector__keep_data_linearly__storing() {
@@ -949,6 +949,71 @@ struct TestResult binaryZSearch__return_smallest_value_larger_than_needle__needl
     assertEq(res, 4);
 }
 
+struct TestResult commit_unmap__transition_state_to_destroying__has_destroy_event() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct StatefulComponent* stateful = swiss_addComponent(&swiss, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_HIDING;
+    swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
+
+    commit_destroy(&swiss);
+
+    assertEq((uint64_t)stateful->state, (uint64_t)STATE_DESTROYING);
+}
+
+struct TestResult commit_unmap__not_transision__has_no_destroy_event() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct StatefulComponent* stateful = swiss_addComponent(&swiss, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_HIDING;
+    enum WindowState beforeState = stateful->state;
+
+    commit_destroy(&swiss);
+
+    assertEq((uint64_t)stateful->state, (uint64_t)beforeState);
+}
+
+struct TestResult commit_unmap__transision_last_window__has_multiple_windows_and_last_has_destroy_event() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+    swiss_init(&swiss, 2);
+
+    win_id wid = swiss_allocate(&swiss);
+    swiss_addComponent(&swiss, COMPONENT_STATEFUL, wid);
+
+    wid = swiss_allocate(&swiss);
+    struct StatefulComponent* stateful = swiss_addComponent(&swiss, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_HIDING;
+    swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
+
+    commit_destroy(&swiss);
+
+    assertEq((uint64_t)stateful->state, (uint64_t)STATE_DESTROYING);
+}
+
+struct TestResult commit_unmap__not_crash__window_with_destroy_event_has_no_state() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
+
+    commit_destroy(&swiss);
+
+    assertYes();
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
 
@@ -1038,6 +1103,11 @@ int main(int argc, char** argv) {
     TEST(binaryZSearch__return_rightmost_element__several_values_are_equal);
     TEST(binaryZSearch__return_smallest_value_larger_than_needle__needle_is_not_a_value);
     TEST(binaryZSearch__return_an_index_larger_than_size__last_value_is_equal);
+
+    TEST(commit_unmap__transition_state_to_destroying__has_destroy_event);
+    TEST(commit_unmap__not_transision__has_no_destroy_event);
+    TEST(commit_unmap__transision_last_window__has_multiple_windows_and_last_has_destroy_event);
+    TEST(commit_unmap__not_crash__window_with_destroy_event_has_no_state);
 
     return test_end();
 }
