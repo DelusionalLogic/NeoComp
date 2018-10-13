@@ -828,9 +828,6 @@ static void unmap_win(session_t *ps, win *w) {
     if(ps->active_win == w)
         ps->active_win = NULL;
 
-    struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
-    stateful->state = STATE_HIDING;
-
     swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
 
     // don't care about properties anymore
@@ -1236,10 +1233,9 @@ static void finish_destroy_win(session_t *ps, win_id wid) {
 
 static void destroy_win(session_t *ps, win_id wid) {
     struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
-    // You can only destroy a window that is already hiding or invisible
-    assert(stateful->state == STATE_HIDING || stateful->state == STATE_INVISIBLE);
 
     stateful->state = STATE_DESTROYING;
+    swiss_ensureComponent(&ps->win_list, COMPONENT_DESTROY, wid);
 
 #ifdef CONFIG_DBUS
     // Send D-Bus signal
@@ -4594,6 +4590,14 @@ static void commit_move(Swiss* em) {
     }
 }
 
+static void commit_destroy(Swiss* em, struct X11Context* xcontext) {
+    for_components(it, em,
+            COMPONENT_STATEFUL, COMPONENT_DESTROY, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+        stateful->state = STATE_DESTROYING;
+    }
+}
+
 static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
@@ -5049,6 +5053,7 @@ void session_run(session_t *ps) {
         }
 
         zone_enter(&ZONE_input_react);
+        commit_destroy(&ps->win_list, &ps->xcontext);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
@@ -5092,7 +5097,9 @@ void session_run(session_t *ps) {
 
         for_components(it, em, COMPONENT_SHAPE_DAMAGED, CQ_END) {
             struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
-            vector_kill(&shapeDamaged->rects);
+            if(shapeDamaged->rects.elementSize != 0) {
+                vector_kill(&shapeDamaged->rects);
+            }
         }
         swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
 
@@ -5197,7 +5204,7 @@ void session_run(session_t *ps) {
 
             windowlist_drawTransparent(ps, &transparent);
 
-            windowlist_drawDebug(&ps->win_list, ps);
+            /* windowlist_drawDebug(&ps->win_list, ps); */
 
             vector_kill(&opaque_shadow);
             vector_kill(&transparent);
@@ -5229,8 +5236,6 @@ void session_run(session_t *ps) {
             }
             XSync(ps->dpy, False);
         }
-
-        vector_kill(&transparent);
 
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);

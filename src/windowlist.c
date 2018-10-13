@@ -539,7 +539,7 @@ void windowlist_updateBlur(session_t* ps) {
 }
 
 void windowlist_drawDebug(Swiss* em, session_t* ps) {
-    Vector2* pens = malloc(em->size * sizeof(Vector2));
+    Vector2* pens = malloc(em->capacity * sizeof(Vector2));
     Vector2 scale = {{1, 1}};
 
     for_components(it, em,
