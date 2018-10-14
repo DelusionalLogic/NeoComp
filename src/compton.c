@@ -3711,6 +3711,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPE_DAMAGED, sizeof(struct ShapeDamagedEvent));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
   swiss_setComponentSize(&ps->win_list, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+
+  swiss_setComponentSize(&ps->win_list, COMPONENT_DEBUGGED, sizeof(struct DebuggedComponent));
   swiss_init(&ps->win_list, 512);
 
   vector_init(&ps->order, sizeof(win_id), 512);
@@ -4494,6 +4496,22 @@ static void update_focused_state(Swiss* em, session_t* ps) {
             swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, it.id);
         }
     }
+
+    for_components(it, em,
+            COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+        if(stateful->state == STATE_ACTIVATING) {
+            /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING) {
+            swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id);
+        }
+    }
 }
 
 static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) {
@@ -5175,9 +5193,7 @@ void session_run(session_t *ps) {
         windowlist_updateShadow(ps, &transparent);
         zone_leave(&ZONE_update_shadow);
 
-        zone_enter(&ZONE_blur_background);
         windowlist_updateBlur(ps);
-        zone_leave(&ZONE_blur_background);
 
         zone_leave(&ZONE_effect_textures);
 
@@ -5204,7 +5220,7 @@ void session_run(session_t *ps) {
 
             windowlist_drawTransparent(ps, &transparent);
 
-            /* windowlist_drawDebug(&ps->win_list, ps); */
+            windowlist_drawDebug(&ps->win_list, ps);
 
             vector_kill(&opaque_shadow);
             vector_kill(&transparent);

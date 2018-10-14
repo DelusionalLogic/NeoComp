@@ -3,7 +3,7 @@
 #include <time.h>
 #include <stdbool.h>
 
-#define ZONE_STREAM_LENGTH 4096
+#define ZONE_STREAM_LENGTH 1024000
 
 struct ProgramZone {
     int id;

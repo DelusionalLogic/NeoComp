@@ -162,6 +162,10 @@ struct StatefulComponent {
     enum WindowState state;
 };
 
+struct DebuggedComponent {
+    Vector2 pen;
+};
+
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
     float border_size;

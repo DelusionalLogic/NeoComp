@@ -13,6 +13,9 @@
 #include "blur.h"
 #include "renderutil.h"
 
+DECLARE_ZONE(update_blur);
+DECLARE_ZONE(fetch_candidates);
+
 DECLARE_ZONE(paint_backgrounds);
 DECLARE_ZONE(paint_tints);
 DECLARE_ZONE(paint_windows);
@@ -395,6 +398,8 @@ void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
     fetchSortedWindowsWithArr(em, result, (CType[]){ __VA_ARGS__ })
 
 void windowlist_updateBlur(session_t* ps) {
+    zone_enter(&ZONE_update_blur);
+    zone_enter(&ZONE_fetch_candidates);
     Vector to_blur;
     vector_init(&to_blur, sizeof(win_id), ps->win_list.size);
     fetchSortedWindowsWith(&ps->win_list, &to_blur, 
@@ -421,6 +426,7 @@ void windowlist_updateBlur(session_t* ps) {
     fetchSortedWindowsWith(&ps->win_list, &transparent_renderable, 
             COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL,
             /* COMPONENT_OPACITY, */ CQ_END);
+    zone_leave(&ZONE_fetch_candidates);
 
     struct blur* cache = &ps->psglx->blur;
 
@@ -471,10 +477,6 @@ void windowlist_updateBlur(session_t* ps) {
         vector_init(&transparent_behind, sizeof(win_id), 16);
         windowlist_findbehind(&ps->win_list, &transparent_renderable, *w_id, &transparent_behind);
 
-        Vector shadow_behind;
-        vector_init(&shadow_behind, sizeof(win_id), 16);
-        windowlist_findbehind(&ps->win_list, &shadow_renderable, *w_id, &shadow_behind);
-
         windowlist_drawBackground(ps, &opaque_behind);
         windowlist_draw(ps, &opaque_behind);
 
@@ -486,7 +488,6 @@ void windowlist_updateBlur(session_t* ps) {
         windowlist_drawTransparent(ps, &transparent_behind);
 
         vector_kill(&opaque_behind);
-        vector_kill(&shadow_behind);
         vector_kill(&transparent_behind);
 
         view = old_view;
@@ -540,30 +541,33 @@ void windowlist_updateBlur(session_t* ps) {
     vector_kill(&to_blur);
 
     swiss_resetComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED);
+    zone_leave(&ZONE_update_blur);
 }
 
 void windowlist_drawDebug(Swiss* em, session_t* ps) {
     zone_enter(&ZONE_paint_debug);
-    Vector2* pens = malloc(em->capacity * sizeof(Vector2));
     Vector2 scale = {{1, 1}};
 
+    char buffer[128];
+
     for_components(it, em,
-            COMPONENT_PHYSICAL, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-        pens[it.id] = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+
+        debug->pen = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
     }
 
     zone_enter(&ZONE_paint_debugFaders);
     {
         struct face* face = assets_load("window.face");
         for_components(it, em,
-                COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+                COMPONENT_DEBUGGED, COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+            struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
             // @HACK @CLEANUP: we need a better way to debugdraw components that
             // might not be there. Maybe query if they are there and add some
             // custom panel or something?
             struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-
-            Vector2* pen = &pens[it.id];
 
             Vector2 barSize = {{200, 25}};
             Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
@@ -576,7 +580,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
                 double x = keyframe->time / keyframe->duration;
 
-                Vector3 pos3 = vec3_from_vec2(pen, 1.0);
+                Vector3 pos3 = vec3_from_vec2(&debug->pen, 1.0);
                 draw_colored_rect(face, &pos3, &barSize, &bgColor);
                 Vector3 filledPos3 = pos3;
                 filledPos3.x += 5;
@@ -587,35 +591,30 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
                 filledSize.x *= x;
                 draw_colored_rect(face, &filledPos3, &filledSize, &fgColor);
 
-                pen->y += 10;
-                pen->x += 10;
+                debug->pen.y += 10;
+                debug->pen.x += 10;
 
-                char* text;
-                asprintf(&text, "slot %zu Target: %f", i, keyframe->target);
-                text_draw(&debug_font, text, pen, &scale);
-                free(text);
+                snprintf(buffer, 128, "slot %zu Target: %f", i, keyframe->target);
+                text_draw(&debug_font, buffer, &debug->pen, &scale);
 
-                pen->x -= 10;
-                pen->y += barSize.y - 10;
+                debug->pen.x -= 10;
+                debug->pen.y += barSize.y - 10;
             }
         }
     }
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
-        Vector2* pen = &pens[it.id];
-        char* text;
-        asprintf(&text, "Opacity : %f", opacity->opacity);
+        snprintf(buffer, 128, "Opacity : %f", opacity->opacity);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y += size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y += size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
 
@@ -623,13 +622,12 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
     {
         struct face* face = assets_load("window.face");
         for_components(it, em,
-                COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+                COMPONENT_DEBUGGED, COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+            struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
             // @HACK @CLEANUP: we need a better way to debugdraw components that
             // might not be there. Maybe query if they are there and add some
             // custom panel or something?
             struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
-
-            Vector2* pen = &pens[it.id];
 
             Vector2 barSize = {{200, 25}};
             Vector4 fgColor = {{0.0, 0.4, 0.5, 1.0}};
@@ -642,7 +640,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
                 double x = keyframe->time / keyframe->duration;
 
-                Vector3 pos3 = vec3_from_vec2(pen, 1.0);
+                Vector3 pos3 = vec3_from_vec2(&debug->pen, 1.0);
                 draw_colored_rect(face, &pos3, &barSize, &bgColor);
                 Vector3 filledPos3 = pos3;
                 filledPos3.x += 5;
@@ -653,121 +651,105 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
                 filledSize.x *= x;
                 draw_colored_rect(face, &filledPos3, &filledSize, &fgColor);
 
-                pen->y += 10;
-                pen->x += 10;
+                debug->pen.y += 10;
+                debug->pen.x += 10;
 
-                char* text;
-                asprintf(&text, "slot %zu Target: %f", i, keyframe->target);
-                text_draw(&debug_font, text, pen, &scale);
-                free(text);
+                snprintf(buffer, 128, "slot %zu Target: %f", i, keyframe->target);
+                text_draw(&debug_font, buffer, &debug->pen, &scale);
 
-                pen->x -= 10;
-                pen->y += barSize.y - 10;
+                debug->pen.x -= 10;
+                debug->pen.y += barSize.y - 10;
             }
         }
     }
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
-        Vector2* pen = &pens[it.id];
-        char* text;
-        asprintf(&text, "Dim : %f", dim->dim);
+        snprintf(buffer, 128, "Dim : %f", dim->dim);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y += size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y += size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
     // }}}
     zone_leave(&ZONE_paint_debugFaders);
 
     for_components(it, em,
-            COMPONENT_PHYSICAL, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
         Vector2 winPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
-        pens[it.id] = (Vector2){{winPos.x, winPos.y + physical->size.y - 20}};
+        debug->pen = (Vector2){{winPos.x, winPos.y + physical->size.y - 20}};
     }
 
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_PHYSICAL, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-        Vector2* pen = &pens[it.id];
 
-        char* text;
-        asprintf(&text, "Size : %fx%f", physical->size.x, physical->size.y);
+        snprintf(buffer, 128, "Size : %fx%f", physical->size.x, physical->size.y);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y -= size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_STATEFUL, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_STATEFUL, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct StatefulComponent* state = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        Vector2* pen = &pens[it.id];
 
-        char* text;
-        asprintf(&text, "State: %s", StateNames[state->state]);
+        snprintf(buffer, 128, "State: %s", StateNames[state->state]);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y -= size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_TEXTURED, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_TEXTURED, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
 
-        Vector2* pen = &pens[it.id];
-        char* text;
-        asprintf(&text, "Texture Size : %fx%f", textured->texture.size.x, textured->texture.size.y);
+        snprintf(buffer, 128, "Texture Size : %fx%f", textured->texture.size.x, textured->texture.size.y);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y -= size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
 
     zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
-            COMPONENT_BLUR, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_BLUR, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
 
-        Vector2* pen = &pens[it.id];
-        char* text;
-        asprintf(&text, "Blur Size : %fx%f", blur->texture[0].size.x, blur->texture[0].size.y);
+        snprintf(buffer, 128, "Blur Size : %fx%f", blur->texture[0].size.x, blur->texture[0].size.y);
 
         Vector2 size = {{0}};
-        text_size(&debug_font, text, &scale, &size);
-        pen->y -= size.y;
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, text, pen, &scale);
-
-        free(text);
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
     zone_leave(&ZONE_paint_debug);

@@ -5,7 +5,11 @@
 
 #include "shaders/shaderinfo.h"
 
+#include "profiler/zone.h"
+
 #include "renderutil.h"
+
+DECLARE_ZONE(paint_text);
 
 struct Font debug_font;
 
@@ -97,6 +101,7 @@ void text_draw(const struct Font* font, const char* text, const Vector2* positio
 }
 
 void text_draw_colored(const struct Font* font, const char* text, const Vector2* position, const Vector2* scale, const Vector3* color) {
+    zone_enter(&ZONE_paint_text);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
@@ -105,6 +110,7 @@ void text_draw_colored(const struct Font* font, const char* text, const Vector2*
     struct shader_program* text_program = assets_load("text.shader");
     if(text_program->shader_type_info != &text_info) {
         printf_errf("Shader was not a text shader\n");
+        zone_leave(&ZONE_paint_text);
         return;
     }
 
@@ -134,4 +140,5 @@ void text_draw_colored(const struct Font* font, const char* text, const Vector2*
         }
         pen.x += letter->advance * scale->x;
     }
+    zone_leave(&ZONE_paint_text);
 }

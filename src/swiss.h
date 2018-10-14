@@ -49,6 +49,7 @@ enum ComponentType {
     COMPONENT_REDIRECTED,
     COMPONENT_SHAPED,
     COMPONENT_STATEFUL,
+    COMPONENT_DEBUGGED,
 
     // Messages
     COMPONENT_MAP,
