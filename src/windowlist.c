@@ -20,6 +20,10 @@ DECLARE_ZONE(paint_transparents);
 
 DECLARE_ZONE(paint_window);
 
+DECLARE_ZONE(paint_debug);
+DECLARE_ZONE(paint_debugFaders);
+DECLARE_ZONE(paint_debugProps);
+
 Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
         xpos->x, ps->root_size.y - xpos->y - size->y
@@ -539,6 +543,7 @@ void windowlist_updateBlur(session_t* ps) {
 }
 
 void windowlist_drawDebug(Swiss* em, session_t* ps) {
+    zone_enter(&ZONE_paint_debug);
     Vector2* pens = malloc(em->capacity * sizeof(Vector2));
     Vector2 scale = {{1, 1}};
 
@@ -548,6 +553,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
         pens[it.id] = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
     }
 
+    zone_enter(&ZONE_paint_debugFaders);
     {
         struct face* face = assets_load("window.face");
         for_components(it, em,
@@ -595,6 +601,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
         }
     }
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_FADES_OPACITY, COMPONENT_OPACITY, CQ_END) {
         struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
@@ -610,6 +617,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
 
     // Dim {{{
     {
@@ -659,6 +667,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
         }
     }
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_FADES_DIM, COMPONENT_DIM, CQ_END) {
         struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
@@ -674,7 +683,9 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
     // }}}
+    zone_leave(&ZONE_paint_debugFaders);
 
     for_components(it, em,
             COMPONENT_PHYSICAL, CQ_END) {
@@ -684,6 +695,7 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
     }
 
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_PHYSICAL, CQ_END) {
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
@@ -700,7 +712,9 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_STATEFUL, CQ_END) {
         struct StatefulComponent* state = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
@@ -717,7 +731,9 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_TEXTURED, CQ_END) {
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
@@ -734,7 +750,9 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
 
+    zone_enter(&ZONE_paint_debugProps);
     for_components(it, em,
             COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
@@ -751,4 +769,6 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
 
         free(text);
     }
+    zone_leave(&ZONE_paint_debugProps);
+    zone_leave(&ZONE_paint_debug);
 }
