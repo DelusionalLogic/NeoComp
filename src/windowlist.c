@@ -71,7 +71,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 
     size_t index;
@@ -224,7 +224,7 @@ void windowlist_drawTint(session_t* ps) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 
     struct shader_program* program = assets_load("tint.shader");
@@ -272,7 +272,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 
     struct shader_program* global_program = assets_load("global.shader");

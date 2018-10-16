@@ -4970,7 +4970,7 @@ void session_run(session_t *ps) {
             }
         }
 
-        // idling will be turned off during paint_preprocess() if needed
+        // idling will be turned off later if desired.
         ps->idling = true;
 
         zone_enter(&ZONE_preprocess);

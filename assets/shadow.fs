@@ -11,6 +11,6 @@ void main() {
         discard;
     }
 
-    gl_FragColor = texcol;
-    gl_FragColor.a = .4;
+    gl_FragColor = texcol / gl_FragColor.a;
+    gl_FragColor *= 1;
 }

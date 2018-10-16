@@ -8,5 +8,5 @@ uniform float opacity = 1.0;
 void main() {
     vec2 uv = fragmentUV;
     gl_FragColor = texture2D(tex_scr, uv);
-    gl_FragColor.a *= opacity;
+    gl_FragColor *= opacity;
 }

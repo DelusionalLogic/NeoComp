@@ -16,6 +16,6 @@ void main(void){
     if(rand(screen_uv) < .85)
         discard;
 
-    gl_FragColor = vec4(color, opacity);
-    /* gl_FragColor *= opacity; */
+    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor *= opacity;
 }
