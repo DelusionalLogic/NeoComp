@@ -4917,14 +4917,15 @@ void session_run(session_t *ps) {
             XWindowAttributes attribs;
             if (!XGetWindowAttributes(ps->xcontext.display, window->id, &attribs)) {
                 printf_errf("Failed getting window attributes while mapping");
-                return;
+                swiss_removeComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+                continue;
             }
 
             Vector2 extents = {{attribs.width + attribs.border_width * 2, attribs.height + attribs.border_width * 2}};
             // X has some insane notion that borders aren't part of the window.
             // Therefore a window with a border will have a bounding shape with
-            // a negative upper left corner. This offset corrects for that, so we don't
-            // have to deal with it downstream
+            // a negative upper left corner. This offset corrects for that, so
+            // we don't have to deal with it downstream
             Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
 
             XserverRegion window_region = XFixesCreateRegionFromWindow(ps->xcontext.display, window->id, ShapeBounding);

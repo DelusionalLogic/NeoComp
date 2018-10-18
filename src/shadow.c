@@ -9,8 +9,10 @@
 
 #include <assert.h>
 
+#define SHADOW_RADIUS 64
+
 int shadow_cache_init(struct glx_shadow_cache* cache) {
-    Vector2 border = {{32, 32}};
+    Vector2 border = {{SHADOW_RADIUS, SHADOW_RADIUS}};
     cache->border = border;
 
     if(texture_init(&cache->texture, GL_TEXTURE_2D, NULL) != 0) {
@@ -36,7 +38,7 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
 
 int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size) {
     assert(cache->initialized == true);
-    Vector2 border = {{32, 32}};
+    Vector2 border = {{SHADOW_RADIUS, SHADOW_RADIUS}};
     cache->wSize = *size;
 
     Vector2 overflowSize = border;
@@ -139,7 +141,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     glDisable(GL_STENCIL_TEST);
 
-    textures_blur(&blurDatas, &framebuffer, 3, false);
+    textures_blur(&blurDatas, &framebuffer, 4, false);
 
     vector_kill(&blurDatas);
 
