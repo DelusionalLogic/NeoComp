@@ -2258,10 +2258,6 @@ usage(int ret) {
     "  performance. The switch name may change without prior\n"
     "  notifications.\n"
     "\n"
-    "--blur-background-fixed\n"
-    "  Use fixed blur strength instead of adjusting according to window\n"
-    "  opacity.\n"
-    "\n"
     "--blur-background-exclude condition\n"
     "  Exclude conditions for background blur.\n"
     "\n"
@@ -2843,9 +2839,6 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   parse_cfg_condlst_opct(ps, &cfg, "opacity-rule");
   // --blur-background
   lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
-  // --blur-background-fixed
-  lcfg_lookup_bool(&cfg, "blur-background-fixed",
-      &ps->o.blur_background_fixed);
   // --blur-level
   lcfg_lookup_int(&cfg, "blur-level", &ps->o.blur_level);
   // --glx-swap-method
@@ -2921,7 +2914,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "respect-prop-shadow", no_argument, NULL, 277 },
     { "focus-exclude", required_argument, NULL, 279 },
     { "blur-background", no_argument, NULL, 283 },
-    { "blur-background-fixed", no_argument, NULL, 285 },
     { "dbus", no_argument, NULL, 286 },
     { "logpath", required_argument, NULL, 287 },
     { "invert-color-include", required_argument, NULL, 288 },
@@ -3086,7 +3078,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.focus_blacklist, optarg);
         break;
       P_CASEBOOL(283, blur_background);
-      P_CASEBOOL(285, blur_background_fixed);
       P_CASEBOOL(286, dbus);
       case 287:
         // --logpath
@@ -3627,7 +3618,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .detect_client_opacity = false,
 
       .blur_background = false,
-      .blur_background_fixed = false,
       .blur_background_blacklist = NULL,
       .inactive_dim = 100.0,
       .inactive_dim_fixed = false,

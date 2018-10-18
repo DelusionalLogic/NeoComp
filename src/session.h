@@ -169,9 +169,6 @@ typedef struct _options_t {
   /// Whether to blur background when the window frame is not opaque.
   /// Implies blur_background.
   bool blur_background_frame;
-  /// Whether to use fixed blur strength instead of adjusting according
-  /// to window opacity.
-  bool blur_background_fixed;
   /// Background blur blacklist. A linked list of conditions.
   c2_lptr_t *blur_background_blacklist;
   /// How much to dim an inactive window. 0.0 - 100.0.
