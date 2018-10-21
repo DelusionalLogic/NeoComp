@@ -1,19 +1,22 @@
 sudo: required
 language: C
 services:
-- docker
+    - docker
 before_install:
-- sudo chown 1000:1000 -R .
+    - sudo chown 1000:1000 -R makepkg
 script:
-- cd makepkg
-- docker run -v "$PWD:/app/" -v "$PWD:/dst/" delusional/neocomp
+    - cd makepkg
+    - docker run -v "$PWD:/app/" -v "$PWD:/dst/" delusional/neocomp
+    - cd ..
+before_deploy:
+    - sudo chown $UID -R makepkg
 notifications:
   email: false
 deploy:
-  provider: releases
-  api_key:
-    secure: crc03exc4dfZAJK96C4HVSIgCSpadnRRElwE4y9OQD4AeN72Ht40ygiq20zx9c+2WpljdKyLdyq6dKGtFnxsvaxrxhB+JJh5/QZVAef6W0x2mPGbCd5vpDEH+eNXUWb77m/VZHnvOHDr1fY/p0ro6SabfSYNiSxAg5qOHFAjnqVo/XynUxgQ8K5DUXL8tw0KE2gmGqa2nr090Ua4fy3waLS3AYAuPvznleM6Jg9hC5uuI3Db6Ob7RBeMIBzFm7dCHjr2t1XDB/UAjBjCAXEWftG4rMVe/TJD7Elb/dyN+J4dgHBFAKWqtKUX3RxaIHXmh5oEeldktu9tO1079XaZ3lmRT8SsAgEYQNvkmoJ7V2vNXAj6mknYSMnDkPM9afaLodlskxPzCs1WXWbm5ubXgCyzrjK2qK58J85SLg1S/z6vMCv5spdODSZvqLdUkX7ntzyfPvRAwBjvP+CsQoMRyEHs9s4nDXe6V+TKoZr/RU8wFaxV1YY6rKd9iqOQpTGx0x3+mWA9RLrMdz1dWNA9LbkTMgFRKP80gY2nakohjc5dxqdEyV1z4nuN+IaitPv6icU2WY3sLP3eujlXPseM91NuwZ1m+sn/I26olUjH1beVGtH0vMs1hMrqQmDwBdv2ZgRmmJe4Cysasj7BPHGWwPNXEeKgtoqozih08pTKGaA=
-  file: makepkg/neocomp.pkg.tar.xz
-  on:
-    repo: DelusionalLogic/NeoComp
-    tags: true
+    provider: releases
+    api_key:
+        secure: crc03exc4dfZAJK96C4HVSIgCSpadnRRElwE4y9OQD4AeN72Ht40ygiq20zx9c+2WpljdKyLdyq6dKGtFnxsvaxrxhB+JJh5/QZVAef6W0x2mPGbCd5vpDEH+eNXUWb77m/VZHnvOHDr1fY/p0ro6SabfSYNiSxAg5qOHFAjnqVo/XynUxgQ8K5DUXL8tw0KE2gmGqa2nr090Ua4fy3waLS3AYAuPvznleM6Jg9hC5uuI3Db6Ob7RBeMIBzFm7dCHjr2t1XDB/UAjBjCAXEWftG4rMVe/TJD7Elb/dyN+J4dgHBFAKWqtKUX3RxaIHXmh5oEeldktu9tO1079XaZ3lmRT8SsAgEYQNvkmoJ7V2vNXAj6mknYSMnDkPM9afaLodlskxPzCs1WXWbm5ubXgCyzrjK2qK58J85SLg1S/z6vMCv5spdODSZvqLdUkX7ntzyfPvRAwBjvP+CsQoMRyEHs9s4nDXe6V+TKoZr/RU8wFaxV1YY6rKd9iqOQpTGx0x3+mWA9RLrMdz1dWNA9LbkTMgFRKP80gY2nakohjc5dxqdEyV1z4nuN+IaitPv6icU2WY3sLP3eujlXPseM91NuwZ1m+sn/I26olUjH1beVGtH0vMs1hMrqQmDwBdv2ZgRmmJe4Cysasj7BPHGWwPNXEeKgtoqozih08pTKGaA=
+    file: makepkg/neocomp.pkg.tar.xz
+    on:
+        repo: DelusionalLogic/NeoComp
+        tags: true
