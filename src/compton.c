@@ -1028,7 +1028,6 @@ add_win(session_t *ps, Window id) {
   swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
 
   swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
-  swiss_addComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
 
@@ -4793,6 +4792,12 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         physical->position = map->position;
         physical->size = map->size;
     }
+
+    // We want to fatch the wintype on a map, useful because we don't track the
+    // wintype when unmapped
+    for_components(it, em, COMPONENT_MAP, CQ_END) {
+        swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+    }
 }
 
 void fill_wintype_changes(Swiss* em, session_t* ps) {
@@ -4977,6 +4982,9 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_z);
 
         zone_enter(&ZONE_update_wintype);
+        for_components(it, em, COMPONENT_WINTYPE_CHANGE, CQ_END) {
+            swiss_ensureComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+        }
 
         for_components(it, em,
                 COMPONENT_WINTYPE_CHANGE, CQ_END) {
