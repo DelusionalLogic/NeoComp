@@ -8,7 +8,8 @@ before_install:
     - sudo chown 1000:1000 -R .
 
 script:
-    - docker run -v "$PWD:/app" delusional/neocomp
+    - cd makepkg
+    - docker run -v "$PWD:/app/" -v "$PWD:/dst/" delusional/neocomp
 
 notifications:
     email: false
