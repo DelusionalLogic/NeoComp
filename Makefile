@@ -22,7 +22,7 @@ PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
 
 MAIN_SOURCE = main.c
 
-SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c
+SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c paths.c
 SOURCES += assets/assets.c assets/shader.c assets/face.c
 SOURCES += shaders/shaderinfo.c shaders/include.c
 SOURCES += blur.c shadow.c texture.c renderutil.c textureeffects.c
@@ -106,7 +106,7 @@ CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""
 LDFLAGS ?= -Wl,-O3 -Wl,--as-needed -Wl,--export-dynamic -flto
 
 ifeq "$(CFG_DEV)" ""
-  CFLAGS ?= -DNDEBUG -O3 -D_FORTIFY_SOURCE=2
+  CFLAGS ?= -DNDEBUG -DDEBUG_WINDOWS -O3 -D_FORTIFY_SOURCE=2
 else
   # CFG += -DDEBUG_RESTACK
   LIBS += -lbfd

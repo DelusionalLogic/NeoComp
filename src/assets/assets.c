@@ -7,6 +7,8 @@
 #include <libgen.h>
 #include <Judy.h>
 
+#include "logging.h"
+
 // Types {{{
 struct type_info {
     int id;
@@ -50,7 +52,7 @@ struct asset_handler asset_handlers[MAX_HANDLERS];
 static size_t num_handlers = 0;
 
 #define MAX_PATH_LENGTH 64
-#define MAX_PATHS 2
+#define MAX_PATHS 16
 char paths[MAX_PATHS][MAX_PATH_LENGTH];
 static size_t num_paths = 0;
 
@@ -148,14 +150,16 @@ void* assets_load(const char* path) {
 
 void assets_add_path(const char* new_path) {
     if(strlen(new_path) >= MAX_PATH_LENGTH) {
-        printf("String too long for path %s\n", new_path);
+        printf_errf("String too long for path %s", new_path);
         return;
     }
 
     if(num_paths >= MAX_PATHS) {
-        printf("We were already full of paths when %s came along\n", new_path);
+        printf_errf("We were already full of paths when %s came along", new_path);
         return;
     }
+
+    printf_dbgf("Using asset path %s", new_path);
 
     char* path = paths[num_paths++];
     strncpy(path, new_path, MAX_PATH_LENGTH);
