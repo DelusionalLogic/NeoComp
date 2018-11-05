@@ -98,10 +98,10 @@ static char* append_path(const char* p1, const char* p2) {
     return path;
 }
 
-static char* resolve_path(const char* path) {
+char* assets_resolve_path(const char* path) {
     char* resolved = NULL;
     for(int i = 0; i < num_paths; i++) {
-        resolved = append_path(paths[0], path);
+        resolved = append_path(paths[i], path);
 
         if(access(resolved, R_OK) == 0) {
             break;
@@ -124,7 +124,7 @@ void* assets_load(const char* path) {
     if(asset != NULL)
         return *asset;
 
-    char* abspath = resolve_path(path);
+    char* abspath = assets_resolve_path(path);
     if(abspath == NULL) {
         printf("No file named %s\n", path);
         free(abspath);

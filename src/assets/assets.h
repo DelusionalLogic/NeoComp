@@ -22,3 +22,4 @@ void assets_add_handler_internal(asset_type type, const char* extension,
 void* assets_load(const char* path);
 
 void assets_add_path(const char* path);
+char* assets_resolve_path(const char* path);
