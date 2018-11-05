@@ -3830,7 +3830,13 @@ XSynchronize(ps->dpy, 1);
   if (!ps->reg_win && !register_cm(ps))
     exit(1);
 
-  text_debug_load("fonts/Roboto-Light.ttf");
+  char* debug_font_loc = assets_resolve_path("fonts/Roboto-Light.ttf");
+  if(debug_font_loc != NULL) {
+      text_debug_load(debug_font_loc);
+      free(debug_font_loc);
+  } else {
+      printf_errf("Failed finding the debug font");
+  }
 
   bezier_init(&ps->curve, 0.4, 0.0, 0.2, 1);
 
