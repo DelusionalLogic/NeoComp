@@ -27,6 +27,7 @@
 #include "xtexture.h"
 #include "timer.h"
 #include "timeout.h"
+#include "paths.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -3797,75 +3798,8 @@ XSynchronize(ps->dpy, 1);
   assets_add_handler(struct shader_program, "shader", shader_program_load_file,
       shader_program_unload_file);
 
-  assets_add_path("../assets/");
-
-  Vector paths;
-  vector_init(&paths, sizeof(char), 3);
-  {
-      char* home = getenv("HOME");
-      size_t home_len = strlen(home);
-
-      char* relPath = "/neocomp/assets/";
-      size_t relPath_len = 16;
-
-      Vector curPath;
-      vector_init(&curPath, sizeof(char), 64);
-
-      {
-          char* conf_dir = getenv("XDG_CONFIG_HOME");
-          if(conf_dir == NULL) {
-              if(home != NULL) {
-                  vector_putListBack(&curPath, home, home_len);
-                  vector_putListBack(&curPath, "/.config/", 9);
-              }
-          } else {
-              vector_putListBack(&curPath, conf_dir, strlen(conf_dir));
-          }
-      }
-      // Take \0 from relPath
-      vector_putListBack(&curPath, relPath, relPath_len + 1);
-      assets_add_path(curPath.data);
-      vector_clear(&curPath);
-
-      {
-          char* conf_dirs = getenv("XDG_CONFIG_DIRS");
-          if(conf_dirs == NULL) {
-              conf_dirs = "/etc/xdg/";
-          }
-
-          char* part_end;
-          do {
-              part_end = strchr(conf_dirs, ':');
-              size_t part_len = (part_end != NULL ? (part_end - conf_dirs) : strlen(conf_dirs));
-              vector_putListBack(&curPath, conf_dirs, part_len);
-
-              // Take \0 from relPath
-              vector_putListBack(&curPath, relPath, relPath_len + 1);
-              assets_add_path(curPath.data);
-              vector_clear(&curPath);
-              conf_dirs += part_len + 1;
-          } while(part_end != NULL);
-      }
-  }
-
-  // XDG conf dirs
-  /* char* home = getenv("HOME"); */
-  /* size_t home_len = strlen(home); */
-  /* bool has_slash = home[home_len-1] == '/' || home[home_len-1] == '\\'; */
-
-  /* char* conf_dir = getenv("XDG_CONFIG_HOME"); */
-  /* if(conf_dir == NULL) { */
-  /*     if(home != NULL) { */
-  /*         char* suffix = "/.config/neocomp/"; */
-  /*         conf_dir = malloc(home_len + 17 + (has_slash * 1)); // +2 because \0 and possible / */
-  /*         strncpy(conf_dir, home, home_len); */
-  /*         if(has_slash) */
-  /*             conf_dir[home_len] = '/'; */
-  /*         strncpy(conf_dir + home_len + (has_slash * 1), suffix, 17); */
-  /*     } */
-  /* } */
-  /* printf_dbgf("Conf dir: %s", conf_dir); */
-
+  assets_add_path("./assets/");
+  add_xdg_asset_paths();
 
   // Initialize OpenGL as early as possible
   if (!glx_init(ps, true))
