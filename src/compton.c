@@ -3830,7 +3830,7 @@ XSynchronize(ps->dpy, 1);
   if (!ps->reg_win && !register_cm(ps))
     exit(1);
 
-  char* debug_font_loc = assets_resolve_path("fonts/Roboto-Light.ttf");
+  char* debug_font_loc = assets_resolve_path("Roboto-Light.ttf");
   if(debug_font_loc != NULL) {
       text_debug_load(debug_font_loc);
       free(debug_font_loc);
