@@ -127,6 +127,7 @@ void* assets_load(const char* path) {
     char* abspath = resolve_path(path);
     if(abspath == NULL) {
         printf("No file named %s\n", path);
+        free(abspath);
         return NULL;
     }
 
@@ -135,11 +136,13 @@ void* assets_load(const char* path) {
     JSLI(asset, handler->loaded, path);
     if(asset == NULL) {
         printf("Failed allocating space for the asset %s\n", path);
+        free(abspath);
         return NULL;
     }
 
     *asset = handler->loader(abspath);
 
+    free(abspath);
     return *asset;
 }
 
