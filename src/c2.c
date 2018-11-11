@@ -150,102 +150,6 @@ static void c2_dump(c2_ptr_t p) {
 }
 #endif
 
-static int c2_parse_legacy(session_t *ps, const char *pattern, int offset, c2_ptr_t *presult) {
-    unsigned plen = strlen(pattern + offset);
-
-    if (plen < 4 || ':' != pattern[offset + 1]
-            || !strchr(pattern + offset + 2, ':')) {
-        c2_error("pattern %s, pos %d: Legacy parser: Invalid format.", pattern, offset);
-        return -1;
-    }
-
-    // Allocate memory for new leaf
-    c2_l_t *pleaf = malloc(sizeof(c2_l_t));
-    if (!pleaf)
-        printf_errfq(1, "(): Failed to allocate memory for new leaf.");
-    presult->isbranch = false;
-    presult->l = pleaf;
-    memcpy(pleaf, &leaf_def, sizeof(c2_l_t));
-    pleaf->type = C2_L_TSTRING;
-    pleaf->op = C2_L_OEQ;
-    pleaf->ptntype = C2_L_PTSTRING;
-
-    // Determine the pattern target
-    switch (pattern[offset]) {
-        case 'n':
-            pleaf->predef = C2_L_PNAME;
-            pleaf->type = C2_PREDEFS[C2_L_PNAME].type;
-            pleaf->format = C2_PREDEFS[C2_L_PNAME].format;
-            break;
-        case 'i':
-            pleaf->predef = C2_L_PCLASSI;
-            pleaf->type = C2_PREDEFS[C2_L_PCLASSI].type;
-            pleaf->format = C2_PREDEFS[C2_L_PCLASSI].format;
-            break;
-        case 'g':
-            pleaf->predef = C2_L_PCLASSG;
-            pleaf->type = C2_PREDEFS[C2_L_PCLASSG].type;
-            pleaf->format = C2_PREDEFS[C2_L_PCLASSG].format;
-            break;
-        case 'r':
-            pleaf->predef = C2_L_PROLE;
-            pleaf->type = C2_PREDEFS[C2_L_PROLE].type;
-            pleaf->format = C2_PREDEFS[C2_L_PROLE].format;
-            break;
-        default:
-            c2_error("pattern %s, pos %d: Target \"%c\" invalid.\n", pattern, offset, pattern[offset]);
-            return -1;
-    }
-
-    offset += 2;
-
-    // Determine the match type
-    switch (pattern[offset]) {
-        case 'e':
-            pleaf->match = C2_L_MEXACT;
-            break;
-        case 'a':
-            pleaf->match = C2_L_MCONTAINS;
-            break;
-        case 's':
-            pleaf->match = C2_L_MSTART;
-            break;
-        case 'w':
-            pleaf->match = C2_L_MWILDCARD;
-            break;
-        case 'p':
-            pleaf->match = C2_L_MPCRE;
-            break;
-        default:
-            c2_error("pattern %s, pos %d: Type \"%c\" invalid.\n", pattern, offset, pattern[offset]);
-            return -1;
-    }
-    ++offset;
-
-    // Determine the pattern flags
-    while (':' != pattern[offset]) {
-        switch (pattern[offset]) {
-            case 'i':
-                pleaf->match_ignorecase = true;
-                break;
-            default:
-                c2_error("pattern %s, pos %d: Flag \"%c\" invalid.", pattern, offset, pattern[offset]);
-                return -1;
-        }
-        ++offset;
-    }
-    ++offset;
-
-    // Copy the pattern
-    pleaf->ptnstr = mstrcpy(pattern + offset);
-
-    if (!c2_l_postprocess(ps, pleaf))
-        return -1;
-
-    return offset;
-}
-
-
 /**
  * Parse a condition string.
  */
@@ -256,13 +160,7 @@ c2_lptr_t * c2_parsed(session_t *ps, c2_lptr_t **pcondlst, const char *pattern,
 
     // Parse the pattern
     c2_ptr_t result = C2_PTR_INIT;
-    int offset = -1;
-
-    if (strlen(pattern) >= 2 && ':' == pattern[1]) {
-        offset = c2_parse_legacy(ps, pattern, 0, &result);
-    } else {
-        offset = c2_parse_grp(ps, pattern, 0, &result, 0);
-    }
+    int offset = c2_parse_grp(ps, pattern, 0, &result, 0);
 
     if (offset < 0) {
         c2_freep(&result);

@@ -62,6 +62,8 @@ DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
 
+DECLARE_ZONE(x_communication);
+
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
@@ -71,6 +73,7 @@ DECLARE_ZONE(fetch_prop);
 DECLARE_ZONE(update_fade);
 
 DECLARE_ZONE(update_textures);
+DECLARE_ZONE(update_single_texture);
 
 // From the header {{{
 
@@ -864,8 +867,8 @@ win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
  * @param client window ID of the client window
  */
 static void
-win_mark_client(session_t *ps, win *w, Window client) {
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+win_mark_client(session_t *ps, win *parent, Window client) {
+  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, parent);
   struct HasClientComponent* clientComponent = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
   clientComponent->id = client;
@@ -885,9 +888,9 @@ win_mark_client(session_t *ps, win *w, Window client) {
 
   // Get window name and class if we are tracking them
   if (ps->o.track_wdata) {
-    win_get_name(ps, w);
-    win_get_class(ps, w);
-    win_get_role(ps, w);
+    win_get_name(ps, parent);
+    win_get_class(ps, parent);
+    win_get_role(ps, parent);
   }
 
   // Update everything related to conditions
@@ -1550,8 +1553,6 @@ win_get_class(session_t *ps, win *w) {
   if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid))
     return false;
 
-
-
   // Free and reset old strings
   free(w->class_instance);
   free(w->class_general);
@@ -1560,7 +1561,7 @@ win_get_class(session_t *ps, win *w) {
 
   struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
   if (!wid_get_text_prop(ps, client->id, ps->atoms.atom_class, &strlst, &nstr))
-    return false;
+      return false;
 
   // Copy the strings if successful
   w->class_instance = mstrcpy(strlst[0]);
@@ -3629,7 +3630,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .focus_blacklist = NULL,
 
       .track_focus = false,
-      .track_wdata = false,
+      .track_wdata = true,
     },
 
     .pfds_read = NULL,
@@ -4199,10 +4200,13 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     // server until we are done with the textures. Experiments show that it
     // completely kills rendering performance for chrome and electron.
     // - Delusional 19/08-2018
+    zone_enter(&ZONE_x_communication);
     XGrabServer(xcontext->display);
     glXWaitX();
+    zone_leave(&ZONE_x_communication);
 
     while(!it.done) {
+        zone_enter(&ZONE_update_single_texture);
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
@@ -4212,13 +4216,16 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         XSyncAwaitFence(xcontext->display, &fence, 1);
         XSyncDestroyFence(xcontext->display, fence);
 
+        zone_enter(&ZONE_x_communication);
         if(!wd_bind(&bindsTexture->drawable)) {
             // If we fail to bind we just assume that the window must have been
             // closed and keep the old texture
             printf_err("Failed binding drawable for %zu", it.id);
+            zone_leave(&ZONE_update_single_texture);
             swiss_getNext(em, &it);
             continue;
         }
+        zone_leave(&ZONE_x_communication);
 
         framebuffer_resetTarget(fbo);
         framebuffer_targetTexture(fbo, &textured->texture);
@@ -4246,11 +4253,14 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         wd_unbind(&bindsTexture->drawable);
 
+        zone_leave(&ZONE_update_single_texture);
         swiss_getNext(em, &it);
     }
 
+    zone_enter(&ZONE_x_communication);
     XUngrabServer(xcontext->display);
     glXWaitX();
+    zone_leave(&ZONE_x_communication);
 }
 
 static void commit_opacity_change(Swiss* em, double fade_time) {
@@ -4763,7 +4773,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, .0}};
+            tint->color = (Vector4){{1, 1, 1, .04}};
         }
     }
 

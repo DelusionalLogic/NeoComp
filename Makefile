@@ -6,7 +6,7 @@ CC ?= gcc
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man/man1
-CFGDIR ?= /etc/neocomp
+CFGDIR ?= /etc/xdg/neocomp
 ASTDIR ?= $(CFGDIR)/assets
 
 OBJDIR ?= obj
@@ -106,11 +106,11 @@ CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""
 LDFLAGS ?= -Wl,-O3 -Wl,--as-needed -Wl,--export-dynamic -flto
 
 ifeq "$(CFG_DEV)" ""
-  CFLAGS ?= -DNDEBUG -DDEBUG_WINDOWS -O3 -D_FORTIFY_SOURCE=2
+  CFLAGS ?= -DNDEBUG -O3 -D_FORTIFY_SOURCE=2
 else
   # CFG += -DDEBUG_RESTACK
   LIBS += -lbfd
-  CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
+  CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag -DDEBUG_WINDOWS 
   # CFLAGS += -fsanitize=address -fsanitize=leak -fsanitize=null
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif

@@ -752,5 +752,21 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
         text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
     zone_leave(&ZONE_paint_debugProps);
+
+    zone_enter(&ZONE_paint_debugProps);
+    for_components(it, em,
+            COMPONENT_DEBUGGED, COMPONENT_BLUR, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        snprintf(buffer, 128, "Class General : %s", w->class_general);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+    zone_leave(&ZONE_paint_debugProps);
     zone_leave(&ZONE_paint_debug);
 }

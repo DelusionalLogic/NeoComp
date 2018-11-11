@@ -13,9 +13,9 @@ float rand(in vec2 co){
 
 void main(void){
     vec2 screen_uv = gl_FragCoord.xy / viewport;
-    if(rand(screen_uv) < .85)
-        discard;
+    /* if(rand(screen_uv) < .85) */
+        /* discard; */
 
     gl_FragColor = vec4(color, 1.0);
-    gl_FragColor *= opacity;
+    gl_FragColor *= rand(screen_uv) * opacity;
 }

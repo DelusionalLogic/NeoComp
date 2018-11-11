@@ -111,6 +111,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
         texture_bind(&textured->texture, GL_TEXTURE0);
 
+        // @PERFORMANCE: Don't look up the shader inside the loop you dunce.
         struct shader_program* shadow_program = assets_load("shadow.shader");
         if(shadow_program->shader_type_info != &shadow_info) {
             printf_errf("Shader was not a shadow shader\n");

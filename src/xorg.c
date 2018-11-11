@@ -116,8 +116,9 @@ int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* co
 int xorgContext_ensure_capabilities(const struct X11Capabilities* caps) {
     bool missing = false;
 
+	printf("Xorg Features: \n");
     for(size_t i = 0; i < PROTO_COUNT; i++) {
-        printf("%s ... %s\n", X11Protocols_Names[i], VERSION_NAMES[caps->version[i]]);
+        printf("    %s: %s\n", X11Protocols_Names[i], VERSION_NAMES[caps->version[i]]);
         if(caps->version[i] == XVERSION_NO)
             missing = true;
     }
@@ -155,8 +156,10 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
         GLXFBConfig fbconfig = context->configs[i];
         XVisualInfo* visinfo = glXGetVisualFromFBConfig(context->display, fbconfig);
         if (!visinfo || visinfo->visualid != visualid) {
+            XFree(visinfo);
             continue;
         }
+        XFree(visinfo);
 
         // We don't want to use anything multisampled
         glXGetFBConfigAttrib(context->display, fbconfig, GLX_SAMPLES, &value);
