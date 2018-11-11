@@ -15,6 +15,9 @@
 #include "renderutil.h"
 #include "shadow.h"
 
+DECLARE_ZONE(name_pixmap);
+DECLARE_ZONE(bind_pixmap);
+
 int window_zcmp(const void* a, const void* b, void* userdata) {
     const win_id *a_wid = a;
     const win_id *b_wid = b;
@@ -304,7 +307,8 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
     XGetWindowAttributes(context->display, wid, &attribs);
 
     drawable->wid = wid;
-    drawable->fbconfig = xorgContext_selectConfig(context, XVisualIDFromVisual(attribs.visual));
+    GLXFBConfig* fbconfig = xorgContext_selectConfig(context, XVisualIDFromVisual(attribs.visual));
+    xtexinfo_init(&drawable->texinfo, context, fbconfig);
 
     return xtexture_init(&drawable->xtexture, context);
 }
@@ -312,13 +316,18 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
 bool wd_bind(struct WindowDrawable* drawable) {
     assert(drawable != NULL);
 
+    zone_enter(&ZONE_name_pixmap);
     Pixmap pixmap = XCompositeNameWindowPixmap(drawable->context->display, drawable->wid);
+    zone_leave(&ZONE_name_pixmap);
     if(pixmap == 0) {
         printf_errf("Failed getting window pixmap");
         return false;
     }
 
-    return xtexture_bind(&drawable->xtexture, drawable->fbconfig, pixmap);
+    zone_enter(&ZONE_bind_pixmap);
+    bool success = xtexture_bind(&drawable->xtexture, &drawable->texinfo, pixmap);
+    zone_leave(&ZONE_bind_pixmap);
+    return success;
 }
 
 bool wd_unbind(struct WindowDrawable* drawable) {

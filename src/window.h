@@ -21,7 +21,7 @@ struct _session_t;
 
 struct WindowDrawable {
     Window wid;
-    GLXFBConfig* fbconfig;
+    struct XTextureInformation texinfo;
 
     // This is a bit of magic. In C11 we can have anonymous struct members, but
     // they have to be untagged. We'd prefer to be able to use a tagged one,
