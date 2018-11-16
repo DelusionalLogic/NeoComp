@@ -674,7 +674,10 @@ static bool get_root_tile(session_t *ps) {
     XGetWindowAttributes(ps->xcontext.display, ps->root, &attribs);
     GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->xcontext, XVisualIDFromVisual(attribs.visual));
 
-    if(!xtexture_bind(&ps->root_texture, fbconfig, pixmap)) {
+    struct XTextureInformation texinfo;
+    xtexinfo_init(&texinfo, &ps->xcontext, fbconfig);
+
+    if(!xtexture_bind(&ps->root_texture, &texinfo, pixmap)) {
         printf_errf("Failed binding the root texture to gl");
         return false;
     }
@@ -777,8 +780,6 @@ static void map_win(session_t *ps, win_id wid) {
     // Try avoiding mapping a window twice
     if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
         return;
-
-    assert(ps->active_win != w);
 
     cxinerama_win_upd_scr(ps, wid);
 
@@ -1257,11 +1258,11 @@ root_damaged(session_t *ps) {
 }
 
 static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
-    /*
-       if (ps->root == de->drawable) {
-       root_damaged();
-       return;
-       } */
+    // @PERFORMANCE: We are getting a DamageNotify while moving windows, which
+    // means we are damaging the contents (and therefore rebinding the window)
+    // for every move. In most cases, that's completely unnecessary. I don'r
+    // know how to detect if a damage is caused by a move at this time.
+    // - Delusional 16/11-2018
 
 
     win *w = find_win(ps, de->drawable);
@@ -1270,7 +1271,7 @@ static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
         return;
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-  if (!win_mapped(&ps->win_list, wid))
+    if (!win_mapped(&ps->win_list, wid))
         return;
 
     //Reset the XDamage region, so we continue to recieve new damage
@@ -4221,6 +4222,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
             // If we fail to bind we just assume that the window must have been
             // closed and keep the old texture
             printf_err("Failed binding drawable for %zu", it.id);
+            zone_leave(&ZONE_x_communication);
             zone_leave(&ZONE_update_single_texture);
             swiss_getNext(em, &it);
             continue;
@@ -4247,6 +4249,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
 
+        glClear(GL_COLOR_BUFFER_BIT);
         draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
 
         view = old_view;
@@ -4537,7 +4540,7 @@ static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) 
     }
 }
 
-static void commit_resize(Swiss* em) {
+static void commit_resize(Swiss* em, Vector* order) {
     for_components(it, em,
             COMPONENT_RESIZE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
@@ -4580,6 +4583,26 @@ static void commit_resize(Swiss* em) {
 
         physical->size = resize->newSize;
     }
+
+    // Damage all windows on top of windows that resize
+    for_components(it, em, COMPONENT_RESIZE, CQ_END) {
+        size_t order_slot = vector_find_uint64(order, it.id);
+        assert(order_slot >= 0);
+
+        // @PERFORMANCE: There's a possible performance optimization here, we
+        // don't need to recalculate the blur of windows which aren't affected.
+        // Immediatly that might seem like a simple calculation (windows
+        // collide), but when a window was behind a window before, and it now
+        // not, we also need to handle that, so we need history (particularly
+        // one frame back). For now we just recalculate everything in front of
+        // this window.  Really, how often do you move a window at the bottom
+        // of the stack anyway? - Delusional 16/11-2018
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            other_id = vector_getNext(order, &order_slot);
+        }
+    }
 }
 
 static void commit_reshape(Swiss* em, struct X11Context* context) {
@@ -4601,10 +4624,30 @@ static void commit_reshape(Swiss* em, struct X11Context* context) {
     }
 }
 
-static void commit_move(Swiss* em) {
+static void commit_move(Swiss* em, Vector* order) {
     for_components(it, em,
             COMPONENT_MOVE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
+
+    // Damage all windows on top of windows that move
+    for_components(it, em, COMPONENT_MOVE, CQ_END) {
+        size_t order_slot = vector_find_uint64(order, it.id);
+        assert(order_slot >= 0);
+
+        // @PERFORMANCE: There's a possible performance optimization here, we
+        // don't need to recalculate the blur of windows which aren't affected.
+        // Immediatly that might seem like a simple calculation (windows
+        // collide), but when a window was behind a window before, and it now
+        // not, we also need to handle that, so we need history (particularly
+        // one frame back). For now we just recalculate everything in front of
+        // this window.  Really, how often do you move a window at the bottom
+        // of the stack anyway? - Delusional 16/11-2018
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            other_id = vector_getNext(order, &order_slot);
+        }
     }
 
     for_components(it, em,
@@ -5095,8 +5138,8 @@ void session_run(session_t *ps) {
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
-        commit_move(&ps->win_list);
-        commit_resize(&ps->win_list);
+        commit_move(&ps->win_list, &ps->order);
+        commit_resize(&ps->win_list, &ps->order);
         commit_reshape(&ps->win_list, &ps->xcontext);
         zone_leave(&ZONE_input_react);
 
@@ -5241,7 +5284,7 @@ void session_run(session_t *ps) {
             windowlist_drawTransparent(ps, &transparent);
 
 #ifdef DEBUG_WINDOWS
-            windowlist_drawDebug(&ps->win_list, ps);
+            /* windowlist_drawDebug(&ps->win_list, ps); */
 #endif
 
             vector_kill(&opaque_shadow);
