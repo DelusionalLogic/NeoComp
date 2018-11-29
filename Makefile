@@ -28,6 +28,7 @@ SOURCES += shaders/shaderinfo.c shaders/include.c
 SOURCES += blur.c shadow.c texture.c renderutil.c textureeffects.c
 SOURCES += framebuffer.c renderbuffer.c window.c windowlist.c xorg.c xtexture.c
 SOURCES += profiler/zone.c profiler/render.c profiler/dump_events.c profiler/malloc_profile.c
+SOURCES += debug.c
 
 TEST_SOURCES = $(wildcard test/*.c)
 

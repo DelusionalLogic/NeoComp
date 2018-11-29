@@ -28,6 +28,7 @@
 #include "timer.h"
 #include "timeout.h"
 #include "paths.h"
+#include "debug.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -808,6 +809,10 @@ static void map_win(session_t *ps, win_id wid) {
         attribs.height + w->border_size * 2,
     }};
 
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
+        swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
+    }
+
     struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
     stateful->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
@@ -834,6 +839,9 @@ static void unmap_win(session_t *ps, win *w) {
         ps->active_win = NULL;
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
+        swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
+    }
 
     // don't care about properties anymore
     win_ev_stop(ps, w);
@@ -1264,18 +1272,20 @@ static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
     // know how to detect if a damage is caused by a move at this time.
     // - Delusional 16/11-2018
 
-
     win *w = find_win(ps, de->drawable);
 
-    if (!w)
+    if (!w) {
         return;
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    }
 
+    // We need to subtract the damage, even if we aren't mapped. If we don't
+    // subtract the damage, we won't be notified of any new damage in the
+    // future.
+    XDamageSubtract(ps->dpy, w->damage, None, None);
+
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     if (!win_mapped(&ps->win_list, wid))
         return;
-
-    //Reset the XDamage region, so we continue to recieve new damage
-    XDamageSubtract(ps->dpy, w->damage, None, None);
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
     // @CLEANUP: We shouldn't damage the shadow here. It's more of an update
@@ -1693,44 +1703,6 @@ ev_name(session_t *ps, XEvent *ev) {
   return buf;
 }
 
-static Window
-ev_window(session_t *ps, XEvent *ev) {
-  switch (ev->type) {
-    case CreateNotify:
-      return ev->xcreatewindow.window;
-    case ConfigureNotify:
-      return ev->xconfigure.window;
-    case DestroyNotify:
-      return ev->xdestroywindow.window;
-    case MapNotify:
-      return ev->xmap.window;
-    case UnmapNotify:
-      return ev->xunmap.window;
-    case ReparentNotify:
-      return ev->xreparent.window;
-    case CirculateNotify:
-      return ev->xcirculate.window;
-    case Expose:
-      return ev->xexpose.window;
-    case PropertyNotify:
-      return ev->xproperty.window;
-    case ClientMessage:
-      return ev->xclient.window;
-    default:
-      if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify) {
-        return ((XDamageNotifyEvent *)ev)->drawable;
-      }
-
-      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
-        return ((XShapeEvent *) ev)->window;
-      }
-
-      return 0;
-  }
-}
-
 static inline const char *
 ev_focus_mode_name(XFocusChangeEvent* ev) {
   switch (ev->mode) {
@@ -2033,6 +2005,43 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
 static void ev_screen_change_notify(session_t *ps, XRRScreenChangeNotifyEvent __attribute__((unused)) *ev) {
     if (ps->o.xinerama_shadow_crop)
         cxinerama_upd_scrs(ps);
+}
+
+static Window ev_window(session_t *ps, XEvent *ev) {
+  switch (ev->type) {
+    case CreateNotify:
+      return ev->xcreatewindow.window;
+    case ConfigureNotify:
+      return ev->xconfigure.window;
+    case DestroyNotify:
+      return ev->xdestroywindow.window;
+    case MapNotify:
+      return ev->xmap.window;
+    case UnmapNotify:
+      return ev->xunmap.window;
+    case ReparentNotify:
+      return ev->xreparent.window;
+    case CirculateNotify:
+      return ev->xcirculate.window;
+    case Expose:
+      return ev->xexpose.window;
+    case PropertyNotify:
+      return ev->xproperty.window;
+    case ClientMessage:
+      return ev->xclient.window;
+    default:
+      if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify) {
+        return ((XDamageNotifyEvent *)ev)->drawable;
+      }
+
+      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
+              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
+        return ((XShapeEvent *) ev)->window;
+      }
+
+      return 0;
+  }
 }
 
 static void
@@ -5055,8 +5064,6 @@ void session_run(session_t *ps) {
 
             w->window_type = wintypeChanged->newType;
         }
-
-        swiss_resetComponent(em, COMPONENT_WINTYPE_CHANGE);
         zone_leave(&ZONE_update_wintype);
 
 
@@ -5164,28 +5171,6 @@ void session_run(session_t *ps) {
         }
         zone_leave(&ZONE_make_cutout);
 
-        zone_enter(&ZONE_remove_input);
-        // Remove all the X events
-        // @CLEANUP: Should maybe be done last in the frame
-        swiss_resetComponent(&ps->win_list, COMPONENT_MAP);
-        swiss_resetComponent(&ps->win_list, COMPONENT_UNMAP);
-        swiss_resetComponent(&ps->win_list, COMPONENT_MOVE);
-        swiss_removeComponentWhere(
-            &ps->win_list,
-            COMPONENT_RESIZE,
-            (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
-        );
-
-        for_components(it, em, COMPONENT_SHAPE_DAMAGED, CQ_END) {
-            struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
-            if(shapeDamaged->rects.elementSize != 0) {
-                vector_kill(&shapeDamaged->rects);
-            }
-        }
-        swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
-
-        zone_leave(&ZONE_remove_input);
-
         zone_enter(&ZONE_prop_blur_damage);
         // Damage the blur of windows on top of damaged windows
         for_components(it, &ps->win_list,
@@ -5213,7 +5198,6 @@ void session_run(session_t *ps) {
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);
         start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.dim_fade_time);
-        swiss_resetComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE);
 
         zone_enter(&ZONE_update_fade);
 
@@ -5285,6 +5269,7 @@ void session_run(session_t *ps) {
 
 #ifdef DEBUG_WINDOWS
             /* windowlist_drawDebug(&ps->win_list, ps); */
+            draw_component_debug(&ps->win_list, &ps->root_size);
 #endif
 
             vector_kill(&opaque_shadow);
@@ -5317,6 +5302,32 @@ void session_run(session_t *ps) {
             }
             XSync(ps->dpy, False);
         }
+
+        zone_enter(&ZONE_remove_input);
+        // Remove all the X events
+        // @CLEANUP: Should maybe be done last in the frame
+        swiss_resetComponent(&ps->win_list, COMPONENT_MAP);
+        swiss_resetComponent(&ps->win_list, COMPONENT_UNMAP);
+        swiss_resetComponent(&ps->win_list, COMPONENT_MOVE);
+        swiss_removeComponentWhere(
+            &ps->win_list,
+            COMPONENT_RESIZE,
+            (enum ComponentType[]){COMPONENT_PHYSICAL, CQ_END}
+        );
+
+        swiss_resetComponent(em, COMPONENT_WINTYPE_CHANGE);
+
+        swiss_resetComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE);
+
+        for_components(it, em, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+            struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+            if(shapeDamaged->rects.elementSize != 0) {
+                vector_kill(&shapeDamaged->rects);
+            }
+        }
+        swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
+
+        zone_leave(&ZONE_remove_input);
 
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
