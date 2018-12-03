@@ -94,10 +94,109 @@ static void draw_state_component(Swiss* em, enum ComponentType ctype) {
     }
 }
 
+static void draw_dim_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct DimComponent* dim = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    %f", dim->dim);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+}
+
+static void draw_opacity_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct OpacityComponent* opacity = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    %f", opacity->opacity);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+}
+
+static void draw_mud_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct _win* mud = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    Type: %d", mud->window_type);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+}
+
 typedef void (*debug_component_renderer)(Swiss* em, enum ComponentType ctype);
 debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     0,
+    [COMPONENT_MUD] = draw_mud_component,
     [COMPONENT_STATEFUL] = draw_state_component,
+    [COMPONENT_DIM] = draw_dim_component,
+    [COMPONENT_OPACITY] = draw_opacity_component,
 };
 
 void draw_component_debug(Swiss* em, Vector2* rootSize) {

@@ -1910,7 +1910,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
             win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
             struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
 
-
             // wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
             if(ev->state == PropertyNewValue) {
                 if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
@@ -1926,60 +1925,69 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
                 }
             }
         }
-        }
+    }
 
-        // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
-        // there are always some stupid applications. (#144)
-        if (ev->atom == ps->atoms.atom_win_type) {
-            win *w = NULL;
-            if ((w = find_toplevel(ps, ev->window))) {
-                win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-                swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-            }
-        }
-
-        // If name changes
-        if (ps->o.track_wdata
-                && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
-            win *w = find_toplevel(ps, ev->window);
-            if (w && 1 == win_get_name(ps, w)) {
-                /* win_on_factor_change(ps, w); */
-            }
-        }
-
-        // If class changes
-        if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
-            win *w = find_toplevel(ps, ev->window);
-            if (w) {
-                win_get_class(ps, w);
-                /* win_on_factor_change(ps, w); */
-            }
-        }
-
-        // If role changes
-        if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
-            win *w = find_toplevel(ps, ev->window);
-            if (w && 1 == win_get_role(ps, w)) {
-                /* win_on_factor_change(ps, w); */
-            }
-        }
-
-        // Check for other atoms we are tracking
-        {
-            size_t index = 0;
-            Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
-            while(atom != NULL) {
-                if (*atom == ev->atom) {
-                    win *w = find_win(ps, ev->window);
-                    if (!w)
-                        w = find_toplevel(ps, ev->window);
-                    /* if (w) */
-                    /* win_on_factor_change(ps, w); */
-                }
-                atom = vector_getNext(&ps->atoms.extra, &index);
-            }
+    // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
+    // there are always some stupid applications. (#144)
+    if (ev->atom == ps->atoms.atom_win_type) {
+        win *w = NULL;
+        if ((w = find_toplevel(ps, ev->window))) {
+            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
         }
     }
+
+    // If name changes
+    if (ps->o.track_wdata
+            && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
+        win *w = find_toplevel(ps, ev->window);
+        if (w && 1 == win_get_name(ps, w)) {
+            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+            /* win_on_factor_change(ps, w); */
+            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+        }
+    }
+
+    // If class changes
+    if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
+        win *w = find_toplevel(ps, ev->window);
+        if (w) {
+            win_get_class(ps, w);
+            /* win_on_factor_change(ps, w); */
+            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+        }
+    }
+
+    // If role changes
+    if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
+        win *w = find_toplevel(ps, ev->window);
+        if (w && 1 == win_get_role(ps, w)) {
+            /* win_on_factor_change(ps, w); */
+            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+        }
+    }
+
+    // Check for other atoms we are tracking
+    {
+        size_t index = 0;
+        Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
+        while(atom != NULL) {
+            if (*atom == ev->atom) {
+                win *w = find_win(ps, ev->window);
+                if (!w)
+                    w = find_toplevel(ps, ev->window);
+                if(w) {
+                    /* win_on_factor_change(ps, w); */
+                    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+                }
+            }
+            atom = vector_getNext(&ps->atoms.extra, &index);
+        }
+    }
+}
 
 inline static void
 ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
@@ -4493,22 +4501,24 @@ static void update_focused_state(Swiss* em, session_t* ps) {
 
         newState = STATE_DEACTIVATING;
 
-        if(ps->o.wintype_focus[w->window_type])
+        if(ps->o.wintype_focus[w->window_type]) {
             newState = STATE_ACTIVATING;
-        else if(ps->o.mark_wmwin_focused && w->wmwin)
+        } else if(ps->o.mark_wmwin_focused && w->wmwin) {
             newState = STATE_ACTIVATING;
-        else if(ps->active_win == w)
+        } else if(ps->active_win == w) {
             newState = STATE_ACTIVATING;
-        else if(win_mapped(em, it.id) && win_match(ps, w, ps->o.focus_blacklist)) {
+        } else if(win_mapped(em, it.id) && win_match(ps, w, ps->o.focus_blacklist)) {
             newState = STATE_ACTIVATING;
         }
 
         // If a window is inactive and we are deactivating, then there's no change
-        if(newState == STATE_DEACTIVATING && stateful->state == STATE_INACTIVE)
+        if(newState == STATE_DEACTIVATING && stateful->state == STATE_INACTIVE) {
             continue;
+        }
         // Likewise for active
-        if(newState == STATE_ACTIVATING && stateful->state == STATE_ACTIVE)
+        if(newState == STATE_ACTIVATING && stateful->state == STATE_ACTIVE) {
             continue;
+        }
 
         if(newState != stateful->state) {
             stateful->state = newState;
@@ -4529,7 +4539,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
         if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING) {
-            swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id);
+            /* swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id); */
         }
     }
 }
@@ -4863,12 +4873,6 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         physical->position = map->position;
         physical->size = map->size;
     }
-
-    // We want to fatch the wintype on a map, useful because we don't track the
-    // wintype when unmapped
-    for_components(it, em, COMPONENT_MAP, CQ_END) {
-        swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-    }
 }
 
 void fill_wintype_changes(Swiss* em, session_t* ps) {
@@ -5011,7 +5015,6 @@ void session_run(session_t *ps) {
         }
 
         // Process all the events added by X
-        fill_wintype_changes(&ps->win_list, ps);
 
         zone_leave(&ZONE_input);
 
@@ -5053,6 +5056,15 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_z);
 
         zone_enter(&ZONE_update_wintype);
+
+        // We want to fatch the wintype on a map, useful because we don't track the
+        // wintype when unmapped
+        for_components(it, em, COMPONENT_MAP, CQ_END) {
+            swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+        }
+
+        fill_wintype_changes(&ps->win_list, ps);
+
         for_components(it, em, COMPONENT_WINTYPE_CHANGE, CQ_END) {
             swiss_ensureComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
         }
