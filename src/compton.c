@@ -3857,7 +3857,7 @@ XSynchronize(ps->dpy, 1);
       printf_errf("Failed finding the debug font");
   }
 
-  bezier_init(&ps->curve, 0.4, 0.0, 0.2, 1);
+  bezier_init(&ps->curve, 0.29, 0.1, 0.29, 1);
 
   // Initialize filters, must be preceded by OpenGL context creation
   if (!init_filters(ps))
@@ -4945,8 +4945,10 @@ static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
  * @param ps current session
  */
 void session_run(session_t *ps) {
+#ifdef DEBUG_PROFILE
     struct ProfilerWriterSession profSess;
     profilerWriter_init(&profSess);
+#endif
 
 
     paint_preprocess(ps);
@@ -5308,7 +5310,9 @@ void session_run(session_t *ps) {
 
             paint++;
             if (ps->o.benchmark && paint >= ps->o.benchmark) {
+#ifdef DEBUG_PROFILE
                 profilerWriter_kill(&profSess);
+#endif
                 session_destroy(ps);
                 exit(0);
             }
@@ -5357,5 +5361,7 @@ void session_run(session_t *ps) {
         lastTime = currentTime;
     }
 
+#ifdef DEBUG_PROFILE
     profilerWriter_kill(&profSess);
+#endif
 }
