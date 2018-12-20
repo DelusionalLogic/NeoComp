@@ -4223,29 +4223,39 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     glXWaitX();
     zone_leave(&ZONE_x_communication);
 
-    while(!it.done) {
-        zone_enter(&ZONE_update_single_texture);
-        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
+    struct WindowDrawable** drawables = malloc(sizeof(struct WindowDrawable*) * em->size);
+    size_t drawable_count = 0;
+    for_componentsArr(it2, em, req_types) {
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        drawables[drawable_count] = &bindsTexture->drawable;
+        drawable_count++;
+    }
+
+    for_componentsArr(it2, em, req_types) {
+        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
 
         XSyncFence fence = XSyncCreateFence(xcontext->display, bindsTexture->drawable.wid, false);
         XSyncTriggerFence(xcontext->display, fence);
         XSyncAwaitFence(xcontext->display, &fence, 1);
         XSyncDestroyFence(xcontext->display, fence);
+    }
 
-        zone_enter(&ZONE_x_communication);
-        if(!wd_bind(&bindsTexture->drawable)) {
-            // If we fail to bind we just assume that the window must have been
-            // closed and keep the old texture
-            printf_err("Failed binding drawable for %zu", it.id);
-            zone_leave(&ZONE_x_communication);
-            zone_leave(&ZONE_update_single_texture);
-            swiss_getNext(em, &it);
-            continue;
-        }
+    zone_enter(&ZONE_x_communication);
+    if(!wd_bind(drawables, drawable_count)) {
+        // If we fail to bind we just assume that the window must have been
+        // closed and keep the old texture
+        printf_err("Failed binding drawable for %zu", it.id);
         zone_leave(&ZONE_x_communication);
+        return;
+    }
+    zone_leave(&ZONE_x_communication);
 
+    for_componentsArr(it2, em, req_types) {
+        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
         framebuffer_resetTarget(fbo);
         framebuffer_targetTexture(fbo, &textured->texture);
         framebuffer_targetRenderBuffer_stencil(fbo, &textured->stencil);

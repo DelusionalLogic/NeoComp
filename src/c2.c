@@ -11,7 +11,7 @@
 
 #include "c2.h"
 
-#include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <string.h>

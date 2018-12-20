@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 
 static struct TestResult vector__be_empty__initialized() {
     Vector vector;

@@ -228,5 +228,5 @@ void win_update(struct _session_t* ps, win* w, double dt);
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid);
 void wd_delete(struct WindowDrawable* drawable);
 
-bool wd_bind(struct WindowDrawable* drawable);
+bool wd_bind(struct WindowDrawable* drawable[], size_t cnt);
 bool wd_unbind(struct WindowDrawable* drawable);

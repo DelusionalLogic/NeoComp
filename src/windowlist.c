@@ -315,7 +315,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
 
             /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
             /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
-            draw_rect(shaped->face, global_type->mvp, winpos, textured->texture.size);
+            draw_rect(shaped->face, global_type->mvp, winpos, physical->size);
         }
 
         zone_leave(&ZONE_paint_window);

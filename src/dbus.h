@@ -12,7 +12,7 @@
 #include "switch.h"
 #include "timeout.h"
 
-#include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>

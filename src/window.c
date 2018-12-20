@@ -313,19 +313,29 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
     return xtexture_init(&drawable->xtexture, context);
 }
 
-bool wd_bind(struct WindowDrawable* drawable) {
-    assert(drawable != NULL);
+bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
+    assert(drawables != NULL);
+
+    Pixmap *pixmaps = malloc(sizeof(Pixmap) * cnt);
 
     zone_enter(&ZONE_name_pixmap);
-    Pixmap pixmap = XCompositeNameWindowPixmap(drawable->context->display, drawable->wid);
+    for(int i = 0; i < cnt; i++) {
+        pixmaps[i] = XCompositeNameWindowPixmap(drawables[i]->context->display, drawables[i]->wid);
+    }
     zone_leave(&ZONE_name_pixmap);
-    if(pixmap == 0) {
-        printf_errf("Failed getting window pixmap");
-        return false;
+
+    for(int i = 0; i < cnt; i++) {
+        if(pixmaps[i] == 0) {
+            printf_errf("Failed getting window pixmap");
+            return false;
+        }
     }
 
+    bool success = true;
     zone_enter(&ZONE_bind_pixmap);
-    bool success = xtexture_bind(&drawable->xtexture, &drawable->texinfo, pixmap);
+    for(int i = 0; i < cnt; i++) {
+        success = xtexture_bind(&drawables[i]->xtexture, &drawables[i]->texinfo, pixmaps[i]) ? success : false;
+    }
     zone_leave(&ZONE_bind_pixmap);
     return success;
 }
