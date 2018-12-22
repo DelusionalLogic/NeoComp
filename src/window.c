@@ -334,6 +334,7 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
 
     for(int i = 0; i < cnt; i++) {
         if(pixmaps[i] == 0) {
+            free(pixmaps);
             printf_errf("Failed getting window pixmap");
             return false;
         }
@@ -352,6 +353,10 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
     zone_enter(&ZONE_bind_pixmap);
     success = xtexture_bind(texs, texinfos, pixmaps, cnt);
     zone_leave(&ZONE_bind_pixmap);
+
+    free(pixmaps);
+    free(texs);
+    free(texinfos);
     return success;
 }
 

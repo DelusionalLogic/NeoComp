@@ -115,6 +115,7 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
                 formats[i] = GLX_TEXTURE_FORMAT_RGB_EXT;
             } else {
                 printf_errf("Internal Error: The drawable support neither RGB nor RGBA?");
+                free(infos);
                 return false;
             }
         } else {
@@ -166,6 +167,8 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     for(size_t i = 0; i < cnt; i++) {
         tex[i]->bound = true;
     }
+
+    free(infos);
     return true;
 }
 
