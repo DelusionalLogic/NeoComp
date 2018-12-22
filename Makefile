@@ -18,7 +18,7 @@ INCS = -Isrc/
 
 CFG = -std=gnu11 -fms-extensions -flto
 
-PACKAGES = x11 xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama
+PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x11-xcb xcb-composite
 
 MAIN_SOURCE = main.c
 

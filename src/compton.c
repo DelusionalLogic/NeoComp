@@ -678,7 +678,9 @@ static bool get_root_tile(session_t *ps) {
     struct XTextureInformation texinfo;
     xtexinfo_init(&texinfo, &ps->xcontext, fbconfig);
 
-    if(!xtexture_bind(&ps->root_texture, &texinfo, pixmap)) {
+	struct XTexture* texptr = &ps->root_texture;
+	struct XTextureInformation* texinfoptr = &texinfo;
+    if(!xtexture_bind(&texptr, &texinfoptr, &pixmap, 1)) {
         printf_errf("Failed binding the root texture to gl");
         return false;
     }

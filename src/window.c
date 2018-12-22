@@ -1,6 +1,9 @@
 #define _GNU_SOURCE
 #include "window.h"
 
+#include "X11/Xlib-xcb.h"
+#include "xcb/composite.h"
+
 #include "vmath.h"
 #include "logging.h"
 #include "bezier.h"
@@ -316,11 +319,16 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
 bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
     assert(drawables != NULL);
 
-    Pixmap *pixmaps = malloc(sizeof(Pixmap) * cnt);
+    xcb_connection_t* xcb = XGetXCBConnection(drawables[0]->context->display);
 
+    xcb_pixmap_t *pixmaps = malloc(sizeof(xcb_pixmap_t) * cnt);
     zone_enter(&ZONE_name_pixmap);
     for(int i = 0; i < cnt; i++) {
-        pixmaps[i] = XCompositeNameWindowPixmap(drawables[i]->context->display, drawables[i]->wid);
+        pixmaps[i] = xcb_generate_id(xcb);
+    }
+
+    for(int i = 0; i < cnt; i++) {
+        xcb_composite_name_window_pixmap_checked(xcb, drawables[i]->wid, pixmaps[i]);
     }
     zone_leave(&ZONE_name_pixmap);
 
@@ -331,11 +339,18 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
         }
     }
 
+    struct XTexture** texs = malloc(sizeof(struct XTexture*) * cnt);
+    for(int i = 0; i < cnt; i++) {
+        texs[i] = &drawables[i]->xtexture;
+    }
+    struct XTextureInformation** texinfos = malloc(sizeof(struct XTextureInformation*) * cnt);
+    for(int i = 0; i < cnt; i++) {
+        texinfos[i] = &drawables[i]->texinfo;
+    }
+
     bool success = true;
     zone_enter(&ZONE_bind_pixmap);
-    for(int i = 0; i < cnt; i++) {
-        success = xtexture_bind(&drawables[i]->xtexture, &drawables[i]->texinfo, pixmaps[i]) ? success : false;
-    }
+    success = xtexture_bind(texs, texinfos, pixmaps, cnt);
     zone_leave(&ZONE_bind_pixmap);
     return success;
 }

@@ -4,6 +4,7 @@
 #include "profiler/zone.h"
 
 #include <assert.h>
+#include <xcb/composite.h>
 
 DECLARE_ZONE(create_pixmap);
 DECLARE_ZONE(bind_tex_image);
@@ -61,84 +62,110 @@ bool xtexinfo_init(struct XTextureInformation* texinfo, struct X11Context* conte
 void xtexinfo_delete(struct XTextureInformation* texinfo) {
 }
 
-bool xtexture_bind(struct XTexture* tex, struct XTextureInformation* texinfo, Pixmap pixmap) {
+struct ImportantTexInfo {
+    xcb_get_geometry_cookie_t geometry_cookie;
+    Vector2 size;
+    int depth;
+};
+
+bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[], xcb_pixmap_t pixmap[], size_t cnt) {
     assert(tex != NULL);
-    assert(!tex->bound);
+    assert(pixmap != NULL);
     assert(texinfo != NULL);
 
-    tex->pixmap = pixmap;
-    tex->texture.flipped = texinfo->flipped;
-
-    Vector2 size;
-    zone_enter(&ZONE_fetch_properties);
-    {
-        Window root;
-        int rx,  ry;
-        uint32_t border;
-        uint32_t depth;
-        uint32_t width;
-        uint32_t height;
-        if(!XGetGeometry(tex->context->display, tex->pixmap, &root, &rx,
-                    &ry, &width, &height, &border, &depth)) {
-            printf_errf("Failed querying pixmap info for %#010lx", tex->pixmap);
-            // @INCOMPLETE: free
-            return false;
-        }
-
-        tex->depth = depth;
-        size = (Vector2){{width, height}};
+    for(size_t i = 0; i < cnt; i++) {
+        assert(!tex[i]->bound);
     }
-    zone_leave(&ZONE_fetch_properties);
 
+    for(size_t i = 0; i < cnt; i++) {
+        tex[i]->pixmap = pixmap[i];
+    }
+
+    for(size_t i = 0; i < cnt; i++) {
+        tex[i]->texture.flipped = texinfo[i]->flipped;
+    }
+
+    xcb_connection_t* xcb = XGetXCBConnection(tex[0]->context->display);
+
+    struct ImportantTexInfo* infos = malloc(sizeof(struct ImportantTexInfo) * cnt);
+    for(size_t i = 0; i < cnt; i++) {
+        zone_enter(&ZONE_fetch_properties);
+        struct ImportantTexInfo* info = &infos[i];
+        info->geometry_cookie = xcb_get_geometry(xcb, tex[i]->pixmap);
+        zone_leave(&ZONE_fetch_properties);
+    }
+
+    for(size_t i = 0; i < cnt; i++) {
+        struct ImportantTexInfo* info = &infos[i];
+        xcb_get_geometry_reply_t* reply = xcb_get_geometry_reply(xcb, info->geometry_cookie, NULL);
+        info->depth = reply->depth;
+        info->size = (Vector2){{reply->width, reply->height}};
+    }
+
+    for(size_t i = 0; i < cnt; i++) {
+        tex[i]->depth = infos[i].depth;
+    }
+
+    int* formats = malloc(sizeof(int) * cnt);
     // @CLEANUP: Maybe move this somewhere else?
-    int texFmt = GLX_TEXTURE_FORMAT_RGBA_EXT;
-    if(!texinfo->hasRGBA) {
-        if(texinfo->hasRGB) {
-            texFmt = GLX_TEXTURE_FORMAT_RGB_EXT;
+    for(size_t i = 0; i < cnt; i++) {
+        formats[i] = GLX_TEXTURE_FORMAT_RGBA_EXT;
+        if(!texinfo[i]->hasRGBA) {
+            if(texinfo[i]->hasRGB) {
+                formats[i] = GLX_TEXTURE_FORMAT_RGB_EXT;
+            } else {
+                printf_errf("Internal Error: The drawable support neither RGB nor RGBA?");
+                return false;
+            }
         } else {
-            printf_errf("Internal Error: The drawable support neither RGB nor RGBA?");
-            return false;
-        }
-    } else {
-        if(texinfo->rgbAlpha == 0) {
-            texFmt = GLX_TEXTURE_FORMAT_RGB_EXT;
-        }
+            if(texinfo[i]->rgbAlpha == 0) {
+                formats[i] = GLX_TEXTURE_FORMAT_RGB_EXT;
+            }
 
-        // @QUESTIONABLE: This is what compton does, and it fixes some
-        // strange transparency jankyness with MPV, but I don't really
-        // understand why it's required - Delusional 02/04-2018
+            // @QUESTIONABLE: This is what compton does, and it fixes some
+            // strange transparency jankyness with MPV, but I don't really
+            // understand why it's required - Delusional 02/04-2018
 
-        // If the depth requested matches the depth we get without
-        // alpha data, then we just use RGB
-        if(tex->depth == texinfo->rgbDepth - texinfo->rgbAlpha) {
-            texFmt = GLX_TEXTURE_FORMAT_RGB_EXT;
+            // If the depth requested matches the depth we get without
+            // alpha data, then we just use RGB
+            if(tex[i]->depth == texinfo[i]->rgbDepth - texinfo[i]->rgbAlpha) {
+                formats[i] = GLX_TEXTURE_FORMAT_RGB_EXT;
+            }
         }
     }
 
-    zone_enter(&ZONE_create_pixmap);
-    const int attrib[] = {
-        GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-        GLX_TEXTURE_FORMAT_EXT, texFmt,
-        None,
-    };
-    tex->glxPixmap = glXCreatePixmap(
-        tex->context->display,
-        *texinfo->config,
-        tex->pixmap,
-        attrib
-    );
-    zone_leave(&ZONE_create_pixmap);
+    for(size_t i = 0; i < cnt; i++) {
+        zone_enter(&ZONE_create_pixmap);
+        const int attrib[] = {
+            GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
+            GLX_TEXTURE_FORMAT_EXT, formats[i],
+            None,
+        };
+        tex[i]->glxPixmap = glXCreatePixmap(
+            tex[i]->context->display,
+            *texinfo[i]->config,
+            tex[i]->pixmap,
+            attrib
+        );
+        zone_leave(&ZONE_create_pixmap);
+    }
 
-    tex->texture.size = size;
+    for(size_t i = 0; i < cnt; i++) {
+        tex[i]->texture.size = infos[i].size;
+    }
 
-    zone_enter(&ZONE_bind_tex_image);
-    texture_bind(&tex->texture, GL_TEXTURE0);
-    zone_leave(&ZONE_bind_tex_image);
-    zone_enter(&ZONE_bind_tex_image);
-    glXBindTexImageEXT(tex->context->display, tex->glxPixmap, GLX_FRONT_LEFT_EXT, NULL);
-    zone_leave(&ZONE_bind_tex_image);
+    for(size_t i = 0; i < cnt; i++) {
+        zone_enter(&ZONE_bind_tex_image);
+        texture_bind(&tex[i]->texture, GL_TEXTURE0);
+        zone_leave(&ZONE_bind_tex_image);
+        zone_enter(&ZONE_bind_tex_image);
+        glXBindTexImageEXT(tex[i]->context->display, tex[i]->glxPixmap, GLX_FRONT_LEFT_EXT, NULL);
+        zone_leave(&ZONE_bind_tex_image);
+    }
 
-    tex->bound = true;
+    for(size_t i = 0; i < cnt; i++) {
+        tex[i]->bound = true;
+    }
     return true;
 }
 
