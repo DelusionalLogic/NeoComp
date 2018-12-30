@@ -96,10 +96,12 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        zone_enter(&ZONE_fetch_properties);
         struct ImportantTexInfo* info = &infos[i];
         xcb_get_geometry_reply_t* reply = xcb_get_geometry_reply(xcb, info->geometry_cookie, NULL);
         info->depth = reply->depth;
         info->size = (Vector2){{reply->width, reply->height}};
+        zone_leave(&ZONE_fetch_properties);
     }
 
     for(size_t i = 0; i < cnt; i++) {

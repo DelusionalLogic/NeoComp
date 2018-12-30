@@ -3318,7 +3318,7 @@ static void redir_start(session_t *ps) {
     CompositeRedirectManual);
     } */
 
-    // Must call XSync() here
+    // Must call XSync() here -- Why?
     XSync(ps->dpy, False);
 }
 
@@ -3479,7 +3479,7 @@ static void redir_stop(session_t *ps) {
     if (ps->overlay)
         XUnmapWindow(ps->dpy, ps->overlay);
 
-    // Must call XSync() here
+    // Must call XSync() here -- Why?
     XSync(ps->dpy, False);
 }
 
@@ -3742,8 +3742,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   XSetErrorHandler(xerror);
   if (ps->o.synchronize) {
-XSynchronize(ps->dpy, 1);
-}
+    XSynchronize(ps->dpy, 1);
+  }
 
   ps->scr = DefaultScreen(ps->dpy);
   ps->root = RootWindow(ps->dpy, ps->scr);
@@ -4061,7 +4061,7 @@ void session_destroy(session_t *ps) {
     ps->reg_win = None;
   }
 
-  // Flush all events
+  // Flush all events -- Why?
   XSync(ps->dpy, True);
 
 #ifdef DEBUG_XRC
@@ -5328,7 +5328,6 @@ void session_run(session_t *ps) {
                 session_destroy(ps);
                 exit(0);
             }
-            XSync(ps->dpy, False);
         }
 
         zone_enter(&ZONE_remove_input);

@@ -35,11 +35,24 @@ void profilerWriter_kill(struct ProfilerWriterSession* session) {
 }
 
 void profilerWriter_emitFrame(struct ProfilerWriterSession* session, struct ZoneEventStream* stream) {
+    if(!session->first) {
+        fprintf(session->fd, ",\n");
+    } else {
+        session->first = false;
+    }
+
+    {
+        struct timespec relative;
+        timespec_subtract(&relative, &stream->start, &session->start);
+        fprintf(session->fd, "{ \"pid\": 0, \"tid\": 0, \"ph\": \"%s\", \"ts\": %f, \"name\": \"%s\" }",
+            "B",
+            timespec_micros(&relative),
+            stream->rootZone->name
+        );
+    }
+
     for(size_t i = 0; i < stream->events_num; i++) {
-        if(!session->first)
-            fprintf(session->fd, ",\n");
-        else
-            session->first = false;
+        fprintf(session->fd, ",\n");
 
         struct ZoneEvent* cursor = &stream->events[i];
 
@@ -51,5 +64,17 @@ void profilerWriter_emitFrame(struct ProfilerWriterSession* session, struct Zone
             timespec_micros(&relative),
             cursor->zone->name
        );
+    }
+
+    fprintf(session->fd, ",\n");
+
+    {
+        struct timespec relative;
+        timespec_subtract(&relative, &stream->end, &session->start);
+        fprintf(session->fd, "{ \"pid\": 0, \"tid\": 0, \"ph\": \"%s\", \"ts\": %f, \"name\": \"%s\" }",
+            "E",
+            timespec_micros(&relative),
+            stream->rootZone->name
+        );
     }
 }
