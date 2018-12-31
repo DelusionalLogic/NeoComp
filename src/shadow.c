@@ -7,7 +7,11 @@
 
 #include "renderutil.h"
 
+#include "profiler/zone.h"
+
 #include <assert.h>
+
+DECLARE_ZONE();
 
 #define SHADOW_RADIUS 64
 
@@ -89,6 +93,23 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
+    // Clear all the shadow textures we are about to render into
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
+        COMPONENT_SHAPED, CQ_END) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, &shadow->texture);
+        framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
+        framebuffer_rebind(&framebuffer);
+
+        glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
+
+        glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+    }
+
+    // Render into the textures
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
@@ -106,8 +127,6 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         view = mat4_orthogonal(0, shadow->texture.size.x, 0, shadow->texture.size.y, -1, 1);
 
         glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
-
-        glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
         texture_bind(&textured->texture, GL_TEXTURE0);
 
@@ -130,8 +149,14 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         draw_rect(shaped->face, shadow_type->mvp, pos, physical->size);
 
         view = old_view;
+    }
 
-        // Do the blur
+    // Setup the blur request data
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
+        COMPONENT_SHAPED, CQ_END) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
         struct TextureBlurData blurData = {
             .depth = &shadow->stencil,
             .tex = &shadow->texture,
