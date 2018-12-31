@@ -18,13 +18,15 @@ static double timespec_micros(const struct timespec* time) {
 
 int profilerWriter_init(struct ProfilerWriterSession* session) {
     session->fd = fopen("events.json", "w");
-    session->first = true;
-    if(clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &session->start) != 0) {
+    if(clock_gettime(CLOCK_MONOTONIC, &session->start) != 0) {
         printf_errf("Failed getting start time for eventwriter");
         return 1;
     }
 
     fprintf(session->fd, "[\n");
+
+    session->first = false;
+    fprintf(session->fd, "{ \"pid\": 0, \"tid\": 0, \"ph\": \"I\", \"ts\": 0.00, \"name\": \"Profiler Start\" }");
     return 0;
 }
 

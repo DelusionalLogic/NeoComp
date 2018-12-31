@@ -150,7 +150,7 @@ struct _c2_l {
     .ptnint = 0, \
 }
 
-const static c2_l_t leaf_def = C2_L_INIT;
+static const c2_l_t leaf_def = C2_L_INIT;
 
 /// Linked list type of conditions.
 struct _c2_lptr {

@@ -5,9 +5,14 @@
 #include "shaders/shaderinfo.h"
 #include "common.h"
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(draw_rect);
+
 Matrix view;
 
 void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size) {
+    zone_scope(&ZONE_draw_rect);
     Matrix root = view;
     {
         Matrix op = {{

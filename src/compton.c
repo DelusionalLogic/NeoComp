@@ -71,6 +71,7 @@ DECLARE_ZONE(blur_background);
 DECLARE_ZONE(update_shadow);
 DECLARE_ZONE(fetch_prop);
 
+DECLARE_ZONE(zsort);
 DECLARE_ZONE(update_fade);
 
 DECLARE_ZONE(update_textures);
@@ -4234,9 +4235,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     }
 
     for_componentsArr(it2, em, req_types) {
-        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
 
         XSyncFence fence = XSyncCreateFence(xcontext->display, bindsTexture->drawable.wid, false);
         XSyncTriggerFence(xcontext->display, fence);
@@ -4255,6 +4254,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     zone_leave(&ZONE_x_communication);
 
     for_componentsArr(it2, em, req_types) {
+        zone_scope(&ZONE_update_single_texture);
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
@@ -4285,7 +4285,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         wd_unbind(&bindsTexture->drawable);
 
-        zone_leave(&ZONE_update_single_texture);
         swiss_getNext(em, &it);
     }
 
@@ -4304,15 +4303,20 @@ static void commit_opacity_change(Swiss* em, double fade_time) {
     }
 }
 
+DECLARE_ZONE(fade_damage_blur);
+
 static void damage_blur_over_fade(Swiss* em) {
+    zone_scope(&ZONE_fade_damage_blur);
     Vector order;
     vector_init(&order, sizeof(uint64_t), em->size);
 
+    zone_enter(&ZONE_zsort);
     for_components(it, em,
             COMPONENT_MUD, CQ_END) {
         vector_putBack(&order, &it.id);
     }
     vector_qsort(&order, window_zcmp, em);
+    zone_leave(&ZONE_zsort);
 
     // @HACK @IMPROVEMENT: This should rather be done with a (dynamically
     // sized) bitfield. We can extract it from the swiss datastructure, which
@@ -4357,20 +4361,17 @@ static void damage_blur_over_fade(Swiss* em) {
     }
     free(changes);
 
-    {
-        for(size_t i = 0; i < uniqueChanged; i++) {
-            struct ChangeRecord* change = &order_slots[i];
-            assert(change->order_slot >= 0);
+    for(size_t i = 0; i < uniqueChanged; i++) {
+        struct ChangeRecord* change = &order_slots[i];
 
-            size_t index = change->order_slot;
-            win_id* other_id = vector_getPrev(&order, &index);
-            while(other_id != NULL) {
-                if(win_overlap(em, change->id, *other_id)) {
-                    swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
-                }
-
-                other_id = vector_getPrev(&order, &index);
+        size_t index = change->order_slot;
+        win_id* other_id = vector_getPrev(&order, &index);
+        while(other_id != NULL) {
+            if(win_overlap(em, change->id, *other_id)) {
+                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
             }
+
+            other_id = vector_getPrev(&order, &index);
         }
     }
     free(order_slots);
@@ -4465,7 +4466,10 @@ static void remove_texture_invis_windows(Swiss* em) {
     }
 }
 
+DECLARE_ZONE(synchronize_opacity);
+
 static void syncronize_fade_opacity(Swiss* em) {
+    zone_scope(&ZONE_synchronize_opacity);
     for_components(it, em,
             COMPONENT_FADES_OPACITY, CQ_END) {
     struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
@@ -4847,7 +4851,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         if(w->blur_background) {
             struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, .04}};
+            tint->color = (Vector4){{1, 1, 1, .017}};
         }
     }
 
@@ -5203,7 +5207,6 @@ void session_run(session_t *ps) {
             COMPONENT_CONTENTS_DAMAGED, CQ_END) {
 
             size_t order_slot = vector_find_uint64(&ps->order, it.id);
-            assert(order_slot >= 0);
 
             win_id* other_id = vector_getNext(&ps->order, &order_slot);
             while(other_id != NULL) {

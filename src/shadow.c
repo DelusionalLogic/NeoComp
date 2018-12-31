@@ -11,7 +11,11 @@
 
 #include <assert.h>
 
-DECLARE_ZONE();
+DECLARE_ZONE(shadow_clear);
+DECLARE_ZONE(shadow_copy);
+DECLARE_ZONE(shadow_setup_blur);
+DECLARE_ZONE(shadow_blur);
+DECLARE_ZONE(shadow_clip);
 
 #define SHADOW_RADIUS 64
 
@@ -97,6 +101,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
+        zone_scope(&ZONE_shadow_clear);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
 
         framebuffer_resetTarget(&framebuffer);
@@ -113,6 +118,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
+        zone_scope(&ZONE_shadow_copy);
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
@@ -155,6 +161,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
+        zone_scope(&ZONE_shadow_setup_blur);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
 
         struct TextureBlurData blurData = {
@@ -167,7 +174,9 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     glDisable(GL_STENCIL_TEST);
 
+    zone_enter(&ZONE_shadow_blur);
     textures_blur(&blurDatas, &framebuffer, 4, false);
+    zone_leave(&ZONE_shadow_blur);
 
     vector_kill(&blurDatas);
 
@@ -186,6 +195,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
+        zone_scope(&ZONE_shadow_clip);
         struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
 
@@ -194,7 +204,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
         if(framebuffer_rebind(&framebuffer) != 0) {
             printf("Failed binding framebuffer to clip shadow\n");
-            return;
+            continue;
         }
 
         Matrix old_view = view;
@@ -215,4 +225,3 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     vector_kill(&shadow_updates);
     framebuffer_delete(&framebuffer);
 }
-
