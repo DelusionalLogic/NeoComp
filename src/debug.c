@@ -208,6 +208,24 @@ void draw_component_debug(Swiss* em, Vector2* rootSize) {
         debug->pen = (Vector2){{winPos.x, winPos.y + physical->size.y - 20}};
     }
 
+    {
+        Vector2 scale = {{1, 1}};
+        char buffer[128];
+
+        for_components(it, em,
+                COMPONENT_DEBUGGED, CQ_END) {
+            struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+            snprintf(buffer, 128, "ID: %ld", it.id);
+
+            Vector2 size = {{0}};
+            text_size(&debug_font, buffer, &scale, &size);
+            debug->pen.y -= size.y;
+
+            text_draw(&debug_font, buffer, &debug->pen, &scale);
+        }
+    }
+
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
         debug_component_renderer renderer = component_renderer[i];
         if(renderer == NULL)

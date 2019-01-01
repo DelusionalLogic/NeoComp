@@ -104,6 +104,7 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
         zone_enter(&ZONE_fetch_properties);
         struct ImportantTexInfo* info = &infos[i];
         if(pixmap[i] == 0) {
+            printf_dbgf("Pixmap was set to 0, skipping");
             info->depth = 0;
             continue;
         }

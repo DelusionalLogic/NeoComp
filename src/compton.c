@@ -4256,10 +4256,22 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         zone_leave(&ZONE_x_communication);
     }
 
+    // @HACK @CORRECTNESS: If we fail to get a texture for the window (for
+    // whatever reason) we currently remove textured component, since it's not
+    // really textured. Arguably we shouldn't be allocating the texture before
+    // we know if we need it.
+    //
+    // @PERFORMANCE: right now we are freeing the textures and renderbuffers
+    // one by one, we can do it in one gl call
     for_componentsArr(it2, em, req_types) {
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
         if(!bindsTexture->drawable.xtexture.bound) {
-            swiss_removeComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+            printf_dbgf("Pixmap wasn't bound, removing component %ld", it2.id);
+
+            texture_delete(&textured->texture);
+            renderbuffer_delete(&textured->stencil);
+            swiss_removeComponent(em, COMPONENT_TEXTURED, it2.id);
         }
     }
     zone_leave(&ZONE_x_communication);
@@ -4559,9 +4571,9 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
+        swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
         if(stateful->state == STATE_ACTIVATING) {
-            /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
+            swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
         }
     }
 

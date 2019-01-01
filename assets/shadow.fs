@@ -8,10 +8,10 @@ void main() {
     vec4 texcol = texture2D(tex_scr, uv);
 
     if(texcol.a == .0) {
-        discard;
+        /* discard; */
     }
 
     gl_FragColor = texcol / texcol.a;
-    gl_FragColor *= .4;
-    gl_FragColor = vec4(.1, .1, .1, .9);
+    gl_FragColor.a = .4;
+    /* gl_FragColor = vec4(.1, .1, .1, .9); */
 }
