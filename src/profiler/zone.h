@@ -44,13 +44,24 @@ struct ZoneEventStream {
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 
-#define zone_enter(zone) zone_enter_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
-#define zone_enter_extra(zone, format, ...) zone_enter_extra_raw(zone, __FILE__ ": " STRINGIFY(__LINE__), format, __VA_ARGS__)
-#define zone_leave(zone) zone_leave_raw(zone, __FILE__ ": " STRINGIFY(__LINE__))
+#ifdef DEBUG_PROFILE // Profiler macros {{{
+
+#define zone_enter(zone) zone_enter_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")")
+#define zone_enter_extra(zone, format, ...) zone_enter_extra_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")", format, __VA_ARGS__)
+#define zone_leave(zone) zone_leave_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")")
 
 #define zone_scope(zone) \
     zone_enter(zone); \
     defer { zone_leave(zone); }
+
+#else
+
+#define zone_enter(zone)
+#define zone_enter_extra(zone, format, ...)
+#define zone_leave(zone)
+#define zone_scope(zone)
+
+#endif // }}}
 
 #define defer_(x) do{}while(0); \
     auto void _dtor1_##x(); \
@@ -60,6 +71,7 @@ struct ZoneEventStream {
     void _dtor1_##x()
 #define defer__(x) defer_(x)
 #define defer defer__(__COUNTER__)
+
 
 void zone_enter_raw(struct ProgramZone* zone, char* location);
 void zone_enter_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);

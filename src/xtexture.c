@@ -82,6 +82,8 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         tex[i]->texture.flipped = texinfo[i]->flipped;
     }
 
@@ -89,6 +91,9 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
 
     struct ImportantTexInfo* infos = malloc(sizeof(struct ImportantTexInfo) * cnt);
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
+
         zone_enter(&ZONE_fetch_properties);
         struct ImportantTexInfo* info = &infos[i];
         info->geometry_cookie = xcb_get_geometry(xcb, tex[i]->pixmap);
@@ -98,7 +103,18 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     for(size_t i = 0; i < cnt; i++) {
         zone_enter(&ZONE_fetch_properties);
         struct ImportantTexInfo* info = &infos[i];
+        if(pixmap[i] == 0) {
+            info->depth = 0;
+            continue;
+        }
+
         xcb_get_geometry_reply_t* reply = xcb_get_geometry_reply(xcb, info->geometry_cookie, NULL);
+        if(reply == NULL) {
+            printf_dbgf("Failed retrieving pixmap geometry (it probably doesn't exist). skipping texture, expect nasty rendering");
+            info->depth = 0;
+            continue;
+        }
+
         info->depth = reply->depth;
         info->size = (Vector2){{reply->width, reply->height}};
         zone_leave(&ZONE_fetch_properties);
@@ -111,6 +127,9 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     int* formats = malloc(sizeof(int) * cnt);
     // @CLEANUP: Maybe move this somewhere else?
     for(size_t i = 0; i < cnt; i++) {
+        if(tex[i]->depth == 0)
+            continue;
+
         formats[i] = GLX_TEXTURE_FORMAT_RGBA_EXT;
         if(!texinfo[i]->hasRGBA) {
             if(texinfo[i]->hasRGB) {
@@ -138,7 +157,10 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
-        zone_enter(&ZONE_create_pixmap);
+        if(tex[i]->depth == 0)
+            continue;
+
+        zone_scope(&ZONE_create_pixmap);
         const int attrib[] = {
             GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
             GLX_TEXTURE_FORMAT_EXT, formats[i],
@@ -150,7 +172,6 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
             tex[i]->pixmap,
             attrib
         );
-        zone_leave(&ZONE_create_pixmap);
     }
 
     for(size_t i = 0; i < cnt; i++) {
@@ -158,6 +179,9 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(tex[i]->depth == 0)
+            continue;
+
         zone_enter(&ZONE_bind_tex_image);
         texture_bind(&tex[i]->texture, GL_TEXTURE0);
         zone_leave(&ZONE_bind_tex_image);
@@ -167,7 +191,7 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
-        tex[i]->bound = true;
+        tex[i]->bound = tex[i]->depth != 0;
     }
 
     free(infos);

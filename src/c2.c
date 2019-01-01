@@ -21,6 +21,8 @@
 #include "common.h"
 #include "logging.h"
 
+#include "profiler/zone.h"
+
 #define C2_MAX_LEVELS 10
 
 const static c2_ptr_t C2_PTR_NULL = C2_PTR_INIT;
@@ -1118,6 +1120,8 @@ c2_get_atom_type(const c2_l_t *pleaf) {
     return AnyPropertyType;
 }
 
+DECLARE_ZONE(c2_match_once);
+
 /**
  * Match a window against a single leaf window condition.
  *
@@ -1125,6 +1129,7 @@ c2_get_atom_type(const c2_l_t *pleaf) {
  */
 static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
         bool *pres, bool *perr) {
+    zone_scope(&ZONE_c2_match_once);
     assert(pleaf);
 
     win_id wad = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
@@ -1406,6 +1411,8 @@ static bool c2_match_once(session_t *ps, win *w, const c2_ptr_t cond) {
     return result;
 }
 
+DECLARE_ZONE(matchd);
+
 /**
  * Match a window against a condition linked list.
  *
@@ -1415,6 +1422,7 @@ static bool c2_match_once(session_t *ps, win *w, const c2_ptr_t cond) {
  */
 bool c2_matchd(session_t *ps, win *w, const c2_lptr_t *condlst,
         const c2_lptr_t **cache, void **pdata) {
+    zone_scope(&ZONE_matchd);
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     assert(win_mapped(&ps->win_list, wid));
 

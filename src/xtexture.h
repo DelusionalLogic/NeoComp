@@ -14,7 +14,7 @@ struct XTexture {
     bool bound;
     int depth;
     Pixmap pixmap;
-    GLXDrawable glxPixmap;
+    xcb_pixmap_t glxPixmap;
     struct Texture texture;
 };
 

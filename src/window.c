@@ -321,31 +321,29 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
 
     xcb_connection_t* xcb = XGetXCBConnection(drawables[0]->context->display);
 
+    // These pixmaps are handed over to the xtextures, so they are never freed here.
     xcb_pixmap_t *pixmaps = malloc(sizeof(xcb_pixmap_t) * cnt);
     zone_enter(&ZONE_name_pixmap);
-    for(int i = 0; i < cnt; i++) {
+    for(size_t i = 0; i < cnt; i++) {
         pixmaps[i] = xcb_generate_id(xcb);
     }
 
-    for(int i = 0; i < cnt; i++) {
-        xcb_composite_name_window_pixmap_checked(xcb, drawables[i]->wid, pixmaps[i]);
+    for(size_t i = 0; i < cnt; i++) {
+        xcb_void_cookie_t cookie = xcb_composite_name_window_pixmap_checked(xcb, drawables[i]->wid, pixmaps[i]);
+        if (xcb_request_check(xcb, cookie)) {
+            printf_dbgf("Can't name window pixmap. We will try to unbind the texture and just not render the window. It should be fixed if the window remaps");
+            pixmaps[i] = 0;
+            continue;
+        }
     }
     zone_leave(&ZONE_name_pixmap);
 
-    for(int i = 0; i < cnt; i++) {
-        if(pixmaps[i] == 0) {
-            free(pixmaps);
-            printf_errf("Failed getting window pixmap");
-            return false;
-        }
-    }
-
     struct XTexture** texs = malloc(sizeof(struct XTexture*) * cnt);
-    for(int i = 0; i < cnt; i++) {
+    for(size_t i = 0; i < cnt; i++) {
         texs[i] = &drawables[i]->xtexture;
     }
     struct XTextureInformation** texinfos = malloc(sizeof(struct XTextureInformation*) * cnt);
-    for(int i = 0; i < cnt; i++) {
+    for(size_t i = 0; i < cnt; i++) {
         texinfos[i] = &drawables[i]->texinfo;
     }
 
@@ -362,6 +360,7 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
 
 bool wd_unbind(struct WindowDrawable* drawable) {
     assert(drawable != NULL);
+
     xtexture_unbind(&drawable->xtexture);
     return true;
 }

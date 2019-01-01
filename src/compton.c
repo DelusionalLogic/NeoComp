@@ -3507,7 +3507,7 @@ mainloop(session_t *ps) {
     return true;
   }
 
-  /* return false; */
+  return false;
 
 #ifdef CONFIG_DBUS
   if (ps->o.dbus) {
@@ -4077,7 +4077,10 @@ void session_destroy(session_t *ps) {
     ps_g = NULL;
 }
 
+DECLARE_ZONE(calculate_opacity);
+
 void calculate_window_opacity(session_t* ps, Swiss* em) {
+    zone_scope(&ZONE_calculate_opacity);
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4228,10 +4231,12 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
     struct WindowDrawable** drawables = malloc(sizeof(struct WindowDrawable*) * em->size);
     size_t drawable_count = 0;
-    for_componentsArr(it2, em, req_types) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-        drawables[drawable_count] = &bindsTexture->drawable;
-        drawable_count++;
+    {
+        for_componentsArr(it2, em, req_types) {
+            struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+            drawables[drawable_count] = &bindsTexture->drawable;
+            drawable_count++;
+        }
     }
 
     for_componentsArr(it2, em, req_types) {
@@ -4247,9 +4252,15 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     if(!wd_bind(drawables, drawable_count)) {
         // If we fail to bind we just assume that the window must have been
         // closed and keep the old texture
-        printf_err("Failed binding drawable for %zu", it.id);
+        printf_err("Failed binding some drawable");
         zone_leave(&ZONE_x_communication);
-        return;
+    }
+
+    for_componentsArr(it2, em, req_types) {
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        if(!bindsTexture->drawable.xtexture.bound) {
+            swiss_removeComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+        }
     }
     zone_leave(&ZONE_x_communication);
 
@@ -4501,7 +4512,10 @@ static void syncronize_fade_opacity(Swiss* em) {
     }
 }
 
+DECLARE_ZONE(update_focused);
+
 static void update_focused_state(Swiss* em, session_t* ps) {
+    zone_scope(&ZONE_update_focused);
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_STATEFUL, CQ_END) {
         win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
@@ -4545,9 +4559,9 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
+        /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
         if(stateful->state == STATE_ACTIVATING) {
-            swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
+            /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
         }
     }
 

@@ -61,10 +61,20 @@ void profilerWriter_emitFrame(struct ProfilerWriterSession* session, struct Zone
         struct timespec relative;
         timespec_subtract(&relative, &cursor->time, &session->start);
 
-        fprintf(session->fd, "{ \"pid\": 0, \"tid\": 0, \"ph\": \"%s\", \"ts\": %f, \"name\": \"%s\" }",
+        fprintf(
+            session->fd,
+            "{"
+            "\"pid\": 0, "
+            "\"tid\": 0, "
+            "\"ph\": \"%s\", "
+            "\"ts\": %f, "
+            "\"name\": \"%s\", "
+            "\"args\": { \"location\": \"%s\" }"
+            "}",
             cursor->type == ZE_ENTER ? "B" : "E",
             timespec_micros(&relative),
-            cursor->zone->name
+            cursor->zone->name,
+            cursor->location
        );
     }
 
@@ -73,7 +83,15 @@ void profilerWriter_emitFrame(struct ProfilerWriterSession* session, struct Zone
     {
         struct timespec relative;
         timespec_subtract(&relative, &stream->end, &session->start);
-        fprintf(session->fd, "{ \"pid\": 0, \"tid\": 0, \"ph\": \"%s\", \"ts\": %f, \"name\": \"%s\" }",
+        fprintf(
+            session->fd,
+            "{"
+            "\"pid\": 0, "
+            "\"tid\": 0, "
+            "\"ph\": \"%s\", "
+            "\"ts\": %f, "
+            "\"name\": \"%s\""
+            "}",
             "E",
             timespec_micros(&relative),
             stream->rootZone->name
