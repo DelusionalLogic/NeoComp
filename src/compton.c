@@ -1027,6 +1027,11 @@ add_win(session_t *ps, Window id) {
   }
 
   {
+      struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_BGOPACITY, slot);
+      fade_init(&fo->fade, 0.0);
+  }
+
+  {
       struct FadesDimComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_DIM, slot);
       fade_init(&fo->fade, 0.0);
       swiss_addComponent(&ps->win_list, COMPONENT_DIM, slot);
@@ -2811,6 +2816,9 @@ parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
   // --opacity-fade-time
   if (config_lookup_float(&cfg, "opacity-fade-time", &dval))
     ps->o.opacity_fade_time = dval;
+  // --bg-opacity-fade-time
+  if (config_lookup_float(&cfg, "bg-opacity-fade-time", &dval))
+    ps->o.bg_opacity_fade_time = dval;
   // -c (shadow_enable)
   if (config_lookup_bool(&cfg, "shadow", &ival) && ival)
     wintype_arr_enable(ps->o.wintype_shadow);
@@ -2914,6 +2922,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "fading", no_argument, NULL, 'f' },
     { "inactive-opacity", required_argument, NULL, 'i' },
     { "opacity-fade-time", required_argument, NULL, 'T' },
+    { "bg-opacity-fade-time", required_argument, NULL, 280 },
     { "frame-opacity", required_argument, NULL, 'e' },
     { "daemon", no_argument, NULL, 'b' },
     { "no-dnd-shadow", no_argument, NULL, 'G' },
@@ -3062,6 +3071,9 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       case 'T':
         ps->o.opacity_fade_time = atof(optarg);
+        break;
+      case 280:
+        ps->o.bg_opacity_fade_time = atof(optarg);
         break;
       case 'n':
       case 'a':
@@ -3637,6 +3649,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .inactive_opacity_override = false,
       .active_opacity = 100.0,
       .opacity_fade_time = 1000.0,
+      .bg_opacity_fade_time = 1000.0,
       .detect_client_opacity = false,
 
       .blur_background = false,
@@ -3710,6 +3723,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_OPACITY, sizeof(struct OpacityComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
 
+  swiss_setComponentSize(&ps->win_list, COMPONENT_BGOPACITY, sizeof(struct BgOpacityComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_BGOPACITY, sizeof(struct FadesBgOpacityComponent));
+
   swiss_setComponentSize(&ps->win_list, COMPONENT_DIM, sizeof(struct DimComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FADES_DIM, sizeof(struct FadesDimComponent));
 
@@ -3723,6 +3739,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPE_DAMAGED, sizeof(struct ShapeDamagedEvent));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
   swiss_setComponentSize(&ps->win_list, COMPONENT_STATEFUL, sizeof(struct StatefulComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_TRANSITIONING, sizeof(struct TransitioningComponent));
 
   swiss_setComponentSize(&ps->win_list, COMPONENT_DEBUGGED, sizeof(struct DebuggedComponent));
   swiss_init(&ps->win_list, 512);
@@ -4136,6 +4153,12 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
         vector_putBack(&fadeable, &fade);
     }
     for_components(it, em,
+        COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+        struct Fading* fade = &fo->fade;
+        vector_putBack(&fadeable, &fade);
+    }
+    for_components(it, em,
         COMPONENT_FADES_DIM, CQ_END) {
         struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
         struct Fading* fade = &fo->fade;
@@ -4162,7 +4185,8 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
                     keyframe->ignore = false;
                 }
 
-                double x = keyframe->time / keyframe->duration;
+                double time = fmax(keyframe->time - keyframe->lead, 0);
+                double x = time / (keyframe->duration - keyframe->lead);
                 if(x >= 1.0) {
                     // We're done, clean out the time and set this as the head
                     keyframe->time = 0.0;
@@ -4186,6 +4210,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     }
 
     vector_kill(&fadeable);
+
     return skip_poll;
 }
 
@@ -4317,12 +4342,28 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     zone_leave(&ZONE_x_communication);
 }
 
-static void commit_opacity_change(Swiss* em, double fade_time) {
+static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
     for_components(it, em,
             COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
 
         fade_keyframe(&fadesOpacity->fade, 0, fade_time);
+    }
+    for_components(it, em,
+            COMPONENT_UNMAP, COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+
+        fade_keyframe(&fadesOpacity->fade, 0, bg_fade_time);
+    }
+
+    swiss_removeComponentWhere(em, COMPONENT_TRANSITIONING,
+            (enum ComponentType[]){COMPONENT_UNMAP, CQ_END});
+
+    for_components(it, em,
+            COMPONENT_UNMAP, CQ_END) {
+        struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
+        t->time = 0;
+        t->duration = fade_time;
     }
 }
 
@@ -4349,6 +4390,13 @@ static void damage_blur_over_fade(Swiss* em) {
 
     for_components(it, em, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        if(!fade_done(&fo->fade)) {
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
+    for_components(it, em, COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
         if(!fade_done(&fo->fade)) {
             uniqueChanged += changes[it.id] ? 0 : 1;
             changes[it.id] = true;
@@ -4455,23 +4503,22 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
 }
 
 static void transition_faded_entities(Swiss* em) {
+    // @INCOMPLETE: For right now we are only transitioning on the main content
+    // fade, and not the bg fade. We have to figure that out somehow.
+
     // Update state when fading complete
     for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+            COMPONENT_STATEFUL, CQ_NOT, COMPONENT_TRANSITIONING, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
 
-        if(fade_done(&fo->fade)) {
-            if(stateful->state == STATE_ACTIVATING) {
-                stateful->state = STATE_ACTIVE;
-            } else if(stateful->state == STATE_DEACTIVATING) {
-                stateful->state = STATE_INACTIVE;
-            } else if(stateful->state == STATE_HIDING) {
-                stateful->state = STATE_INVISIBLE;
-            } else if(stateful->state == STATE_DESTROYING) {
-                stateful->state = STATE_DESTROYED;
-                // @RESEARCH: Are we leaking memory from the cache/shadow here?
-            }
+        if(stateful->state == STATE_ACTIVATING) {
+            stateful->state = STATE_ACTIVE;
+        } else if(stateful->state == STATE_DEACTIVATING) {
+            stateful->state = STATE_INACTIVE;
+        } else if(stateful->state == STATE_HIDING) {
+            stateful->state = STATE_INVISIBLE;
+        } else if(stateful->state == STATE_DESTROYING) {
+            stateful->state = STATE_DESTROYED;
         }
     }
 }
@@ -4512,6 +4559,28 @@ static void syncronize_fade_opacity(Swiss* em) {
         struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
         if(opacity->opacity >= 100.0) {
             swiss_removeComponent(em, COMPONENT_OPACITY, it.id);
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+        if(fo->fade.value < 100.0) {
+            swiss_ensureComponent(em, COMPONENT_BGOPACITY, it.id);
+        }
+    }
+    for_components(it, em,
+            COMPONENT_BGOPACITY, COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
+
+        opacity->opacity = fo->fade.value;
+    }
+    for_components(it, em,
+            COMPONENT_BGOPACITY, CQ_END) {
+        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
+        if(opacity->opacity >= 100.0) {
+            swiss_removeComponent(em, COMPONENT_BGOPACITY, it.id);
         }
     }
 
@@ -4586,7 +4655,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 }
 
-static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) {
+static void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double dim_fade_time) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
@@ -4594,10 +4663,26 @@ static void start_focus_fade(Swiss* em, double fade_time, double dim_fade_time) 
         fade_keyframe(&fo->fade, f->newOpacity, fade_time);
     }
     for_components(it, em,
+            COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+        fade_keyframe(&fo->fade, f->newOpacity, bg_fade_time);
+    }
+    for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_DIM, CQ_END) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
         struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
         fade_keyframe(&fo->fade, f->newDim, dim_fade_time);
+    }
+
+    swiss_removeComponentWhere(em, COMPONENT_TRANSITIONING,
+            (enum ComponentType[]){COMPONENT_FOCUS_CHANGE, CQ_END});
+
+    for_components(it, em,
+            COMPONENT_FOCUS_CHANGE, CQ_END) {
+        struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
+        t->time = 0;
+        t->duration = fade_time;
     }
 }
 
@@ -5200,7 +5285,7 @@ void session_run(session_t *ps) {
         commit_destroy(&ps->win_list);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
-        commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time);
+        commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         commit_move(&ps->win_list, &ps->order);
         commit_resize(&ps->win_list, &ps->order);
         commit_reshape(&ps->win_list, &ps->xcontext);
@@ -5252,7 +5337,7 @@ void session_run(session_t *ps) {
 
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);
-        start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.dim_fade_time);
+        start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time, ps->o.dim_fade_time);
 
         zone_enter(&ZONE_update_fade);
 
@@ -5260,6 +5345,19 @@ void session_run(session_t *ps) {
         syncronize_fade_opacity(&ps->win_list);
         if(do_win_fade(&ps->curve, dt, &ps->win_list)) {
             ps->skip_poll = true;
+        }
+
+        for_components(it, em,
+                COMPONENT_TRANSITIONING, CQ_END) {
+            struct TransitioningComponent* t = swiss_getComponent(em, COMPONENT_TRANSITIONING, it.id);
+            t->time += dt;
+        }
+
+        for_components(it, em,
+                COMPONENT_TRANSITIONING, CQ_END) {
+            struct TransitioningComponent* t = swiss_getComponent(em, COMPONENT_TRANSITIONING, it.id);
+            if(t->time >= t->duration)
+                swiss_removeComponent(em, COMPONENT_TRANSITIONING, it.id);
         }
 
         zone_leave(&ZONE_update_fade);

@@ -324,15 +324,39 @@ size_t swiss_indexOfPointer(Swiss* vector, enum ComponentType type, void* data) 
     return (data - (void*)vector->data[type]) / vector->componentSize[type];
 }
 
+void swiss_setComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys) {
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    for(size_t i = 0; i < numBuckets; i++) {
+        uint64_t key = makeBucket(index, keys, i);
+
+        if(key == 0)
+            continue;
+
+        index->freelist[type][i] = key;
+    }
+}
+
 void swiss_removeComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys) {
     size_t numBuckets = freelist_numBuckets(index->capacity);
-    for(int i = 0; i < numBuckets; i++) {
+    for(size_t i = 0; i < numBuckets; i++) {
         uint64_t key = makeBucket(index, keys, i);
 
         if(key == 0)
             continue;
 
         index->freelist[type][i] &= ~key;
+    }
+}
+
+void swiss_ensureComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys) {
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    for(size_t i = 0; i < numBuckets; i++) {
+        uint64_t key = makeBucket(index, keys, i);
+
+        if(key == 0)
+            continue;
+
+        index->freelist[type][i] |= key;
     }
 }
 

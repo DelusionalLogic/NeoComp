@@ -37,6 +37,7 @@ struct WindowDrawable {
 struct FocusChangedComponent {
     double newOpacity;
     double newDim;
+    bool isFadeIn;
 };
 
 struct WintypeChangedComponent {
@@ -88,7 +89,7 @@ struct ZComponent {
     double z;
 };
 
-/// A structure representing margins around a rectangle.
+// A structure representing margins around a rectangle.
 typedef struct {
     int top;
     int left;
@@ -101,9 +102,9 @@ typedef struct {
 struct FadeKeyframe {
     double target;
 
-    // The time to fade out the previous keyframe, -1 if the fade is done
-    double duration;
+    double duration; // The time to fade out the previous keyframe, -1 if the fade is done
     double time; // How long we are in the current fade
+    double lead; // leadtime before the keyframe starts fading
 
     // @HACK @CLEANUP: for now we have this bool that signifies if keyframe
     // should ignore the next time update
@@ -124,11 +125,24 @@ struct FadesOpacityComponent {
     struct Fading fade;
 };
 
+struct FadesBgOpacityComponent {
+    struct Fading fade;
+};
+
 struct FadesDimComponent {
     struct Fading fade;
 };
 
 struct OpacityComponent {
+    double opacity;
+};
+
+struct TransitioningComponent {
+    double time;
+    double duration;
+};
+
+struct BgOpacityComponent {
     double opacity;
 };
 
@@ -216,10 +230,12 @@ bool win_mapped(Swiss* em, win_id wid);
 bool win_is_solid(win* w);
 
 void fade_keyframe(struct Fading* fade, double opacity, double duration);
+void fade_keyframe_lead(struct Fading* fade, double opacity, double duration, double lead);
 
 void fade_init(struct Fading* fade, double value);
 // @CLEANUP: Should this be here?
 bool fade_done(struct Fading* fade);
+double fade_remaining(struct Fading* fade);
 
 void win_draw(struct _session_t* ps, win* w, float z);
 void win_postdraw(struct _session_t* ps, win* w);

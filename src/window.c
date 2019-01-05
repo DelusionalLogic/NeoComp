@@ -74,18 +74,26 @@ void fade_init(struct Fading* fade, double value) {
     fade->keyframes[0].target = value;
     fade->keyframes[0].time = 0;
     fade->keyframes[0].duration = -1;
+    fade->keyframes[0].lead = 0;
 
     fade->value = value;
 }
 
 void fade_keyframe(struct Fading* fade, double opacity, double duration) {
+    fade_keyframe_lead(fade, opacity, duration, 0);
+}
+
+void fade_keyframe_lead(struct Fading* fade, double opacity, double duration, double lead) {
+    assert(duration >= lead);
+
     // Fast path for skipping fading
     if(duration == 0) {
         fade->head = 0;
         fade->tail = 0;
         fade->keyframes[0].target = opacity;
-        fade->keyframes[0].time = 0;
         fade->keyframes[0].duration = -1;
+        fade->keyframes[0].time = 0;
+        fade->keyframes[0].lead = 0;
         return;
     }
 
@@ -95,6 +103,7 @@ void fade_keyframe(struct Fading* fade, double opacity, double duration) {
         fade->head = (fade->head + 1) % FADE_KEYFRAMES;
         //The head has nothing to be blended into.
         fade->keyframes[fade->head].duration = -1;
+        fade->keyframes[fade->head].lead = 0;
         fade->keyframes[fade->head].time = 0;
     }
 
@@ -102,12 +111,21 @@ void fade_keyframe(struct Fading* fade, double opacity, double duration) {
     keyframe->target = opacity;
     keyframe->duration = duration;
     keyframe->time = 0;
+    keyframe->lead = lead;
     keyframe->ignore = true;
     fade->tail = nextIndex;
 }
 
 bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
+}
+
+double fade_remaining(struct Fading* fade) {
+    if(fade_done(fade))
+        return 0;
+
+    struct FadeKeyframe last = fade->keyframes[fade->tail];
+    return last.duration - last.time;
 }
 
 #if 0

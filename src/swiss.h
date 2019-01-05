@@ -44,12 +44,15 @@ enum ComponentType {
     COMPONENT_TINT,
     COMPONENT_OPACITY,
     COMPONENT_FADES_OPACITY,
+    COMPONENT_BGOPACITY,
+    COMPONENT_FADES_BGOPACITY,
     COMPONENT_DIM,
     COMPONENT_FADES_DIM,
     COMPONENT_REDIRECTED,
     COMPONENT_SHAPED,
     COMPONENT_STATEFUL,
     COMPONENT_DEBUGGED,
+    COMPONENT_TRANSITIONING,
 
     // Messages
     COMPONENT_MAP,
@@ -123,7 +126,9 @@ int swiss_size(Swiss* vector);
 
 size_t swiss_indexOfPointer(Swiss* vector, const enum ComponentType type, void* data);
 
+void swiss_setComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
 void swiss_removeComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
+void swiss_ensureComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
 
 struct SwissIterator {
     win_id id;

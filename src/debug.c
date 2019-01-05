@@ -24,12 +24,15 @@ char *component_names[NUM_COMPONENT_TYPES] = {
     "[Tint]",
     "[Opacity]",
     "[Fades Opacity]",
+    "[BG Opacity]",
+    "[Fades BG Opacity]",
     "[Dim]",
     "[Fades Dim]",
     "[Redirected]",
     "[Shaped]",
     "[Stateful]",
     "[Debugged]",
+    "[Transitioning]",
 
     "[Map]",
     "[Unmap]",
@@ -190,6 +193,52 @@ static void draw_mud_component(Swiss* em, enum ComponentType ctype) {
     }
 }
 
+static void draw_transitioning_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct TransitioningComponent* t = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    Time: %f", t->time);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct TransitioningComponent* t = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    Duration: %f", t->duration);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+}
+
 typedef void (*debug_component_renderer)(Swiss* em, enum ComponentType ctype);
 debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     0,
@@ -197,6 +246,8 @@ debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     [COMPONENT_STATEFUL] = draw_state_component,
     [COMPONENT_DIM] = draw_dim_component,
     [COMPONENT_OPACITY] = draw_opacity_component,
+    [COMPONENT_BGOPACITY] = draw_opacity_component,
+    [COMPONENT_TRANSITIONING] = draw_transitioning_component,
 };
 
 void draw_component_debug(Swiss* em, Vector2* rootSize) {

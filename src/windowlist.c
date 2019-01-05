@@ -83,10 +83,8 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
-        struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
-
         // Background
-        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
             struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
@@ -95,9 +93,12 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 printf_errf("Shader was not a passthough shader\n");
                 return;
             }
+
+            struct BgOpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_BGOPACITY, *w_id);
+
             struct Passthough* passthough_type = passthough_program->shader_type;
             shader_set_future_uniform_bool(passthough_type->flip, blur->texture[0].flipped);
-            shader_set_future_uniform_float(passthough_type->opacity, opacity->opacity/100.0);
+            shader_set_future_uniform_float(passthough_type->opacity, bgOpacity != NULL ? bgOpacity->opacity/100.0 : 1.0);
             shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
 
             shader_use(passthough_program);
@@ -108,6 +109,8 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
             draw_rect(shaped->face, passthough_type->mvp, dglPos, physical->size);
         }
+
+        struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
 
         // Tint
         if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {

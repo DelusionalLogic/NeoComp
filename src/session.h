@@ -156,6 +156,7 @@ typedef struct _options_t {
   double active_opacity;
 
   double opacity_fade_time;
+  double bg_opacity_fade_time;
   /// Whether inactive_opacity overrides the opacity set by window
   /// attributes.
   bool inactive_opacity_override;
