@@ -20,6 +20,8 @@ main(int argc, char **argv) {
   // Set locale so window names with special characters are interpreted
   // correctly
   setlocale(LC_ALL, "");
+  // Set numbers back to C locale (scanf is so mad)
+  setlocale(LC_NUMERIC, "C");
 
   // Set up SIGUSR1 signal handler to reset program
   {
