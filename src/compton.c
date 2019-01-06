@@ -4358,7 +4358,7 @@ static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_ti
             COMPONENT_UNMAP, CQ_END) {
         struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
         t->time = 0;
-        t->duration = fade_time;
+        t->duration = fmax(fade_time, bg_fade_time);
     }
 }
 
@@ -4633,7 +4633,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 
     for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
+            COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_NOT, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
         swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
         if(stateful->state == STATE_ACTIVATING) {
@@ -4677,7 +4677,7 @@ static void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, d
             COMPONENT_FOCUS_CHANGE, CQ_END) {
         struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
         t->time = 0;
-        t->duration = fade_time;
+        t->duration = fmax(dim_fade_time, fmax(fade_time, bg_fade_time));
     }
 }
 
@@ -5365,12 +5365,15 @@ void session_run(session_t *ps) {
         Vector opaque;
         vector_init(&opaque, sizeof(win_id), ps->order.size);
         for_components(it, &ps->win_list,
-                COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_OPACITY, COMPONENT_PHYSICAL, CQ_END) {
+                COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BGOPACITY, COMPONENT_PHYSICAL, CQ_END) {
             vector_putBack(&opaque, &it.id);
         }
         vector_qsort(&opaque, window_zcmp, &ps->win_list);
         Vector transparent;
         vector_init(&transparent, sizeof(win_id), ps->order.size);
+        // Even non-opaque windows have some transparent elements (shadow).
+        // Trying to draw something as transparent when it only has opaque
+        // elements isn't a problem, so we just include everything.
         for_components(it, &ps->win_list,
                 COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END) {
             vector_putBack(&transparent, &it.id);

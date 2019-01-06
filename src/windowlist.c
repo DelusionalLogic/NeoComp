@@ -105,8 +105,8 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             texture_bind(&blur->texture[0], GL_TEXTURE0);
 
-            /* Vector4 color = {{opacity->opacity/100, opacity->opacity/100, opacity->opacity/100, opacity->opacity/100}}; */
-            /* draw_colored_rect(w->face, &dglPos, &physical->size, &color); */
+            /* Vector4 color = {{1.0, 1.0, 1.0, 1.0}}; */
+            /* draw_colored_rect(shaped->face, &dglPos, &physical->size, &color); */
             draw_rect(shaped->face, passthough_type->mvp, dglPos, physical->size);
         }
 
