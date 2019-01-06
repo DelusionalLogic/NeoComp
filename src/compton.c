@@ -798,11 +798,6 @@ static void map_win(session_t *ps, win_id wid) {
 
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
-    // FocusIn/Out may be ignored when the window is unmapped, so we must
-    // recheck focus here
-    if (ps->o.track_focus)
-        update_ewmh_active_win(ps);
-
     // Add a map event
     swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
     struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
