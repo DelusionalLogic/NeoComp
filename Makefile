@@ -22,7 +22,7 @@ PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x1
 
 MAIN_SOURCE = main.c
 
-SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c paths.c
+SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c paths.c session.c
 SOURCES += assets/assets.c assets/shader.c assets/face.c
 SOURCES += shaders/shaderinfo.c shaders/include.c
 SOURCES += blur.c shadow.c texture.c renderutil.c textureeffects.c

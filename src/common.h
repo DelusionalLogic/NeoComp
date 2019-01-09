@@ -308,14 +308,6 @@ typedef struct {
 
 struct _win;
 
-/// Temporary structure used for communication between
-/// <code>get_cfg()</code> and <code>parse_config()</code>.
-struct options_tmp {
-  bool no_dock_shadow;
-  bool no_dnd_shadow;
-  double menu_opacity;
-};
-
 /// Enumeration for window event hints.
 typedef enum {
   WIN_EVMODE_UNKNOWN,
@@ -1200,29 +1192,6 @@ glx_mark_frame(session_t *ps) {
 
 ///@}
 
-#ifdef CONFIG_C2
-/** @name c2
- */
-///@{
-
-c2_lptr_t *
-c2_parsed(session_t *ps, c2_lptr_t **pcondlst, const char *pattern,
-    void *data);
-
-#define c2_parse(ps, pcondlst, pattern) c2_parsed((ps), (pcondlst), (pattern), NULL)
-
-c2_lptr_t *
-c2_free_lptr(c2_lptr_t *lp);
-
-bool
-c2_matchd(session_t *ps, win *w, const c2_lptr_t *condlst,
-    const c2_lptr_t **cache, void **pdata);
-
-#define c2_match(ps, w, condlst, cache) c2_matchd((ps), (w), (condlst), \
-    (cache), NULL)
-#endif
-
-///@}
 
 /**
  * @brief Dump the given data to a file.

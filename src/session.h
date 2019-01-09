@@ -74,6 +74,14 @@ typedef struct {
   bool y_inverted;
 } glx_fbconfig_t;
 
+/// Temporary structure used for communication between
+/// <code>get_cfg()</code> and <code>parse_config()</code>.
+struct options_tmp {
+  bool no_dock_shadow;
+  bool no_dnd_shadow;
+  double menu_opacity;
+};
+
 /// Structure representing all options.
 typedef struct _options_t {
   // === General ===
@@ -354,3 +362,6 @@ typedef struct _session_t {
 
 winprop_t
 wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat);
+
+void usage(int ret);
+void parse_config(session_t *ps, struct options_tmp *pcfgtmp);
