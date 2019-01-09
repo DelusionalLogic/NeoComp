@@ -260,7 +260,7 @@ typedef struct {
 
   // @MEMORY @PERFORMANCE: We don't need a dedicated FBO for just stencil, but
   // for right now I don't want to bother with that
-  struct Framebuffer stencil_fbo;
+  struct Framebuffer shared_fbo;
 } glx_session_t;
 
 /// Structure containing all necessary data for a compton session.

@@ -228,8 +228,8 @@ glx_init(session_t *ps, bool need_render) {
     glx_on_root_change(ps);
   }
 
-  if(!framebuffer_init(&psglx->stencil_fbo)) {
-      printf_errf("Failed initializing the stencil framebuffer");
+  if(!framebuffer_init(&psglx->shared_fbo)) {
+      printf_errf("Failed initializing the global framebuffer");
       goto glx_init_end;
   }
 
@@ -278,7 +278,7 @@ glx_destroy(session_t *ps) {
 
   xorgContext_delete(&ps->xcontext);
 
-  framebuffer_delete(&ps->psglx->stencil_fbo);
+  framebuffer_delete(&ps->psglx->shared_fbo);
 
   // Destroy GLX context
   if (ps->psglx->context) {

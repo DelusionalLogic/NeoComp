@@ -473,10 +473,10 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
 
     // -i (inactive_opacity)
     if (config_lookup_float(&cfg, "inactive-opacity", &dval))
-        ps->o.active_opacity = normalize_d(dval) * 100.0;
-    ps->o.inactive_opacity = normalize_d(dval) * 100.0;
+        ps->o.inactive_opacity = normalize_d(dval) * 100.0;
     // --active_opacity
     if (config_lookup_float(&cfg, "active-opacity", &dval))
+        ps->o.active_opacity = normalize_d(dval) * 100.0;
         ;
     // --opacity-fade-time
     if (config_lookup_float(&cfg, "opacity-fade-time", &dval))

@@ -3594,7 +3594,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     bool skip_poll = false;
 
     Vector fadeable;
-    vector_init(&fadeable, sizeof(struct Fading*), 64);
+    vector_init(&fadeable, sizeof(struct Fading*), 128);
 
     // Collect everything fadeable
     for_components(it, em,
@@ -3797,7 +3797,6 @@ static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_ti
     for_components(it, em,
             COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-
         fade_keyframe(&fadesOpacity->fade, 0, fade_time);
     }
     for_components(it, em,
@@ -4783,7 +4782,7 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_prop_blur_damage);
 
         zone_enter(&ZONE_update_textures);
-        update_window_textures(&ps->win_list, &ps->xcontext, &ps->psglx->blur.fbo);
+        update_window_textures(&ps->win_list, &ps->xcontext, &ps->psglx->shared_fbo);
         zone_leave(&ZONE_update_textures);
 
         update_focused_state(&ps->win_list, ps);
@@ -4847,7 +4846,8 @@ void session_run(session_t *ps) {
         windowlist_updateShadow(ps, &transparent);
         zone_leave(&ZONE_update_shadow);
 
-        windowlist_updateBlur(ps);
+        if(ps->o.blur_background)
+            windowlist_updateBlur(ps);
 
         zone_leave(&ZONE_effect_textures);
 
