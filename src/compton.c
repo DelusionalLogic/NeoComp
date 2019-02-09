@@ -4090,9 +4090,9 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_NOT, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
+        /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
         if(stateful->state == STATE_ACTIVATING) {
-            swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
+            /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
         }
     }
 
