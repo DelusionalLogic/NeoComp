@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdio.h>
+
 /// Print out an error message.
 #define printf_err(format, ...) \
     fprintf(stderr, "[ERR] " format "\n", ## __VA_ARGS__)

@@ -3,6 +3,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
 
+#include "buffer.h"
 #include "vmath.h"
 
 struct Texture {
@@ -17,6 +18,7 @@ struct Texture {
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size);
 int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* size);
+int texture_init_buffer(struct Texture* texture, const size_t size, struct BufferObject* bo, GLenum format);
 void texture_delete(struct Texture* texture);
 bool texture_initialized(const struct Texture* texture);
 

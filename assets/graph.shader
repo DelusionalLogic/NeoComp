@@ -1,12 +1,13 @@
 #version 1
 
-type colored
+type graph
 vertex simple.vs
-fragment colored.fs
+fragment graph.fs
 attrib 0 vertex
 attrib 1 uv
 
 uniform mvp ignored
-uniform color vec3
+uniform sampler sampler
 uniform opacity float 1.0
-
+uniform width float
+uniform color vec3

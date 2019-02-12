@@ -5,6 +5,7 @@
 #include "bezier.h"
 #include "xorg.h"
 #include "xtexture.h"
+#include "debug.h"
 #include "blur.h"
 #include "framebuffer.h"
 #include "renderbuffer.h"
@@ -358,6 +359,7 @@ typedef struct _session_t {
 #endif
 
   struct X11Context xcontext;
+  struct DebugGraphState debug_graph;
 } session_t;
 
 winprop_t

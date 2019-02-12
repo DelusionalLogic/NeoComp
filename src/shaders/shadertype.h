@@ -17,19 +17,19 @@
 #endif
 
 #ifndef UNIFORMS_FOREACH
-#error "UNIFORMS_FOREACH most be defined by the shader"
+#error "UNIFORMS_FOREACH must be defined by the shader"
 #endif
 
 #ifndef UNIFORMS_COUNT
-#error "UNIFORMS_COUNT most be defined by the shader"
+#error "UNIFORMS_COUNT must be defined by the shader"
 #endif
 
 #ifndef SHADER_INFO_NAME
-#error "SHADER_INFO_NAME most be defined by the shader"
+#error "SHADER_INFO_NAME must be defined by the shader"
 #endif
 
 #ifndef SHADER_STRUCT_NAME
-#error "SHADER_STRUCT_NAME most be defined by the shader"
+#error "SHADER_STRUCT_NAME must be defined by the shader"
 #endif
 
 struct SHADER_STRUCT_NAME {

@@ -33,3 +33,7 @@
 #define THIS "types/colored.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/graph.h"
+#include HEADER
+#undef THIS

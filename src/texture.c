@@ -43,6 +43,22 @@ int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
     return 0;
 }
 
+int texture_init_buffer(struct Texture* texture, const size_t size, struct BufferObject* bo, GLenum format) {
+    GLenum target = GL_TEXTURE_BUFFER;
+    texture->gl_texture = generate_texture(target, NULL);
+    if(texture->gl_texture == 0) {
+        return 1;
+    }
+
+    glTexBuffer(target, format, bo->gl);
+
+    texture->target = target;
+    texture->size = (Vector2){{size, 1}};
+    texture->hasSpace = true;
+
+    return 0;
+}
+
 int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* size) {
     texture->gl_texture = generate_texture(target, size);
     if(texture->gl_texture == 0) {

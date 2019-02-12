@@ -2,6 +2,9 @@
 
 #include "text.h"
 #include "window.h"
+#include "shaders/shaderinfo.h"
+#include "assets/assets.h"
+#include "assets/shader.h"
 
 static Vector2 X11_rectpos_to_gl(const Vector2* rootSize, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
@@ -317,4 +320,50 @@ void draw_component_debug(Swiss* em, Vector2* rootSize) {
         else
             renderer(em, i);
     }
+}
+
+void init_debug_graph(struct DebugGraphState* state) {
+    state->width = 512;
+    if(bo_init(&state->bo, state->width) != 0) {
+        printf_errf("Failed initializing debug graph buffer");
+        return;
+    }
+    if(texture_init_buffer(&state->tex, state->width, &state->bo, GL_R8)) {
+        printf_errf("Failed initializing debug graph texture");
+        return;
+    }
+
+    state->cursor = 0;
+}
+
+void draw_debug_graph(struct DebugGraphState* state) {
+    char data[] = {
+        (100 + (rand() % 10))
+    };
+    bo_update(&state->bo, state->cursor, 1, data);
+    state->cursor++;
+    if(state->cursor >= state->width)
+        state->cursor = 0;
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glDepthMask(GL_FALSE);
+    struct shader_program* program = assets_load("graph.shader");
+    if(program->shader_type_info != &graph_info) {
+        printf_errf("Shader was not a graph shader\n");
+        return;
+    }
+
+    struct Graph* type = program->shader_type;
+    shader_set_future_uniform_sampler(type->sampler, 0);
+    shader_set_future_uniform_vec3(type->color, &(Vector3){{0.337255, 0.737255, 0.631373}});
+    shader_set_future_uniform_float(type->width, state->width);
+
+    shader_use(program);
+
+    texture_bind(&state->tex, GL_TEXTURE0);
+
+    struct face* face = assets_load("window.face");
+    draw_rect(face, type->mvp, (Vector3){{100, 100, 1.0}}, (Vector2){{state->width * 4, 512}});
+    glDisable(GL_BLEND);
 }

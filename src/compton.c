@@ -25,6 +25,7 @@
 #include "blur.h"
 #include "shadow.h"
 #include "xtexture.h"
+#include "buffer.h"
 #include "timer.h"
 #include "timeout.h"
 #include "paths.h"
@@ -3284,6 +3285,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   add_shader_type(&shadow_info);
   add_shader_type(&stencil_info);
   add_shader_type(&colored_info);
+  add_shader_type(&graph_info);
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);
@@ -3393,6 +3395,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // Redirect output stream
   if (ps->o.fork_after_register || ps->o.logpath)
     ostream_reopen(ps, NULL);
+
+  init_debug_graph(&ps->debug_graph);
 
   // Free the old session
   if (ps_old)
@@ -4937,8 +4941,9 @@ void session_run(session_t *ps) {
 
         zone_leave(&ZONE_remove_input);
 
-
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
+
+        draw_debug_graph(&ps->debug_graph);
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
