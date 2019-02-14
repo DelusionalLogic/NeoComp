@@ -323,7 +323,7 @@ void draw_component_debug(Swiss* em, Vector2* rootSize) {
 }
 
 void init_debug_graph(struct DebugGraphState* state) {
-    state->width = 512;
+    state->width = 256;
     if(bo_init(&state->bo, state->width) != 0) {
         printf_errf("Failed initializing debug graph buffer");
         return;
@@ -332,22 +332,37 @@ void init_debug_graph(struct DebugGraphState* state) {
         printf_errf("Failed initializing debug graph texture");
         return;
     }
+    state->data = calloc(1, state->width * sizeof(double));
+    state->avg = 0;
 
     state->cursor = 0;
 }
 
-void draw_debug_graph(struct DebugGraphState* state) {
-    char data[] = {
-        (100 + (rand() % 10))
-    };
-    bo_update(&state->bo, state->cursor, 1, data);
-    state->cursor++;
-    if(state->cursor >= state->width)
-        state->cursor = 0;
+void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
+    Vector2 winSize = {{150, 50}};
+    Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
+    Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
+    Vector4 bgColor = {{.1, .1, .1, .5}};
+    struct face* face = assets_load("window.face");
 
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glDepthMask(GL_FALSE);
+
+    draw_colored_rect(face, &winPos, &winSize, &bgColor);
+
+    {
+        static char buffer[128];
+        Vector2 scale = {{1, 1}};
+        snprintf(buffer, 128, "Frame time: %f", state->avg);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{winPos.x, winPos.y + winSize.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor);
+    }
+
     struct shader_program* program = assets_load("graph.shader");
     if(program->shader_type_info != &graph_info) {
         printf_errf("Shader was not a graph shader\n");
@@ -356,14 +371,36 @@ void draw_debug_graph(struct DebugGraphState* state) {
 
     struct Graph* type = program->shader_type;
     shader_set_future_uniform_sampler(type->sampler, 0);
-    shader_set_future_uniform_vec3(type->color, &(Vector3){{0.337255, 0.737255, 0.631373}});
+    shader_set_future_uniform_vec3(type->color, &fgColor);
     shader_set_future_uniform_float(type->width, state->width);
 
     shader_use(program);
 
     texture_bind(&state->tex, GL_TEXTURE0);
 
-    struct face* face = assets_load("window.face");
-    draw_rect(face, type->mvp, (Vector3){{100, 100, 1.0}}, (Vector2){{state->width * 4, 512}});
+    Vector3 graphPos = {{5, 5, 0}};
+    vec3_add(&graphPos, &winPos);
+    Vector2 graphSize = {{-10, -10}};
+    vec2_add(&graphSize, &winSize);
+
+    draw_rect(face, type->mvp, graphPos, graphSize);
     glDisable(GL_BLEND);
+}
+
+void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
+    timestamp currentTime;
+    if(!getTime(&currentTime)) {
+        printf_errf("Failed getting time");
+        exit(1);
+    }
+    double dt = timeDiff(&startTime, &currentTime);
+
+    uint8_t data = (uint8_t)((dt / 16.0) * 512.0);
+    bo_update(&state->bo, state->cursor, 1, &data);
+    state->avg += (dt / state->width) - (state->data[state->cursor] / state->width);
+    state->data[state->cursor] = dt;
+
+    state->cursor++;
+    if(state->cursor >= state->width)
+        state->cursor = 0;
 }

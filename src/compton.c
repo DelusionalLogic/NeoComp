@@ -4943,7 +4943,8 @@ void session_run(session_t *ps) {
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
 
-        draw_debug_graph(&ps->debug_graph);
+        draw_debug_graph(&ps->debug_graph, &(Vector2){{10, ps->root_size.y - 10}});
+        update_debug_graph(&ps->debug_graph, currentTime);
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);

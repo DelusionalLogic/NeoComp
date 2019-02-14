@@ -16,17 +16,15 @@ void main() {
 
     float distance = abs(uv.y - texel.r);
 
+    vec4 pcolor = vec4(0.0);
+
     if(distance < .004) {
-        gl_FragColor = vec4(color, 1.0);
-        return;
+        pcolor = vec4(color, 1.0);
     }
 
     if(uv.y < texel.r) {
-        vec4 pcolor = vec4(color, 1);
-        pcolor *= .6;
-        gl_FragColor = pcolor * (uv.y/texel.r);
-        return;
+        pcolor = vec4(color, 1) * .6 * (uv.y/texel.r);
     }
 
-    gl_FragColor = vec4(0);
+    gl_FragColor = pcolor;
 }
