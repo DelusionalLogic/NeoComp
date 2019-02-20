@@ -12,12 +12,13 @@
 
 void draw_component_debug(Swiss* em, Vector2* rootSize);
 
+#define GRAPHS 2
 struct DebugGraphState {
-    struct BufferObject bo;
-    struct Texture tex;
+    struct BufferObject bo[GRAPHS];
+    struct Texture tex[GRAPHS];
 
-    double avg;
-    double *data;
+    double avg[GRAPHS];
+    double *data[GRAPHS];
 
     size_t cursor;
     size_t width;
@@ -26,3 +27,4 @@ struct DebugGraphState {
 void init_debug_graph(struct DebugGraphState* state);
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos);
 void update_debug_graph(struct DebugGraphState* state, timestamp startTime);
+void debug_mark_draw();

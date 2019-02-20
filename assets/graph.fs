@@ -15,6 +15,7 @@ void main() {
     vec4 texel = texelFetch(sampler, below);
 
     float distance = abs(uv.y - texel.r);
+    float reldist = distance / texel.r;
 
     vec4 pcolor = vec4(0.0);
 
@@ -23,7 +24,7 @@ void main() {
     }
 
     if(uv.y < texel.r) {
-        pcolor = vec4(color, 1) * .6 * (uv.y/texel.r);
+        pcolor = mix(vec4(0.0), vec4(color, 1), clamp(pow(1.0-reldist, 3), 0, 1));
     }
 
     gl_FragColor = pcolor;

@@ -5,6 +5,7 @@
 #include "shaders/shaderinfo.h"
 #include "common.h"
 
+#include "debug.h"
 #include "profiler/zone.h"
 
 DECLARE_ZONE(draw_rect);
@@ -28,6 +29,7 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
 
     face_bind(face);
     glDrawArrays(GL_TRIANGLES, 0, face->vertex_buffer.size / 3);
+    debug_mark_draw();
 }
 
 void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector4* color) {

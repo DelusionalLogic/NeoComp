@@ -324,22 +324,24 @@ void draw_component_debug(Swiss* em, Vector2* rootSize) {
 
 void init_debug_graph(struct DebugGraphState* state) {
     state->width = 256;
-    if(bo_init(&state->bo, state->width) != 0) {
-        printf_errf("Failed initializing debug graph buffer");
-        return;
+    for(int i = 0; i < GRAPHS; i++) {
+        if(bo_init(&state->bo[i], state->width) != 0) {
+            printf_errf("Failed initializing debug graph buffer");
+            return;
+        }
+        if(texture_init_buffer(&state->tex[i], state->width, &state->bo[i], GL_R8)) {
+            printf_errf("Failed initializing debug graph texture");
+            return;
+        }
+        state->data[i] = calloc(1, state->width * sizeof(double));
+        state->avg[i] = 0;
     }
-    if(texture_init_buffer(&state->tex, state->width, &state->bo, GL_R8)) {
-        printf_errf("Failed initializing debug graph texture");
-        return;
-    }
-    state->data = calloc(1, state->width * sizeof(double));
-    state->avg = 0;
 
     state->cursor = 0;
 }
 
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
-    Vector2 winSize = {{150, 50}};
+    Vector2 winSize = {{200, 75}};
     Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
     Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
     Vector4 bgColor = {{.1, .1, .1, .5}};
@@ -354,7 +356,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     {
         static char buffer[128];
         Vector2 scale = {{1, 1}};
-        snprintf(buffer, 128, "Frame time: %f", state->avg);
+        snprintf(buffer, 128, "Stats: %f %f", state->avg[0], state->avg[1]);
 
         Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
@@ -376,7 +378,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     shader_use(program);
 
-    texture_bind(&state->tex, GL_TEXTURE0);
+    texture_bind(&state->tex[0], GL_TEXTURE0);
 
     Vector3 graphPos = {{5, 5, 0}};
     vec3_add(&graphPos, &winPos);
@@ -384,9 +386,14 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     vec2_add(&graphSize, &winSize);
 
     draw_rect(face, type->mvp, graphPos, graphSize);
+
+    texture_bind(&state->tex[1], GL_TEXTURE0);
+    draw_rect(face, type->mvp, graphPos, graphSize);
+
     glDisable(GL_BLEND);
 }
 
+static int draws = 0;
 void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
     timestamp currentTime;
     if(!getTime(&currentTime)) {
@@ -395,12 +402,27 @@ void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
     }
     double dt = timeDiff(&startTime, &currentTime);
 
-    uint8_t data = (uint8_t)((dt / 16.0) * 512.0);
-    bo_update(&state->bo, state->cursor, 1, &data);
-    state->avg += (dt / state->width) - (state->data[state->cursor] / state->width);
-    state->data[state->cursor] = dt;
+    {
+        uint8_t data = (uint8_t)((dt / 8.0) * 255.0);
+        bo_update(&state->bo[0], state->cursor, 1, &data);
+        state->avg[0] += (dt / state->width) - (state->data[0][state->cursor] / state->width);
+        state->data[0][state->cursor] = dt;
+    }
+
+
+    {
+        uint8_t data = (uint8_t)((draws / 1000.0) * 255.0);
+        bo_update(&state->bo[1], state->cursor, 1, &data);
+        state->avg[1] += (draws / (double)state->width) - (state->data[1][state->cursor] / state->width);
+        state->data[1][state->cursor] = draws;
+        draws = 0;
+    }
 
     state->cursor++;
     if(state->cursor >= state->width)
         state->cursor = 0;
+}
+
+void debug_mark_draw() {
+    draws++;
 }
