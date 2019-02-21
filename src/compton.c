@@ -2974,7 +2974,7 @@ mainloop(session_t *ps) {
     return true;
   }
 
-  return false;
+  /* return false; */
 
 #ifdef CONFIG_DBUS
   if (ps->o.dbus) {
@@ -3396,7 +3396,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   if (ps->o.fork_after_register || ps->o.logpath)
     ostream_reopen(ps, NULL);
 
+#ifdef FRAMERATE_DISPLAY
   init_debug_graph(&ps->debug_graph);
+#endif
 
   // Free the old session
   if (ps_old)
@@ -4943,8 +4945,10 @@ void session_run(session_t *ps) {
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
 
-        draw_debug_graph(&ps->debug_graph, &(Vector2){{10, ps->root_size.y - 10}});
+#ifdef FRAMERATE_DISPLAY
         update_debug_graph(&ps->debug_graph, currentTime);
+        draw_debug_graph(&ps->debug_graph, &(Vector2){{10, ps->root_size.y - 10}});
+#endif
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);

@@ -344,6 +344,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     Vector2 winSize = {{200, 75}};
     Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
     Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
+    Vector3 fgColor2 = {{.369, .537, .737}};
     Vector4 bgColor = {{.1, .1, .1, .5}};
     struct face* face = assets_load("window.face");
 
@@ -387,6 +388,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     draw_rect(face, type->mvp, graphPos, graphSize);
 
+    shader_set_uniform_vec3(type->color, &fgColor2);
     texture_bind(&state->tex[1], GL_TEXTURE0);
     draw_rect(face, type->mvp, graphPos, graphSize);
 
@@ -411,7 +413,7 @@ void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
 
 
     {
-        uint8_t data = (uint8_t)((draws / 1000.0) * 255.0);
+        uint8_t data = (uint8_t)((draws / 200.0) * 255.0);
         bo_update(&state->bo[1], state->cursor, 1, &data);
         state->avg[1] += (draws / (double)state->width) - (state->data[1][state->cursor] / state->width);
         state->data[1][state->cursor] = draws;
