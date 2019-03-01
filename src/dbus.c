@@ -1030,8 +1030,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(shadow_red, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_green, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_blue, cdbus_reply_double);
-  cdbus_m_opts_get_do(shadow_offset_x, cdbus_reply_int32);
-  cdbus_m_opts_get_do(shadow_offset_y, cdbus_reply_int32);
   cdbus_m_opts_get_do(shadow_opacity, cdbus_reply_double);
   cdbus_m_opts_get_do(xinerama_shadow_crop, cdbus_reply_bool);
 

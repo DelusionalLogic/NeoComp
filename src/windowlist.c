@@ -164,7 +164,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             texture_bind(&shadow->effect, GL_TEXTURE0);
 
             {
-                Vector2 rpos = glPos;
+                Vector2 rpos = {{glPos.x, glPos.y}};
                 vec2_sub(&rpos, &shadow->border);
                 Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
                 Vector2 rsize = shadow->texture.size;

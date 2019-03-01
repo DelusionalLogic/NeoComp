@@ -132,8 +132,6 @@ typedef struct _options_t {
   /// Enable/disable shadow for specific window types.
   bool wintype_shadow[NUM_WINTYPES];
   /// Red, green and blue tone of the shadow.
-  double shadow_red, shadow_green, shadow_blue;
-  int shadow_offset_x, shadow_offset_y;
   double shadow_opacity;
   /// Geometry of a region in which shadow is not painted on.
   geometry_t shadow_exclude_reg_geom;

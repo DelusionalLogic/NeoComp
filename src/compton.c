@@ -656,8 +656,8 @@ static bool get_root_tile(session_t *ps) {
     struct XTextureInformation texinfo;
     xtexinfo_init(&texinfo, &ps->xcontext, fbconfig);
 
-	struct XTexture* texptr = &ps->root_texture;
-	struct XTextureInformation* texinfoptr = &texinfo;
+    struct XTexture* texptr = &ps->root_texture;
+    struct XTextureInformation* texinfoptr = &texinfo;
     if(!xtexture_bind(&texptr, &texinfoptr, &pixmap, 1)) {
         printf_errf("Failed binding the root texture to gl");
         return false;
@@ -2386,9 +2386,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "frame-opacity", required_argument, NULL, 'e' },
     { "daemon", no_argument, NULL, 'b' },
     { "no-dnd-shadow", no_argument, NULL, 'G' },
-    { "shadow-red", required_argument, NULL, 257 },
-    { "shadow-green", required_argument, NULL, 258 },
-    { "shadow-blue", required_argument, NULL, 259 },
     { "inactive-opacity-override", no_argument, NULL, 260 },
     { "inactive-dim", required_argument, NULL, 261 },
     { "mark-wmwin-focused", no_argument, NULL, 262 },
@@ -3055,6 +3052,27 @@ cxinerama_upd_scrs(session_t *ps) {
   }
 }
 
+char* getDisplayName(Display* display) {
+  // Build a safe representation of display name
+    char *display_repr = DisplayString(display);
+    if (!display_repr)
+        display_repr = "unknown";
+    display_repr = mstrcpy(display_repr);
+
+    // Convert all special characters in display_repr name to underscore
+    {
+        char *pdisp = display_repr;
+
+        while (*pdisp) {
+            if (!isalnum(*pdisp))
+                *pdisp = '_';
+            ++pdisp;
+        }
+    }
+
+    return display_repr;
+}
+
 /**
  * Initialize a session.
  *
@@ -3241,26 +3259,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       DisplayWidth(ps->dpy, ps->scr), DisplayHeight(ps->dpy, ps->scr)
   }};
 
-  // Build a safe representation of display name
-  {
-    char *display_repr = DisplayString(ps->dpy);
-    if (!display_repr)
-      display_repr = "unknown";
-    display_repr = mstrcpy(display_repr);
-
-    // Convert all special characters in display_repr name to underscore
-    {
-      char *pdisp = display_repr;
-
-      while (*pdisp) {
-        if (!isalnum(*pdisp))
-          *pdisp = '_';
-        ++pdisp;
-      }
-    }
-
-    ps->o.display_repr = display_repr;
-  }
+  ps->o.display_repr = getDisplayName(ps->dpy);
 
   if(!xorgContext_init(&ps->xcontext, ps->dpy, ps->scr)) {
     printf_errf("Failed initializing the xorg context");
@@ -3310,8 +3309,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       exit(1);
   }
 
-  // Monitor screen changes if vsync_sw is enabled and we are using
-  // an auto-detected refresh rate, or when Xinerama features are enabled
+  // Monitor screen changes when Xinerama features are enabled
   if (ps->o.xinerama_shadow_crop)
     XRRSelectInput(ps->dpy, ps->root, RRScreenChangeNotifyMask);
 
@@ -4513,6 +4511,25 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
     }
 }
 
+void damage_blur_over_damaged(Swiss* em, struct Vector* order) {
+    // Damage the blur of windows on top of damaged windows
+    for_components(it, em,
+            COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+
+        size_t order_slot = vector_find_uint64(order, it.id);
+
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+
+            if(win_overlap(em, it.id, *other_id)) {
+                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            }
+
+            other_id = vector_getNext(order, &order_slot);
+        }
+    }
+}
+
 static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
     for_componentsArr(it, em, query) {
         vector_putBack(result, &it.id);
@@ -4769,22 +4786,7 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_make_cutout);
 
         zone_enter(&ZONE_prop_blur_damage);
-        // Damage the blur of windows on top of damaged windows
-        for_components(it, &ps->win_list,
-            COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-
-            size_t order_slot = vector_find_uint64(&ps->order, it.id);
-
-            win_id* other_id = vector_getNext(&ps->order, &order_slot);
-            while(other_id != NULL) {
-
-                if(win_overlap(&ps->win_list, it.id, *other_id)) {
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, *other_id);
-                }
-
-                other_id = vector_getNext(&ps->order, &order_slot);
-            }
-        }
+        damage_blur_over_damaged(&ps->win_list, &ps->order);
         zone_leave(&ZONE_prop_blur_damage);
 
         zone_enter(&ZONE_update_textures);
@@ -4889,22 +4891,6 @@ void session_run(session_t *ps) {
             vector_kill(&transparent);
             vector_kill(&opaque);
 
-            /* { */
-            /*     glDisable(GL_DEPTH_TEST); */
-            /*     glDisable(GL_BLEND); */
-            /*     struct face* face = assets_load("window.face"); */
-            /*     for_components(it, &ps->win_list, */
-            /*             COMPONENT_PHYSICAL, COMPONENT_BLUR, COMPONENT_Z, CQ_END) { */
-            /*         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id); */
-            /*         struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id); */
-            /*         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id); */
-
-            /*         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size); */
-            /*         Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001); */
-
-            /*         draw_tex(face, &blur->texture[0], &dglPos, &(Vector2){{100, 100}}); */
-            /*     } */
-            /* } */
             zone_leave(&ZONE_paint);
 
             paint++;
