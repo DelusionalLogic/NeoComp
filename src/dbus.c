@@ -1030,10 +1030,7 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(shadow_red, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_green, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_blue, cdbus_reply_double);
-  cdbus_m_opts_get_do(shadow_opacity, cdbus_reply_double);
   cdbus_m_opts_get_do(xinerama_shadow_crop, cdbus_reply_bool);
-
-  cdbus_m_opts_get_do(no_fading_openclose, cdbus_reply_bool);
 
   cdbus_m_opts_get_do(blur_background, cdbus_reply_bool);
   cdbus_m_opts_get_do(blur_background_frame, cdbus_reply_bool);

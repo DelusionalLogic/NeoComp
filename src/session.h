@@ -131,14 +131,10 @@ typedef struct _options_t {
   // === Shadow ===
   /// Enable/disable shadow for specific window types.
   bool wintype_shadow[NUM_WINTYPES];
-  /// Geometry of a region in which shadow is not painted on.
-  geometry_t shadow_exclude_reg_geom;
   /// Shadow blacklist. A linked list of conditions.
   c2_lptr_t *shadow_blacklist;
   /// Whether to respect _COMPTON_SHADOW.
   bool respect_prop_shadow;
-  /// Whether to crop shadow to the very Xinerama screen.
-  bool xinerama_shadow_crop;
 
   // === Fading ===
   /// Enable/disable fading for specific window types.
@@ -333,13 +329,6 @@ typedef struct _session_t {
     struct _win *active_win;
 
     struct X11Capabilities capabilities;
-
-    /// Xinerama screen info.
-    XineramaScreenInfo *xinerama_scrs;
-    /// Xinerama screen regions.
-    XserverRegion *xinerama_scr_regs;
-    /// Number of Xinerama screens.
-    int xinerama_nscrs;
 
     XserverRegion root_region;
 

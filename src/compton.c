@@ -120,17 +120,6 @@ static void free_wincondlst(c2_lptr_t **pcondlst) {
 #endif
 }
 
-static void free_xinerama_info(session_t *ps) {
-    if (ps->xinerama_scr_regs) {
-        for (int i = 0; i < ps->xinerama_nscrs; ++i)
-            free_region(ps, &ps->xinerama_scr_regs[i]);
-        free(ps->xinerama_scr_regs);
-    }
-    cxfree(ps->xinerama_scrs);
-    ps->xinerama_scrs = NULL;
-    ps->xinerama_nscrs = 0;
-}
-
 static time_ms_t get_time_ms(void) {
     struct timeval tv;
 
@@ -305,25 +294,6 @@ static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
   return ptmout->firstrun + (max_l(a, b) + 1) * ptmout->interval;
 }
 
-/**
- * Get the Xinerama screen a window is on.
- *
- * Return an index >= 0, or -1 if not found.
- */
-static void cxinerama_win_upd_scr(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-    w->xinerama_scr = -1;
-    for (XineramaScreenInfo *s = ps->xinerama_scrs; s < ps->xinerama_scrs + ps->xinerama_nscrs; ++s)
-        if (s->x_org <= physical->position.x && s->y_org <= physical->position.y
-                && s->x_org + s->width >= physical->position.x + physical->size.x
-                && s->y_org + s->height >= physical->position.y + physical->size.y) {
-            w->xinerama_scr = s - ps->xinerama_scrs;
-            return;
-        }
-}
-
-static void cxinerama_upd_scrs(session_t *ps);
 // }}}
 
 /// Name strings for window types.
@@ -762,8 +732,6 @@ static void map_win(session_t *ps, win_id wid) {
     if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
         return;
 
-    cxinerama_win_upd_scr(ps, wid);
-
     // Call XSelectInput() before reading properties so that no property
     // changes are lost
     XSelectInput(ps->dpy, window->id, determine_evmask(ps, window->id, WIN_EVMODE_FRAME));
@@ -944,7 +912,6 @@ add_win(session_t *ps, Window id) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
-    .xinerama_scr = -1,
     .damage = None,
 
     .window_type = WINTYPE_UNKNOWN,
@@ -1184,7 +1151,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
         resize->newSize = size;
     }
 
-    cxinerama_win_upd_scr(ps, wid);
   }
 
   // override_redirect flag cannot be changed after window creation, as far
@@ -1987,14 +1953,6 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
-/**
- * Handle ScreenChangeNotify events from X RandR extension.
- */
-static void ev_screen_change_notify(session_t *ps, XRRScreenChangeNotifyEvent __attribute__((unused)) *ev) {
-    if (ps->o.xinerama_shadow_crop)
-        cxinerama_upd_scrs(ps);
-}
-
 static Window ev_window(session_t *ps, XEvent *ev) {
   switch (ev->type) {
     case CreateNotify:
@@ -2088,11 +2046,6 @@ ev_handle(session_t *ps, XEvent *ev) {
       if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
               && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
         ev_shape_notify(ps, (XShapeEvent *) ev);
-        break;
-      }
-      if (xorgContext_version(&ps->capabilities, PROTO_RANDR) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_RANDR,  ev->type) == RRScreenChangeNotify) {
-        ev_screen_change_notify(ps, (XRRScreenChangeNotifyEvent *) ev);
         break;
       }
       if (isdamagenotify(ps, ev)) {
@@ -2416,7 +2369,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "blur-level", required_argument, NULL, 301 },
     { "opacity-rule", required_argument, NULL, 304 },
     { "shadow-exclude-reg", required_argument, NULL, 305 },
-    { "xinerama-shadow-crop", no_argument, NULL, 307 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "no-fading-destroyed-argb", no_argument, NULL, 315 },
     { "version", no_argument, NULL, 318 },
@@ -2609,7 +2561,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --paint-exclude
         condlst_add(ps, &ps->o.paint_blacklist, optarg);
         break;
-      P_CASEBOOL(307, xinerama_shadow_crop);
       P_CASEBOOL(315, no_fading_destroyed_argb);
       P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
@@ -3025,33 +2976,6 @@ mainloop(session_t *ps) {
   return true;
 }
 
-static void
-cxinerama_upd_scrs(session_t *ps) {
-  free_xinerama_info(ps);
-
-  if (!ps->o.xinerama_shadow_crop) return;
-
-  if (!XineramaIsActive(ps->dpy)) return;
-
-  ps->xinerama_scrs = XineramaQueryScreens(ps->dpy, &ps->xinerama_nscrs);
-
-  // Just in case the shit hits the fan...
-  if (!ps->xinerama_nscrs) {
-    cxfree(ps->xinerama_scrs);
-    ps->xinerama_scrs = NULL;
-    return;
-  }
-
-  ps->xinerama_scr_regs = allocchk(malloc(sizeof(XserverRegion *)
-        * ps->xinerama_nscrs));
-  for (int i = 0; i < ps->xinerama_nscrs; ++i) {
-    const XineramaScreenInfo * const s = &ps->xinerama_scrs[i];
-    XRectangle r = { .x = s->x_org, .y = s->y_org,
-      .width = s->width, .height = s->height };
-    ps->xinerama_scr_regs[i] = XFixesCreateRegion(ps->dpy, &r, 1);
-  }
-}
-
 char* getDisplayName(Display* display) {
   // Build a safe representation of display name
     char *display_repr = DisplayString(display);
@@ -3110,7 +3034,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .wintype_shadow = { false },
       .shadow_blacklist = NULL,
       .respect_prop_shadow = false,
-      .xinerama_shadow_crop = false,
 
       .wintype_fade = { false },
       .no_fading_openclose = false,
@@ -3309,15 +3232,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       exit(1);
   }
 
-  // Monitor screen changes when Xinerama features are enabled
-  if (ps->o.xinerama_shadow_crop)
-    XRRSelectInput(ps->dpy, ps->root, RRScreenChangeNotifyMask);
-
   // Initialize VSync
   if (!vsync_init(ps))
     exit(1);
-
-  cxinerama_upd_scrs(ps);
 
   // Create registration window
   if (!ps->reg_win && !register_cm(ps))
@@ -3514,7 +3431,6 @@ void session_destroy(session_t *ps) {
   free(ps->pfds_read);
   free(ps->pfds_write);
   free(ps->pfds_except);
-  free_xinerama_info(ps);
 
   xorgContext_delete(&ps->xcontext);
 

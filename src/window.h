@@ -185,9 +185,6 @@ typedef struct _win {
     float border_size;
     bool override_redirect;
 
-    /// Xinerama screen this window is on.
-    int xinerama_scr;
-
     /// Damage of the window.
     Damage damage;
 

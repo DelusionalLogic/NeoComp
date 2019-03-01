@@ -165,10 +165,6 @@ void usage(int ret) {
     "  Use --shadow-exclude-reg \'x10+0-0\', for example, if the 10 pixels\n"
     "  on the bottom of the screen should not have shadows painted on.\n"
     "\n"
-    "--xinerama-shadow-crop\n"
-    "  Crop shadow of a window fully on a particular Xinerama screen to the\n"
-    "  screen.\n"
-    "\n"
     "--glx-swap-method undefined/copy/exchange/3/4/5/6/buffer-age\n"
     "  GLX backend: GLX buffer swap method we assume. Could be\n"
     "  undefined (0), copy (1), exchange (2), 3-6, or buffer-age (-1).\n"
@@ -502,9 +498,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
         ps->o.dim_fade_time = dval;
     // --mark-wmwin-focused
     lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
-    // --xinerama-shadow-crop
-    lcfg_lookup_bool(&cfg, "xinerama-shadow-crop",
-            &ps->o.xinerama_shadow_crop);
     // --detect-client-opacity
     lcfg_lookup_bool(&cfg, "detect-client-opacity",
             &ps->o.detect_client_opacity);
