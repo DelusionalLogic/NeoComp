@@ -95,14 +95,10 @@ typedef struct _options_t {
   char *display;
   /// Safe representation of display name.
   char *display_repr;
-  /// GLX swap method we assume OpenGL uses.
-  int glx_swap_method;
   /// Whether to fork to background.
   bool fork_after_register;
   /// Blur Level
   int blur_level;
-  /// Whether to stop painting. Controlled through D-Bus.
-  switch_t stoppaint_force;
   /// Whether to re-redirect screen on root size change.
   bool reredir_on_root_change;
   /// Whether to reinitialize GLX on root size change.
@@ -117,16 +113,10 @@ typedef struct _options_t {
   Window benchmark_wid;
   /// A list of conditions of windows not to paint.
   c2_lptr_t *paint_blacklist;
-  /// Whether to work under synchronized mode for debugging.
-  bool synchronize;
   /// Whether to show all X errors.
   bool show_all_xerrors;
   /// Whether to avoid acquiring X Selection.
   bool no_x_selection;
-
-  // === VSync & software optimization ===
-  /// VSync method to use;
-  vsync_t vsync;
 
   // === Shadow ===
   /// Enable/disable shadow for specific window types.
@@ -139,10 +129,6 @@ typedef struct _options_t {
   // === Fading ===
   /// Enable/disable fading for specific window types.
   bool wintype_fade[NUM_WINTYPES];
-  /// Whether to disable fading on window open/close.
-  bool no_fading_openclose;
-  /// Whether to disable fading on ARGB managed destroyed windows.
-  bool no_fading_destroyed_argb;
   /// Fading blacklist. A linked list of conditions.
   c2_lptr_t *fade_blacklist;
 
@@ -150,20 +136,12 @@ typedef struct _options_t {
   /// Default opacity for specific window types
   double wintype_opacity[NUM_WINTYPES];
   /// Default opacity for inactive windows.
-  /// 32-bit integer with the format of _NET_WM_OPACITY. 0 stands for
-  /// not enabled, default.
   double inactive_opacity;
   /// Default opacity for inactive windows.
   double active_opacity;
 
   double opacity_fade_time;
   double bg_opacity_fade_time;
-  /// Whether inactive_opacity overrides the opacity set by window
-  /// attributes.
-  bool inactive_opacity_override;
-  /// Whether to detect _NET_WM_OPACITY on client windows. Used on window
-  /// managers that don't pass _NET_WM_OPACITY to frame windows.
-  bool detect_client_opacity;
 
   // === Other window processing ===
   /// Whether to blur background of semi-transparent / ARGB windows.
@@ -179,8 +157,6 @@ typedef struct _options_t {
   /// Whether to use fixed inactive dim opacity, instead of deciding
   /// based on window opacity.
   bool inactive_dim_fixed;
-  /// Conditions of windows to have inverted colors.
-  c2_lptr_t *invert_color_list;
   /// Rules to change window opacity.
   c2_lptr_t *opacity_rules;
 
@@ -271,9 +247,7 @@ typedef struct _session_t {
     /// Root window.
     Window root;
     Vector2 root_size;
-    // Damage of root window.
-    // Damage root_damage;
-    /// X Composite overlay window. Used if <code>--paint-on-overlay</code>.
+    /// X Composite overlay window.
     Window overlay;
 
     /// The root tile, but better

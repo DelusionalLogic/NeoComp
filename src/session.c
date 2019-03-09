@@ -19,24 +19,6 @@ void usage(int ret) {
     "-d display\n"
     "  Which display should be managed.\n"
     "\n"
-    "-o opacity\n"
-    "  The translucency for shadows. (default .75)\n"
-    "\n"
-    "-l left-offset\n"
-    "  The left offset for shadows. (default -15)\n"
-    "\n"
-    "-t top-offset\n"
-    "  The top offset for shadows. (default -15)\n"
-    "\n"
-    "-I fade-in-step\n"
-    "  Opacity change between steps while fading in. (default 0.028)\n"
-    "\n"
-    "-O fade-out-step\n"
-    "  Opacity change between steps while fading out. (default 0.03)\n"
-    "\n"
-    "-D fade-delta-time\n"
-    "  The time between steps in a fade in milliseconds. (default 10)\n"
-    "\n"
     "-m opacity\n"
     "  The opacity for menus. (default 1.0)\n"
     "\n"
@@ -46,15 +28,9 @@ void usage(int ret) {
     "-C\n"
     "  Avoid drawing shadows on dock/panel windows.\n"
     "\n"
-    "-z\n"
-    "  Zero the part of the shadow's mask behind the window.\n"
-    "\n"
     "-f\n"
     "  Fade windows in/out when opening/closing and when opacity\n"
     "  changes, unless --no-fading-openclose is used.\n"
-    "\n"
-    "-F\n"
-    "  Equals to -f. Deprecated.\n"
     "\n"
     "-i opacity\n"
     "  Opacity of inactive windows. (0.1 - 1.0)\n"
@@ -68,9 +44,6 @@ void usage(int ret) {
     "-b\n"
     "  Daemonize process.\n"
     "\n"
-    "-S\n"
-    "  Enable synchronous operation (for debugging).\n"
-    "\n"
     "--show-all-xerrors\n"
     "  Show all X errors (for debugging).\n"
     "\n"
@@ -83,9 +56,6 @@ void usage(int ret) {
     "--config path\n"
     "  Look for configuration file at the path. Use /dev/null to avoid\n"
     "  loading configuration file." WARNING "\n"
-    "\n"
-    "--inactive-opacity-override\n"
-    "  Inactive opacity set by -i overrides value of _NET_WM_OPACITY.\n"
     "\n"
     "--inactive-dim value\n"
     "  Dim inactive windows. (0.0 - 1.0)\n"
@@ -102,36 +72,6 @@ void usage(int ret) {
     "--fade-exclude condition\n"
     "  Exclude conditions for fading.\n"
     "\n"
-    "--no-fading-openclose\n"
-    "  Do not fade on window open/close.\n"
-    "\n"
-    "--no-fading-destroyed-argb\n"
-    "  Do not fade destroyed ARGB windows with WM frame. Workaround of bugs\n"
-    "  in Openbox, Fluxbox, etc.\n"
-    "\n"
-    "--detect-rounded-corners\n"
-    "  Try to detect windows with rounded corners and don't consider\n"
-    "  them shaped windows. Affects --shadow-ignore-shaped,\n"
-    "  and possibly others. You need to turn this\n"
-    "  on manually if you want to match against rounded_corners in\n"
-    "  conditions.\n"
-    "\n"
-    "--detect-client-opacity\n"
-    "  Detect _NET_WM_OPACITY on client windows, useful for window\n"
-    "  managers not passing _NET_WM_OPACITY of client windows to frame\n"
-    "  windows.\n"
-    "\n"
-    "--vsync-aggressive\n"
-    "  Attempt to send painting request before VBlank and do XFlush()\n"
-    "  during VBlank. This switch may be lifted out at any moment.\n"
-    "\n"
-    "--alpha-step val\n"
-    "  X Render backend: Step for pregenerating alpha pictures. \n"
-    "  0.01 - 1.0. Defaults to 0.03.\n"
-    "\n"
-    "--paint-on-overlay\n"
-    "  Painting on X Composite overlay window.\n"
-    "\n"
     "--respect-prop-shadow\n"
     "  Respect _COMPTON_SHADOW. This a prototype-level feature, which\n"
     "  you must not rely on.\n"
@@ -141,16 +81,12 @@ void usage(int ret) {
     "  considered focused.\n"
     "\n"
     "--blur-background\n"
-    "  Blur background of semi-transparent / ARGB windows. Bad in\n"
-    "  performance. The switch name may change without prior\n"
-    "  notifications.\n"
+	"  Blur background of semi-transparent / ARGB windows. Bad in\n"
+	"  performance. The switch name may change without prior\n"
+	"  notifications.\n"
     "\n"
     "--blur-background-exclude condition\n"
     "  Exclude conditions for background blur.\n"
-    "\n"
-    "--invert-color-include condition\n"
-    "  Specify a list of conditions of windows that should be painted with\n"
-    "  inverted color. Resource-hogging, and is not well tested.\n"
     "\n"
     "--opacity-rule opacity:condition\n"
     "  Specify a list of opacity rules, in the format \"PERCENT:PATTERN\",\n"
@@ -158,21 +94,6 @@ void usage(int ret) {
     "  this. Note we do not distinguish 100% and unset, and we don't make\n"
     "  any guarantee about possible conflicts with other programs that set\n"
     "  _NET_WM_WINDOW_OPACITY on frame or client windows.\n"
-    "\n"
-    "--shadow-exclude-reg geometry\n"
-    "  Specify a X geometry that describes the region in which shadow\n"
-    "  should not be painted in, such as a dock window region.\n"
-    "  Use --shadow-exclude-reg \'x10+0-0\', for example, if the 10 pixels\n"
-    "  on the bottom of the screen should not have shadows painted on.\n"
-    "\n"
-    "--glx-swap-method undefined/copy/exchange/3/4/5/6/buffer-age\n"
-    "  GLX backend: GLX buffer swap method we assume. Could be\n"
-    "  undefined (0), copy (1), exchange (2), 3-6, or buffer-age (-1).\n"
-    "  \"undefined\" is the slowest and the safest, and the default value.\n"
-    "  1 is fastest, but may fail on some drivers, 2-6 are gradually slower\n"
-    "  but safer (6 is still faster than 0). -1 means auto-detect using\n"
-    "  GLX_EXT_buffer_age, supported by some drivers. Useless with\n"
-    "  --glx-use-copysubbuffermesa.\n"
     "\n"
 #undef WARNING
 #ifndef CONFIG_DBUS
@@ -461,10 +382,9 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     // -i (inactive_opacity)
     if (config_lookup_float(&cfg, "inactive-opacity", &dval))
         ps->o.inactive_opacity = normalize_d(dval) * 100.0;
-    // --active_opacity
+    // -I (active_opacity)
     if (config_lookup_float(&cfg, "active-opacity", &dval))
         ps->o.active_opacity = normalize_d(dval) * 100.0;
-        ;
     // --opacity-fade-time
     if (config_lookup_float(&cfg, "opacity-fade-time", &dval))
         ps->o.opacity_fade_time = dval;
@@ -483,14 +403,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     // -f (fading_enable)
     if (config_lookup_bool(&cfg, "fading", &ival) && ival)
         wintype_arr_enable(ps->o.wintype_fade);
-    // --no-fading-open-close
-    lcfg_lookup_bool(&cfg, "no-fading-openclose", &ps->o.no_fading_openclose);
-    // --no-fading-destroyed-argb
-    lcfg_lookup_bool(&cfg, "no-fading-destroyed-argb",
-            &ps->o.no_fading_destroyed_argb);
-    // --inactive-opacity-override
-    lcfg_lookup_bool(&cfg, "inactive-opacity-override",
-            &ps->o.inactive_opacity_override);
     // --inactive-dim
     config_lookup_float(&cfg, "inactive-dim", &ps->o.inactive_dim);
     // --dim-fade-time
@@ -498,20 +410,12 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
         ps->o.dim_fade_time = dval;
     // --mark-wmwin-focused
     lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
-    // --detect-client-opacity
-    lcfg_lookup_bool(&cfg, "detect-client-opacity",
-            &ps->o.detect_client_opacity);
-    // --vsync
-    if (config_lookup_string(&cfg, "vsync", &sval) && !parse_vsync(ps, sval))
-        exit(1);
     // --shadow-exclude
     parse_cfg_condlst(ps, &cfg, &ps->o.shadow_blacklist, "shadow-exclude");
     // --fade-exclude
     parse_cfg_condlst(ps, &cfg, &ps->o.fade_blacklist, "fade-exclude");
     // --focus-exclude
     parse_cfg_condlst(ps, &cfg, &ps->o.focus_blacklist, "focus-exclude");
-    // --invert-color-include
-    parse_cfg_condlst(ps, &cfg, &ps->o.invert_color_list, "invert-color-include");
     // --blur-background-exclude
     parse_cfg_condlst(ps, &cfg, &ps->o.blur_background_blacklist, "blur-background-exclude");
     // --opacity-rule
@@ -520,10 +424,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
     // --blur-level
     lcfg_lookup_int(&cfg, "blur-level", &ps->o.blur_level);
-    // --glx-swap-method
-    if (config_lookup_string(&cfg, "glx-swap-method", &sval)
-            && !parse_glx_swap_method(ps, sval))
-        exit(1);
     // Wintype settings
     {
         wintype_t i;

@@ -315,14 +315,6 @@ const char * const WINTYPES[NUM_WINTYPES] = {
   "dnd",
 };
 
-/// Names of VSync modes.
-const char * const VSYNC_STRS[NUM_VSYNC + 1] = {
-  "none",             // VSYNC_NONE
-  "opengl-swc",       // VSYNC_OPENGL_SWC
-  "opengl",           // VSYNC_OPENGL
-  NULL
-};
-
 const char* const StateNames[] = {
     "Hiding",
     "Invisible",
@@ -333,16 +325,6 @@ const char* const StateNames[] = {
     "Inactive",
     "Destroying",
     "Destroyed",
-};
-
-/// Function pointers to init VSync modes.
-static bool (* const (VSYNC_FUNCS_INIT[NUM_VSYNC]))(session_t *ps) = {
-  [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_init,
-};
-
-/// Function pointers to deinitialize VSync.
-static void (* const (VSYNC_FUNCS_DEINIT[NUM_VSYNC]))(session_t *ps) = {
-  [VSYNC_OPENGL_SWC   ] = vsync_opengl_swc_deinit,
 };
 
 /// Names of root window properties that could point to a pixmap of
@@ -540,7 +522,7 @@ static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
     // Check if it's a mapped client window
     // @INCOMPLETE: PropertyChangeMask should also be set if we are tracking extra atoms
     if (WIN_EVMODE_CLIENT == mode || isMapped) {
-        if (ps->o.track_wdata /* || ps->track_atom_lst */ || ps->o.detect_client_opacity)
+        if (ps->o.track_wdata /* || ps->track_atom_lst */)
             evmask |= PropertyChangeMask;
     }
 
@@ -1587,18 +1569,6 @@ opts_init_track_focus(session_t *ps) {
     ps->o.track_focus = true;
 }
 
-/**
- * Set no_fading_openclose option.
- */
-void
-opts_set_no_fading_openclose(session_t *ps, bool newval) {
-    if (newval != ps->o.no_fading_openclose) {
-        ps->o.no_fading_openclose = newval;
-
-        ps->skip_poll = true;
-    }
-}
-
 //!@}
 #endif
 
@@ -2322,55 +2292,36 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   const static struct option longopts[] = {
     { "help", no_argument, NULL, 'h' },
     { "config", required_argument, NULL, 256 },
-    { "shadow-opacity", required_argument, NULL, 'o' },
-    { "shadow-offset-x", required_argument, NULL, 'l' },
-    { "shadow-offset-y", required_argument, NULL, 't' },
-    { "fade-in-step", required_argument, NULL, 'I' },
-    { "fade-out-step", required_argument, NULL, 'O' },
-    { "fade-delta", required_argument, NULL, 'D' },
     { "menu-opacity", required_argument, NULL, 'm' },
     { "shadow", no_argument, NULL, 'c' },
     { "no-dock-shadow", no_argument, NULL, 'C' },
-    { "clear-shadow", no_argument, NULL, 'z' },
     { "fading", no_argument, NULL, 'f' },
+    { "active-opacity", required_argument, NULL, 'I' },
     { "inactive-opacity", required_argument, NULL, 'i' },
     { "opacity-fade-time", required_argument, NULL, 'T' },
     { "bg-opacity-fade-time", required_argument, NULL, 280 },
     { "frame-opacity", required_argument, NULL, 'e' },
     { "daemon", no_argument, NULL, 'b' },
     { "no-dnd-shadow", no_argument, NULL, 'G' },
-    { "inactive-opacity-override", no_argument, NULL, 260 },
     { "inactive-dim", required_argument, NULL, 261 },
     { "mark-wmwin-focused", no_argument, NULL, 262 },
     { "shadow-exclude", required_argument, NULL, 263 },
     { "dim-fade-time", required_argument, NULL, 264 },
-    { "no-fading-openclose", no_argument, NULL, 265 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
-    { "detect-rounded-corners", no_argument, NULL, 267 },
-    { "detect-client-opacity", no_argument, NULL, 268 },
-    { "vsync", required_argument, NULL, 270 },
-    { "alpha-step", required_argument, NULL, 271 },
-    { "paint-on-overlay", no_argument, NULL, 273 },
-    { "use-ewmh-active-win", no_argument, NULL, 276 },
     { "respect-prop-shadow", no_argument, NULL, 277 },
     { "focus-exclude", required_argument, NULL, 279 },
     { "blur-background", no_argument, NULL, 283 },
     { "dbus", no_argument, NULL, 286 },
     { "logpath", required_argument, NULL, 287 },
-    { "invert-color-include", required_argument, NULL, 288 },
     { "opengl", no_argument, NULL, 289 },
     { "benchmark", required_argument, NULL, 293 },
     { "benchmark-wid", required_argument, NULL, 294 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
     { "blur-background-exclude", required_argument, NULL, 296 },
-    { "active-opacity", required_argument, NULL, 297 },
-    { "glx-swap-method", required_argument, NULL, 299 },
     { "fade-exclude", required_argument, NULL, 300 },
     { "blur-level", required_argument, NULL, 301 },
     { "opacity-rule", required_argument, NULL, 304 },
-    { "shadow-exclude-reg", required_argument, NULL, 305 },
     { "show-all-xerrors", no_argument, NULL, 314 },
-    { "no-fading-destroyed-argb", no_argument, NULL, 315 },
     { "version", no_argument, NULL, 318 },
     { "no-x-selection", no_argument, NULL, 319 },
     { "reredir-on-root-change", no_argument, NULL, 731 },
@@ -2393,8 +2344,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         ps->o.config_file = mstrcpy(optarg);
       else if ('d' == o)
         ps->o.display = mstrcpy(optarg);
-      else if ('S' == o)
-        ps->o.synchronize = true;
       else if (314 == o)
         ps->o.show_all_xerrors = true;
       else if (318 == o) {
@@ -2453,7 +2402,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         usage(0);
         break;
       case 'd':
-      case 'S':
       case 314:
       case 318:
       case 320:
@@ -2471,8 +2419,11 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         cfgtmp.menu_opacity = atof(optarg);
         break;
       case 'f':
-      case 'F':
         fading_enable = true;
+        break;
+      case 'I':
+        // --active-opacity
+        ps->o.active_opacity = (normalize_d(atof(optarg)) * 100.0);
         break;
       case 'i':
         ps->o.inactive_opacity = (normalize_d(atof(optarg)) * 100.0);
@@ -2493,7 +2444,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 256:
         // --config
         break;
-      P_CASEBOOL(260, inactive_opacity_override);
       case 261:
         // --inactive-dim
         ps->o.inactive_dim = atof(optarg);
@@ -2507,13 +2457,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --inactive-dim
         ps->o.dim_fade_time = atof(optarg);
         break;
-      P_CASEBOOL(265, no_fading_openclose);
-      P_CASEBOOL(268, detect_client_opacity);
-      case 270:
-        // --vsync
-        if (!parse_vsync(ps, optarg))
-          exit(1);
-        break;
       P_CASEBOOL(277, respect_prop_shadow);
       case 279:
         // --focus-exclude
@@ -2525,10 +2468,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --logpath
         ps->o.logpath = mstrcpy(optarg);
         break;
-      case 288:
-        // --invert-color-include
-        condlst_add(ps, &ps->o.invert_color_list, optarg);
-        break;
       P_CASELONG(293, benchmark);
       case 294:
         // --benchmark-wid
@@ -2537,15 +2476,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 296:
         // --blur-background-exclude
         condlst_add(ps, &ps->o.blur_background_blacklist, optarg);
-        break;
-      case 297:
-        // --active-opacity
-        ps->o.active_opacity = (normalize_d(atof(optarg)) * 100.0);
-        break;
-      case 299:
-        // --glx-swap-method
-        if (!parse_glx_swap_method(ps, optarg))
-          exit(1);
         break;
       case 300:
         // --fade-exclude
@@ -2561,7 +2491,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --paint-exclude
         condlst_add(ps, &ps->o.paint_blacklist, optarg);
         break;
-      P_CASEBOOL(315, no_fading_destroyed_argb);
       P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
       P_CASEBOOL(732, glx_reinit_on_root_change);
@@ -2635,24 +2564,19 @@ vsync_opengl_swc_deinit(session_t *ps) {
 /**
  * Initialize current VSync method.
  */
-bool
-vsync_init(session_t *ps) {
-  if (ps->o.vsync && VSYNC_FUNCS_INIT[ps->o.vsync]
-      && !VSYNC_FUNCS_INIT[ps->o.vsync](ps)) {
-    ps->o.vsync = VSYNC_NONE;
-    return false;
-  }
-  else
-    return true;
+bool vsync_init(session_t *ps) {
+	if (!vsync_opengl_swc_init(ps)) {
+		return false;
+	}
+
+	return true;
 }
 
 /**
  * Deinitialize current VSync method.
  */
-void
-vsync_deinit(session_t *ps) {
-  if (ps->o.vsync && VSYNC_FUNCS_DEINIT[ps->o.vsync])
-    VSYNC_FUNCS_DEINIT[ps->o.vsync](ps);
+void vsync_deinit(session_t *ps) {
+	vsync_opengl_swc_deinit(ps);
 }
 
 /**
@@ -2720,19 +2644,6 @@ static void redir_start(session_t *ps) {
     // https://bugzilla.gnome.org/show_bug.cgi?id=597014
     if (ps->overlay)
         XMapWindow(ps->dpy, ps->overlay);
-
-    /* XCompositeRedirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual); */
-
-    /* XShapeCombineShape(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0x2800001, ShapeBounding, ShapeSubtract); */
-
-    /*
-    // Unredirect GL context window as this may have an effect on VSync:
-    // < http://dri.freedesktop.org/wiki/CompositeSwap >
-    XCompositeUnredirectWindow(ps->dpy, ps->reg_win, CompositeRedirectManual);
-    if (ps->o.paint_on_overlay && ps->overlay) {
-    XCompositeUnredirectWindow(ps->dpy, ps->overlay,
-    CompositeRedirectManual);
-    } */
 
     // Must call XSync() here -- Why?
     XSync(ps->dpy, False);
@@ -3021,39 +2932,30 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .display = NULL,
       .mark_wmwin_focused = false,
       .fork_after_register = false,
-      .synchronize = false,
       .blur_level = 0,
-      .stoppaint_force = UNSET,
       .dbus = false,
       .benchmark = 0,
       .benchmark_wid = None,
       .logpath = NULL,
-
-      .vsync = VSYNC_NONE,
 
       .wintype_shadow = { false },
       .shadow_blacklist = NULL,
       .respect_prop_shadow = false,
 
       .wintype_fade = { false },
-      .no_fading_openclose = false,
-      .no_fading_destroyed_argb = false,
       .fade_blacklist = NULL,
 
       .wintype_opacity = { -1.0 },
       .inactive_opacity = 100.0,
-      .inactive_opacity_override = false,
       .active_opacity = 100.0,
       .opacity_fade_time = 1000.0,
       .bg_opacity_fade_time = 1000.0,
-      .detect_client_opacity = false,
 
       .blur_background = false,
       .blur_background_blacklist = NULL,
       .inactive_dim = 100.0,
       .inactive_dim_fixed = false,
       .dim_fade_time = 1000.0,
-      .invert_color_list = NULL,
       .opacity_rules = NULL,
 
       .wintype_focus = { false },
@@ -3155,9 +3057,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   }
 
   XSetErrorHandler(xerror);
-  if (ps->o.synchronize) {
-    XSynchronize(ps->dpy, 1);
-  }
 
   ps->scr = DefaultScreen(ps->dpy);
   ps->root = RootWindow(ps->dpy, ps->scr);
@@ -3398,9 +3297,8 @@ void session_destroy(session_t *ps) {
   // Free blacklists
   free_wincondlst(&ps->o.shadow_blacklist);
   free_wincondlst(&ps->o.fade_blacklist);
-  free_wincondlst(&ps->o.focus_blacklist);
-  free_wincondlst(&ps->o.invert_color_list);
-  free_wincondlst(&ps->o.blur_background_blacklist);
+free_wincondlst(&ps->o.focus_blacklist);
+free_wincondlst(&ps->o.blur_background_blacklist);
   free_wincondlst(&ps->o.opacity_rules);
   free_wincondlst(&ps->o.paint_blacklist);
 #endif
@@ -4628,19 +4526,6 @@ void session_run(session_t *ps) {
                 }
             }
             zone_leave(&ZONE_update_fade_blacklist);
-        }
-
-        if (ps->o.invert_color_list) {
-            zone_enter(&ZONE_update_invert_list);
-            for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(em, it.id)) {
-                    bool invert_color_new = win_match(ps, w, ps->o.invert_color_list);
-                    win_set_invert_color(ps, w, invert_color_new);
-                }
-            }
-            zone_leave(&ZONE_update_invert_list);
         }
 
         if (ps->o.blur_background_blacklist) {

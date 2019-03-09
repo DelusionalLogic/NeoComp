@@ -3,6 +3,7 @@
 in vec2 fragmentUV;
 
 uniform samplerBuffer sampler;
+
 uniform vec3 color;
 uniform float opacity;
 uniform float width;

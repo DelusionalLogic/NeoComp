@@ -1013,20 +1013,8 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(mark_wmwin_focused, cdbus_reply_bool);
   cdbus_m_opts_get_do(mark_ovredir_focused, cdbus_reply_bool);
   cdbus_m_opts_get_do(fork_after_register, cdbus_reply_bool);
-  // paint_on_overlay_id: Get ID of the X composite overlay window
-  if (!strcmp("paint_on_overlay_id", target)) {
-    cdbus_reply_uint32(ps, msg, ps->overlay);
-    return true;
-  }
-  cdbus_m_opts_get_do(stoppaint_force, cdbus_reply_enum);
   cdbus_m_opts_get_do(logpath, cdbus_reply_string);
-  cdbus_m_opts_get_do(synchronize, cdbus_reply_bool);
 
-  if (!strcmp("vsync", target)) {
-    assert(ps->o.vsync < sizeof(VSYNC_STRS) / sizeof(VSYNC_STRS[0]));
-    cdbus_reply_string(ps, msg, VSYNC_STRS[ps->o.vsync]);
-    return true;
-  }
   cdbus_m_opts_get_do(shadow_red, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_green, cdbus_reply_double);
   cdbus_m_opts_get_do(shadow_blue, cdbus_reply_double);
@@ -1042,8 +1030,6 @@ cdbus_process_opts_get(session_t *ps, DBusMessage *msg) {
   cdbus_m_opts_get_do(use_ewmh_active_win, cdbus_reply_bool);
   cdbus_m_opts_get_do(detect_transient, cdbus_reply_bool);
   cdbus_m_opts_get_do(detect_client_leader, cdbus_reply_bool);
-
-  cdbus_m_opts_get_do(glx_swap_method, cdbus_reply_int32);
 
   cdbus_m_opts_get_do(track_focus, cdbus_reply_bool);
   cdbus_m_opts_get_do(track_wdata, cdbus_reply_bool);
@@ -1073,15 +1059,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
       return false; \
     ps->o.tgt = val; \
     goto cdbus_process_opts_set_success; \
-  }
-
-  // no_fading_openclose
-  if (!strcmp("no_fading_openclose", target)) {
-    dbus_bool_t val = FALSE;
-    if (!cdbus_msg_get_arg(msg, 1, DBUS_TYPE_BOOLEAN, &val))
-      return false;
-    opts_set_no_fading_openclose(ps, val);
-    goto cdbus_process_opts_set_success;
   }
 
   // unredir_if_possible
@@ -1126,9 +1103,6 @@ cdbus_process_opts_set(session_t *ps, DBusMessage *msg) {
       goto cdbus_process_opts_set_success;
     return true;
   }
-
-  // stoppaint_force
-  cdbus_m_opts_set_do(stoppaint_force, CDBUS_TYPE_ENUM, cdbus_enum_t);
 
 #undef cdbus_m_opts_set_do
 
