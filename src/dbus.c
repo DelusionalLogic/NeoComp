@@ -15,7 +15,7 @@
 /**
  * Return a string representation of a D-Bus message type.
  */
-static inline const char *
+static const char *
 cdbus_repr_msgtype(DBusMessage *msg) {
   return dbus_message_type_to_string(dbus_message_get_type(msg));
 }
@@ -92,35 +92,35 @@ static bool cdbus_process_opts_set(session_t *ps, DBusMessage *msg);
 
 static bool cdbus_process_introspect(session_t *ps, DBusMessage *msg);
 
-static inline bool cdbus_signal_wid(session_t *ps, const char *name, Window wid) {
+static bool cdbus_signal_wid(session_t *ps, const char *name, Window wid) {
   return cdbus_signal(ps, name, cdbus_apdarg_wid, &wid);
 }
 
-static inline bool cdbus_reply_bool(session_t *ps, DBusMessage *srcmsg, bool bval) {
+static bool cdbus_reply_bool(session_t *ps, DBusMessage *srcmsg, bool bval) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_bool, &bval);
 }
 
-static inline bool cdbus_reply_int32(session_t *ps, DBusMessage *srcmsg, int32_t val) {
+static bool cdbus_reply_int32(session_t *ps, DBusMessage *srcmsg, int32_t val) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_int32, &val);
 }
 
-static inline bool cdbus_reply_uint32(session_t *ps, DBusMessage *srcmsg, uint32_t val) {
+static bool cdbus_reply_uint32(session_t *ps, DBusMessage *srcmsg, uint32_t val) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_uint32, &val);
 }
 
-static inline bool cdbus_reply_double(session_t *ps, DBusMessage *srcmsg, double val) {
+static bool cdbus_reply_double(session_t *ps, DBusMessage *srcmsg, double val) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_double, &val);
 }
 
-static inline bool cdbus_reply_wid(session_t *ps, DBusMessage *srcmsg, Window wid) {
+static bool cdbus_reply_wid(session_t *ps, DBusMessage *srcmsg, Window wid) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_wid, &wid);
 }
 
-static inline bool cdbus_reply_string(session_t *ps, DBusMessage *srcmsg, const char *str) {
+static bool cdbus_reply_string(session_t *ps, DBusMessage *srcmsg, const char *str) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_string, str);
 }
 
-static inline bool cdbus_reply_enum(session_t *ps, DBusMessage *srcmsg, cdbus_enum_t eval) {
+static bool cdbus_reply_enum(session_t *ps, DBusMessage *srcmsg, cdbus_enum_t eval) {
   return cdbus_reply(ps, srcmsg, cdbus_apdarg_enum, &eval);
 }
 

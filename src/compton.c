@@ -80,7 +80,7 @@ DECLARE_ZONE(update_single_texture);
 
 // From the header {{{
 
-static inline win * find_win(session_t *ps, Window id) {
+static win * find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
 
@@ -226,9 +226,7 @@ static win * find_win_all(session_t *ps, const Window wid) {
     return w;
 }
 
-static inline void win_set_focused(session_t *ps, win *w);
-
-static void win_set_invert_color(session_t *ps, win *w, bool invert_color_new);
+static void win_set_focused(session_t *ps, win *w);
 
 static void win_set_blur_background(session_t *ps, win *w, bool blur_background_new);
 
@@ -272,14 +270,6 @@ static void update_ewmh_active_win(session_t *ps);
 #if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
 static bool ev_window_name(session_t *ps, Window wid, char **name);
 #endif
-
-static bool ensure_glx_context(session_t *ps) {
-    // Create GLX context
-    if (!glx_has_context(ps))
-        glx_init(ps, false);
-
-    return ps->psglx->context;
-}
 
 static bool vsync_opengl_swc_init(session_t *ps);
 
@@ -780,13 +770,6 @@ static void unmap_win(session_t *ps, win *w) {
 }
 
 static void
-win_set_invert_color(session_t *ps, win *w, bool invert_color_new) {
-  if (w->invert_color == invert_color_new) return;
-
-  w->invert_color = invert_color_new;
-}
-
-static void
 win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
   if (w->blur_background == blur_background_new) return;
 
@@ -1185,7 +1168,7 @@ static void destroy_win(session_t *ps, win_id wid) {
 #endif
 }
 
-static inline void
+static void
 root_damaged(session_t *ps) {
   if (ps->root_texture.bound) {
     xtexture_unbind(&ps->root_texture);
@@ -1619,7 +1602,7 @@ ev_name(session_t *ps, XEvent *ev) {
   return buf;
 }
 
-static inline const char *
+static const char *
 ev_focus_mode_name(XFocusChangeEvent* ev) {
   switch (ev->mode) {
     CASESTRRET(NotifyNormal);
@@ -1631,7 +1614,7 @@ ev_focus_mode_name(XFocusChangeEvent* ev) {
   return "Unknown";
 }
 
-static inline const char *
+static const char *
 ev_focus_detail_name(XFocusChangeEvent* ev) {
   switch (ev->detail) {
     CASESTRRET(NotifyAncestor);
@@ -1647,7 +1630,7 @@ ev_focus_detail_name(XFocusChangeEvent* ev) {
   return "Unknown";
 }
 
-static inline void
+static void
 ev_focus_report(XFocusChangeEvent* ev) {
   printf("  { mode: %s, detail: %s }\n", ev_focus_mode_name(ev),
       ev_focus_detail_name(ev));
@@ -1657,13 +1640,13 @@ ev_focus_report(XFocusChangeEvent* ev) {
 
 // === Events ===
 
-inline static void
+static void
 ev_create_notify(session_t *ps, XCreateWindowEvent *ev) {
   assert(ev->parent == ps->root);
   add_win(ps, ev->window);
 }
 
-inline static void
+static void
 ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
 #ifdef DEBUG_EVENTS
   printf("  { send_event: %d, "
@@ -1756,7 +1739,7 @@ static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
     }
 }
 
-inline static void
+static void
 ev_circulate_notify(session_t *ps, XCirculateEvent *ev) {
   circulate_win(ps, ev);
 }
@@ -1782,7 +1765,7 @@ update_ewmh_active_win(session_t *ps) {
   win_set_focused(ps, w);
 }
 
-inline static void
+static void
 ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #ifdef DEBUG_EVENTS
     {
@@ -1905,7 +1888,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     }
 }
 
-inline static void
+static void
 ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
   damage_win(ps, ev);
   ps->skip_poll = true;
@@ -1923,68 +1906,11 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
-static Window ev_window(session_t *ps, XEvent *ev) {
-  switch (ev->type) {
-    case CreateNotify:
-      return ev->xcreatewindow.window;
-    case ConfigureNotify:
-      return ev->xconfigure.window;
-    case DestroyNotify:
-      return ev->xdestroywindow.window;
-    case MapNotify:
-      return ev->xmap.window;
-    case UnmapNotify:
-      return ev->xunmap.window;
-    case ReparentNotify:
-      return ev->xreparent.window;
-    case CirculateNotify:
-      return ev->xcirculate.window;
-    case Expose:
-      return ev->xexpose.window;
-    case PropertyNotify:
-      return ev->xproperty.window;
-    case ClientMessage:
-      return ev->xclient.window;
-    default:
-      if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify) {
-        return ((XDamageNotifyEvent *)ev)->drawable;
-      }
-
-      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
-        return ((XShapeEvent *) ev)->window;
-      }
-
-      return 0;
-  }
-}
-
 static void
 ev_handle(session_t *ps, XEvent *ev) {
   if ((ev->type & 0x7f) != KeymapNotify) {
     discard_ignore(ps, ev->xany.serial);
   }
-#ifdef DEBUG_EVENTS
-  if (!isdamagenotify(ps, ev)) {
-    Window wid = ev_window(ps, ev);
-    char *window_name = NULL;
-    bool to_free = false;
-
-    to_free = ev_window_name(ps, wid, &window_name);
-
-    print_timestamp(ps);
-    printf("event %10.10s serial %#010x window %#010lx \"%s\"\n",
-      ev_name(ps, ev), ev_serial(ev), wid, window_name);
-
-    if (to_free) {
-      cxfree(window_name);
-      window_name = NULL;
-    }
-  }
-
-#endif
-
   switch (ev->type) {
     case CreateNotify:
       ev_create_notify(ps, (XCreateWindowEvent *)ev);
@@ -2111,7 +2037,7 @@ ostream_reopen(session_t *ps, const char *path) {
 /**
  * Fork program to background and disable all I/O streams.
  */
-static inline bool
+static bool
 fork_after(session_t *ps) {
   if (getppid() == 1)
     return true;
@@ -2152,7 +2078,7 @@ fork_after(session_t *ps) {
 /**
  * Parse a long number.
  */
-static inline bool
+static bool
 parse_long(const char *s, long *dest) {
   const char *endptr = NULL;
   long val = strtol(s, (char **) &endptr, 0);
@@ -2173,7 +2099,7 @@ parse_long(const char *s, long *dest) {
 /**
  * Parse a X geometry.
  */
-static inline bool
+static bool
 parse_geometry(session_t *ps, const char *src, geometry_t *dest) {
   geometry_t geom = { .wid = -1, .hei = -1, .x = -1, .y = -1 };
   long val = 0L;
@@ -2250,7 +2176,7 @@ parse_geometry_end:
 /**
  * Parse a list of opacity rules.
  */
-static inline bool
+static bool
 parse_rule_opacity(session_t *ps, const char *src) {
 #ifdef CONFIG_C2
   // Find opacity value
@@ -2537,8 +2463,6 @@ vsync_opengl_swc_init(session_t *ps) {
         printf_errf("No swap control extension, can't set the swap inteval. Expect no vsync");
         return false;
     }
-
-    assert(ensure_glx_context(ps));
 
     // Get video sync functions
     if (!ps->psglx->glXSwapIntervalProc) {
@@ -4325,7 +4249,7 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
     }
 }
 
-void damage_blur_over_damaged(Swiss* em, struct Vector* order) {
+void damage_blur_over_damaged(Swiss* em, Vector* order) {
     // Damage the blur of windows on top of damaged windows
     for_components(it, em,
             COMPONENT_CONTENTS_DAMAGED, CQ_END) {

@@ -1,5 +1,6 @@
 #include "debug.h"
 
+#include "renderutil.h"
 #include "text.h"
 #include "window.h"
 #include "shaders/shaderinfo.h"

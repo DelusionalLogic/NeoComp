@@ -19,7 +19,7 @@
 /**
  * Get a textual representation of an OpenGL error.
  */
-static inline const char *
+static const char *
 glx_dump_err_str(GLenum err) {
   switch (err) {
     CASESTRRET(GL_NO_ERROR);
@@ -40,7 +40,7 @@ glx_dump_err_str(GLenum err) {
  *
  * http://blog.nobel-joergensen.com/2013/01/29/debugging-opengl-using-glgeterror/
  */
-static inline void
+static void
 glx_check_err_(session_t *ps, const char *func, int line) {
   if (!ps->psglx->context) return;
 
@@ -65,47 +65,9 @@ glx_check_err_(session_t *ps, const char *func, int line) {
 #endif
 
 /**
- * Check if a word is in string.
- */
-static inline bool wd_is_in_str(const char *haystick, const char *needle) {
-  if (!haystick)
-    return false;
-
-  assert(*needle);
-
-  const char *pos = haystick - 1;
-  while ((pos = strstr(pos + 1, needle))) {
-    // Continue if it isn't a word boundary
-    if (((pos - haystick) && !isspace(*(pos - 1)))
-        || (strlen(pos) > strlen(needle) && !isspace(pos[strlen(needle)])))
-      continue;
-    return true;
-  }
-
-  return false;
-}
-
-/**
  * Check if a GLX extension exists.
  */
-static inline bool glx_hasglxext(session_t *ps, const char *ext) {
-  const char *glx_exts = glXQueryExtensionsString(ps->dpy, ps->scr);
-  if (!glx_exts) {
-    printf_errf("(): Failed get GLX extension list.");
-    return false;
-  }
-
-  bool found = wd_is_in_str(glx_exts, ext);
-  if (!found)
-    printf_errf("(): Missing GLX extension %s.", ext);
-
-  return found;
-}
-
-/**
- * Check if a GLX extension exists.
- */
-static inline bool glx_hasglext(session_t *ps, const char *ext) {
+static bool glx_hasglext(session_t *ps, const char *ext) {
     GLint n;
     glGetIntegerv(GL_NUM_EXTENSIONS, &n);
     for(int i = 0; i < n; i++) {

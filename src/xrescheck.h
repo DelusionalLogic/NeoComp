@@ -35,7 +35,7 @@ xrc_clear_xid(void);
 
 // Pixmap
 
-static inline Pixmap
+static Pixmap
 XCreatePixmap_(Display *dpy, Drawable drawable,
     unsigned int width, unsigned int height, unsigned int depth,
     M_POS_DATA_PARAMS) {
@@ -48,7 +48,7 @@ XCreatePixmap_(Display *dpy, Drawable drawable,
 #define XCreatePixmap(dpy, drawable, width, height, depth) \
   XCreatePixmap_(dpy, drawable, width, height, depth, M_POS_DATA)
 
-static inline Pixmap
+static Pixmap
 XCompositeNameWindowPixmap_(Display *dpy, Window window, M_POS_DATA_PARAMS) {
   Pixmap ret = XCompositeNameWindowPixmap(dpy, window);
   if (ret)
@@ -59,7 +59,7 @@ XCompositeNameWindowPixmap_(Display *dpy, Window window, M_POS_DATA_PARAMS) {
 #define XCompositeNameWindowPixmap(dpy, window) \
   XCompositeNameWindowPixmap_(dpy, window, M_POS_DATA)
 
-static inline void
+static void
 XFreePixmap_(Display *dpy, Pixmap pixmap, M_POS_DATA_PARAMS) {
   XFreePixmap(dpy, pixmap);
   xrc_delete_xid_(pixmap, M_POS_DATA_PASSTHROUGH);

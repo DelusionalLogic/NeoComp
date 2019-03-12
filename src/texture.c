@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-static inline GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
+static GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
     GLuint tex = 0;
 
     glGenTextures(1, &tex);

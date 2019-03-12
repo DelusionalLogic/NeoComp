@@ -23,7 +23,28 @@
 
 #include "renderutil.h"
 
-static inline GLXFBConfig get_fbconfig_from_visualinfo(session_t *ps, const XVisualInfo *visualinfo) {
+/**
+ * Check if a word is in string.
+ */
+static bool wd_is_in_str(const char *haystick, const char *needle) {
+  if (!haystick)
+    return false;
+
+  assert(*needle);
+
+  const char *pos = haystick - 1;
+  while ((pos = strstr(pos + 1, needle))) {
+    // Continue if it isn't a word boundary
+    if (((pos - haystick) && !isspace(*(pos - 1)))
+        || (strlen(pos) > strlen(needle) && !isspace(pos[strlen(needle)])))
+      continue;
+    return true;
+  }
+
+  return false;
+}
+
+static GLXFBConfig get_fbconfig_from_visualinfo(session_t *ps, const XVisualInfo *visualinfo) {
   int nelements = 0;
   GLXFBConfig *fbconfigs = glXGetFBConfigs(ps->dpy, visualinfo->screen,
       &nelements);
@@ -37,7 +58,7 @@ static inline GLXFBConfig get_fbconfig_from_visualinfo(session_t *ps, const XVis
   return NULL;
 }
 
-static inline XVisualInfo * get_visualinfo_from_visual(session_t *ps, Visual *visual) {
+static XVisualInfo * get_visualinfo_from_visual(session_t *ps, Visual *visual) {
   XVisualInfo vreq = { .visualid = XVisualIDFromVisual(visual) };
   int nitems = 0;
 
@@ -63,6 +84,23 @@ glx_debug_msg_callback(GLenum source, GLenum type,
   free(names);
 }
 #endif
+
+/**
+ * Check if a GLX extension exists.
+ */
+static bool glx_hasglxext(session_t *ps, const char *ext) {
+  const char *glx_exts = glXQueryExtensionsString(ps->dpy, ps->scr);
+  if (!glx_exts) {
+    printf_errf("(): Failed get GLX extension list.");
+    return false;
+  }
+
+  bool found = wd_is_in_str(glx_exts, ext);
+  if (!found)
+    printf_errf("(): Missing GLX extension %s.", ext);
+
+  return found;
+}
 
 /**
  * Initialize OpenGL.

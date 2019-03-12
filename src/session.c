@@ -148,7 +148,7 @@ static void wintype_arr_enable(bool arr[]) {
 /**
  * Parse a list of opacity rules.
  */
-static inline bool
+static bool
 parse_rule_opacity(session_t *ps, const char *src) {
 #ifdef CONFIG_C2
     // Find opacity value
@@ -268,7 +268,7 @@ open_config_file(char *cpath, char **ppath) {
 /**
  * Parse a condition list in configuration file.
  */
-static inline void
+static void
 parse_cfg_condlst(session_t *ps, const config_t *pcfg, c2_lptr_t **pcondlst,
     const char *name) {
   config_setting_t *setting = config_lookup(pcfg, name);
@@ -289,7 +289,7 @@ parse_cfg_condlst(session_t *ps, const config_t *pcfg, c2_lptr_t **pcondlst,
 /**
  * Parse an opacity rule list in configuration file.
  */
-static inline void
+static void
 parse_cfg_condlst_opct(session_t *ps, const config_t *pcfg, const char *name) {
   config_setting_t *setting = config_lookup(pcfg, name);
   if (setting) {
@@ -329,7 +329,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     double dval = 0.0;
     // libconfig manages string memory itself, so no need to manually free
     // anything
-    const char *sval = NULL;
 
     f = open_config_file(ps->o.config_file, &path);
     if (!f) {

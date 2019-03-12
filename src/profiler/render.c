@@ -189,7 +189,9 @@ static void draw(const Vector2* pos, const Vector2* size) {
         {
 
             char *text;
-            asprintf(&text, "%f ms", root_millis);
+            if(asprintf(&text, "%f ms", root_millis) == -1) {
+                printf_dbgf("Could not make string for profiler");
+            }
             text_size(&debug_font, text, &textscale, &scale);
             pen.y -= scale.y;
 
@@ -219,7 +221,9 @@ static void draw(const Vector2* pos, const Vector2* size) {
 
             {
                 char *text;
-                asprintf(&text, "%f ms", block->millis);
+                if(asprintf(&text, "%f ms", block->millis) == -1) {
+                    printf_dbgf("Could not make string for profiler");
+                }
                 text_size(&debug_font, text, &textscale, &scale);
                 pen.y -= scale.y;
 
