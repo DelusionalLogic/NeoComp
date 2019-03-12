@@ -2,7 +2,7 @@
 
 _pkgname=neocomp
 pkgname=${_pkgname}-git
-pkgver=650
+pkgver=697
 pkgrel=1
 pkgdesc='A fast free standalone X11 compositor'
 arch=('i686' 'x86_64')
