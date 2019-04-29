@@ -809,28 +809,6 @@ get_tgt_window(session_t *ps) {
 }
 
 /**
- * Find out the WM frame of a client window using existing data.
- *
- * @param id window ID
- * @return struct _win object of the found window, NULL if not found
- */
-static inline win * find_toplevel(session_t *ps, Window id) {
-    if (!id)
-        return NULL;
-
-    for_components(it, &ps->win_list,
-            COMPONENT_STATEFUL, COMPONENT_HAS_CLIENT, CQ_END) {
-        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        if (client->id == id && stateful->state != STATE_DESTROYING)
-            return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-    }
-
-    return NULL;
-}
-
-/**
  * Check if there's a GLX context.
  */
 static inline bool

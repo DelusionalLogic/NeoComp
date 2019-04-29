@@ -210,6 +210,29 @@ static bool win_match(session_t *ps, win *w, c2_lptr_t *condlst) {
 #endif
 }
 
+/**
+ * Find out the WM frame of a client window using existing data.
+ *
+ * @param id window ID
+ * @return struct _win object of the found window, NULL if not found
+ */
+static win_id find_toplevel(session_t *ps, Window id) {
+    if (!id)
+        return NULL;
+
+    for_components(it, &ps->win_list,
+            COMPONENT_STATEFUL, COMPONENT_HAS_CLIENT, CQ_END) {
+        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
+
+        if (client->id == id && stateful->state != STATE_DESTROYING)
+            return it.id;
+        // swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+    }
+
+    return -1;
+}
+
 static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern);
 
 static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
@@ -221,7 +244,11 @@ static win * find_win_all(session_t *ps, const Window wid) {
         return NULL;
 
     win *w = find_win(ps, wid);
-    if (!w) w = find_toplevel(ps, wid);
+    if (!w) {
+        win_id wid = find_toplevel(ps, wid);
+        if(wid != -1)
+            w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    }
     if (!w) w = find_toplevel2(ps, wid);
     return w;
 }
@@ -243,6 +270,19 @@ static int win_get_prop_str(session_t *ps, win *w, char **tgt,
 
 static int win_get_name(session_t *ps, win *w) {
     int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
+
+    return ret;
+}
+
+static int wii_get_name(session_t *ps, win_id wid) {
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
+
+    return ret;
+}
+
+static int wii_get_role(session_t *ps, win *w) {
+    int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
 
     return ret;
 }
@@ -1544,7 +1584,7 @@ static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
     XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
 
     // We just destroyed the window, so it shouldn't be found
-    assert(!find_toplevel(ps, ev->window));
+    assert(find_toplevel(ps, ev->window) != -1);
 
     // Find our new frame
     win *w_frame = find_toplevel2(ps, ev->parent);
@@ -1649,7 +1689,7 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     if (ev->atom == ps->atoms.atom_client) {
         // We don't care about WM_STATE changes if this is already a client
         // window
-        if (find_toplevel(ps, ev->window) == NULL) {
+        if (find_toplevel(ps, ev->window) == -1) {
 
             // Reset event
             XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
@@ -1680,9 +1720,8 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
     // there are always some stupid applications. (#144)
     if (ev->atom == ps->atoms.atom_win_type) {
-        win *w = NULL;
-        if ((w = find_toplevel(ps, ev->window))) {
-            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+        win_id wid = find_toplevel(ps, ev->window);
+        if (wid != -1) {
             swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
         }
     }
@@ -1690,9 +1729,8 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     // If name changes
     if (ps->o.track_wdata
             && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
-        win *w = find_toplevel(ps, ev->window);
-        if (w && 1 == win_get_name(ps, w)) {
-            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+        win_id wid = find_toplevel(ps, ev->window);
+        if (wid != -1 && 1 == wii_get_name(ps, wid)) {
             /* win_on_factor_change(ps, w); */
             swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
         }
@@ -1700,10 +1738,9 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
     // If class changes
     if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
-        win *w = find_toplevel(ps, ev->window);
-        if (w) {
+        win_id wid = find_toplevel(ps, ev->window);
+        if (wid != -1) {
             /* win_on_factor_change(ps, w); */
-            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
             swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
             swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, wid);
         }
@@ -1711,10 +1748,9 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 
     // If role changes
     if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
-        win *w = find_toplevel(ps, ev->window);
-        if (w && 1 == win_get_role(ps, w)) {
+        win_id wid = find_toplevel(ps, ev->window);
+        if (wid != -1 && 1 == wii_get_role(ps, wid)) {
             /* win_on_factor_change(ps, w); */
-            win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
             swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
         }
     }
@@ -1725,12 +1761,11 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
         Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
         while(atom != NULL) {
             if (*atom == ev->atom) {
-                win *w = find_win(ps, ev->window);
-                if (!w)
-                    w = find_toplevel(ps, ev->window);
-                if(w) {
+                win_id wid = find_toplevel(ps, ev->window);
+                if (wid == -1)
+                    wid = find_toplevel(ps, ev->window);
+                else {
                     /* win_on_factor_change(ps, w); */
-                    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
                     swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
                 }
             }
