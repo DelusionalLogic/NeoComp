@@ -268,12 +268,6 @@ static bool wid_get_role(session_t *ps, Window w, char **role);
 static int win_get_prop_str(session_t *ps, win *w, char **tgt,
         bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt));
 
-static int win_get_name(session_t *ps, win *w) {
-    int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
-
-    return ret;
-}
-
 static int wii_get_name(session_t *ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
@@ -281,13 +275,8 @@ static int wii_get_name(session_t *ps, win_id wid) {
     return ret;
 }
 
-static int wii_get_role(session_t *ps, win *w) {
-    int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
-
-    return ret;
-}
-
-static int win_get_role(session_t *ps, win *w) {
+static int wii_get_role(session_t *ps, win_id wid) {
+    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
 
     return ret;
