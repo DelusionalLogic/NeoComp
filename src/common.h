@@ -38,8 +38,6 @@
 // #define CONFIG_LIBCONFIG_LEGACY 1
 // Whether to enable DRM VSync support
 // #define CONFIG_VSYNC_DRM 1
-// Whether to enable DBus support with libdbus.
-// #define CONFIG_DBUS 1
 // Whether to enable condition support.
 // #define CONFIG_C2 1
 // Whether to enable GLX Sync support.
@@ -86,11 +84,6 @@
 #ifdef CONFIG_LIBCONFIG
 #include <libgen.h>
 #include <libconfig.h>
-#endif
-
-// libdbus
-#ifdef CONFIG_DBUS
-#include <dbus/dbus.h>
 #endif
 
 // libGL

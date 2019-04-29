@@ -95,16 +95,6 @@ void usage(int ret) {
     "  any guarantee about possible conflicts with other programs that set\n"
     "  _NET_WM_WINDOW_OPACITY on frame or client windows.\n"
     "\n"
-#undef WARNING
-#ifndef CONFIG_DBUS
-#define WARNING WARNING_DISABLED
-#else
-#define WARNING
-#endif
-    "--dbus\n"
-    "  Enable remote control via D-Bus. See the D-BUS API section in the\n"
-    "  man page for more details." WARNING "\n"
-    "\n"
     "--benchmark cycles\n"
     "  Benchmark mode. Repeatedly paint until reaching the specified cycles.\n"
     "\n"

@@ -103,8 +103,6 @@ typedef struct _options_t {
   bool reredir_on_root_change;
   /// Whether to reinitialize GLX on root size change.
   bool glx_reinit_on_root_change;
-  /// Whether to enable D-Bus support.
-  bool dbus;
   /// Path to log file.
   char *logpath;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.
@@ -309,16 +307,8 @@ typedef struct _session_t {
     // === Atoms ===
     struct Atoms atoms;
 
-#ifdef CONFIG_DBUS
-    // === DBus related ===
-    // DBus connection.
-    DBusConnection *dbus_conn;
-    // DBus service name.
-    char *dbus_service;
-#endif
-
-  struct X11Context xcontext;
-  struct DebugGraphState debug_graph;
+    struct X11Context xcontext;
+    struct DebugGraphState debug_graph;
 } session_t;
 
 winprop_t

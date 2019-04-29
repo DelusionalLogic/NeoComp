@@ -727,13 +727,6 @@ static void map_win(session_t *ps, win_id wid) {
     struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
     stateful->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
-
-#ifdef CONFIG_DBUS
-    // Send D-Bus signal
-    if (ps->o.dbus) {
-        cdbus_ev_win_mapped(ps, w);
-    }
-#endif
 }
 
 static void unmap_win(session_t *ps, win *w) {
@@ -756,13 +749,6 @@ static void unmap_win(session_t *ps, win *w) {
 
     // don't care about properties anymore
     win_ev_stop(ps, w);
-
-#ifdef CONFIG_DBUS
-    // Send D-Bus signal
-    if (ps->o.dbus) {
-        cdbus_ev_win_unmapped(ps, w);
-    }
-#endif
 }
 
 /**
@@ -968,13 +954,6 @@ add_win(session_t *ps, Window id) {
 
   vector_putBack(&ps->order, &slot);
 
-#ifdef CONFIG_DBUS
-  // Send D-Bus signal
-  if (ps->o.dbus) {
-    cdbus_ev_win_added(ps, new);
-  }
-#endif
-
   // Already mapped
   if (IsViewable == attribs.map_state) {
       map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, new));
@@ -1140,13 +1119,6 @@ static void destroy_win(session_t *ps, win_id wid) {
 
     stateful->state = STATE_DESTROYING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_DESTROY, wid);
-
-#ifdef CONFIG_DBUS
-    // Send D-Bus signal
-    if (ps->o.dbus) {
-        cdbus_ev_win_destroyed(ps, w);
-    }
-#endif
 }
 
 static void
@@ -1428,59 +1400,6 @@ win_get_prop_str(session_t *ps, win *w, char **tgt,
 
   return ret;
 }
-
-#ifdef CONFIG_DBUS
-/** @name DBus hooks
- */
-///@{
-
-/**
- * Set w->fade_force of a window.
- */
-void
-win_set_fade_force(session_t *ps, win *w, switch_t val) {
-  if (val != w->fade_force) {
-    w->fade_force = val;
-    ps->skip_poll = true;
-  }
-}
-
-/**
- * Set w->focused_force of a window.
- */
-void
-win_set_focused_force(session_t *ps, win *w, switch_t val) {
-  if (val != w->focused_force) {
-    w->focused_force = val;
-    ps->skip_poll = true;
-  }
-}
-
-/**
- * Set w->invert_color_force of a window.
- */
-void
-win_set_invert_color_force(session_t *ps, win *w, switch_t val) {
-  if (val != w->invert_color_force) {
-    w->invert_color_force = val;
-    ps->skip_poll = true;
-  }
-}
-
-/**
- * Enable focus tracking.
- */
-void
-opts_init_track_focus(session_t *ps) {
-    // Already tracking focus
-    if (ps->o.track_focus)
-        return;
-
-    ps->o.track_focus = true;
-}
-
-//!@}
-#endif
 
 #ifdef DEBUG_EVENTS
 static int
@@ -2169,7 +2088,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "respect-prop-shadow", no_argument, NULL, 277 },
     { "focus-exclude", required_argument, NULL, 279 },
     { "blur-background", no_argument, NULL, 283 },
-    { "dbus", no_argument, NULL, 286 },
     { "logpath", required_argument, NULL, 287 },
     { "opengl", no_argument, NULL, 289 },
     { "benchmark", required_argument, NULL, 293 },
@@ -2321,7 +2239,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         condlst_add(ps, &ps->o.focus_blacklist, optarg);
         break;
       P_CASEBOOL(283, blur_background);
-      P_CASEBOOL(286, dbus);
       case 287:
         // --logpath
         ps->o.logpath = mstrcpy(optarg);
@@ -2691,12 +2608,6 @@ mainloop(session_t *ps) {
 
   /* return false; */
 
-#ifdef CONFIG_DBUS
-  if (ps->o.dbus) {
-    cdbus_loop(ps);
-  }
-#endif
-
   if (ps->reset)
     return false;
 
@@ -2789,7 +2700,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .mark_wmwin_focused = false,
       .fork_after_register = false,
       .blur_level = 0,
-      .dbus = false,
       .benchmark = 0,
       .benchmark_wid = None,
       .logpath = NULL,
@@ -2835,11 +2745,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
     .win_list = {0},
     .active_win = NULL,
-
-#ifdef CONFIG_DBUS
-    .dbus_conn = NULL,
-    .dbus_service = NULL,
-#endif
   };
 
   // Allocate a session and copy default values into it
@@ -3042,19 +2947,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // ALWAYS flush after XUngrabServer()!
   XFlush(ps->dpy);
 
-  // Initialize DBus
-  if (ps->o.dbus) {
-#ifdef CONFIG_DBUS
-    cdbus_init(ps);
-    if (!ps->dbus_conn) {
-      cdbus_destroy(ps);
-      ps->o.dbus = false;
-    }
-#else
-    printf_errfq(1, "(): DBus support not compiled in!");
-#endif
-  }
-
   // Fork to background, if asked
   if (ps->o.fork_after_register) {
     if (!fork_after(ps)) {
@@ -3091,14 +2983,6 @@ void session_destroy(session_t *ps) {
 
   // Stop listening to events on root window
   XSelectInput(ps->dpy, ps->root, 0);
-
-#ifdef CONFIG_DBUS
-  // Kill DBus connection
-  if (ps->o.dbus)
-    cdbus_destroy(ps);
-
-  free(ps->dbus_service);
-#endif
 
   text_debug_unload();
 
