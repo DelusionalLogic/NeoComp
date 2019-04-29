@@ -44,6 +44,11 @@ struct WintypeChangedComponent {
     wintype_t newType;
 };
 
+struct ClassChangedComponent {
+    char* instance;
+    char* general;
+};
+
 struct TracksWindowComponent {
     Window id;
 };
@@ -216,7 +221,6 @@ typedef struct _win {
     bool shadow;
     bool dim;
     bool invert_color;
-    bool blur_background;
 } win;
 
 int window_zcmp(const void* a, const void* b, void* userdata);

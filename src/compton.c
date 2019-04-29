@@ -228,8 +228,6 @@ static win * find_win_all(session_t *ps, const Window wid) {
 
 static void win_set_focused(session_t *ps, win *w);
 
-static void win_set_blur_background(session_t *ps, win *w, bool blur_background_new);
-
 static void win_mark_client(session_t *ps, win *w, Window client);
 
 static void win_recheck_client(session_t *ps, win *w);
@@ -254,8 +252,6 @@ static int win_get_role(session_t *ps, win *w) {
 
     return ret;
 }
-
-static bool win_get_class(session_t *ps, win *w);
 
 #ifdef DEBUG_EVENTS
 static int ev_serial(XEvent *ev);
@@ -769,13 +765,6 @@ static void unmap_win(session_t *ps, win *w) {
 #endif
 }
 
-static void
-win_set_blur_background(session_t *ps, win *w, bool blur_background_new) {
-  if (w->blur_background == blur_background_new) return;
-
-  w->blur_background = blur_background_new;
-}
-
 /**
  * Mark a window as the client window of another.
  *
@@ -802,13 +791,6 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   XFlush(ps->dpy);
 
   swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-
-  // Get window name and class if we are tracking them
-  if (ps->o.track_wdata) {
-    win_get_name(ps, parent);
-    win_get_class(ps, parent);
-    win_get_role(ps, parent);
-  }
 
   // Update everything related to conditions
   /* win_on_factor_change(ps, w); */
@@ -891,7 +873,6 @@ add_win(session_t *ps, Window id) {
     .shadow = false,
     .dim = false,
     .invert_color = false,
-    .blur_background = false,
   };
 
   // Reject overlay window and already added windows
@@ -1337,19 +1318,6 @@ static void win_set_focused(session_t *ps, win *w) {
     ps->active_win = w;
 
     assert(ps->active_win == w);
-
-    // Update everything related to conditions
-    /* win_on_factor_change(ps, w); */
-
-#ifdef CONFIG_DBUS
-    // Send D-Bus signal
-    if (ps->o.dbus) {
-        if (ps->active_win == w)
-            cdbus_ev_win_focusin(ps, w);
-        else
-            cdbus_ev_win_focusout(ps, w);
-    }
-#endif
 }
 
 bool wid_get_text_prop(session_t *ps, Window wid, Atom prop,
@@ -1459,47 +1427,6 @@ win_get_prop_str(session_t *ps, win *w, char **tgt,
     free(prop_old);
 
   return ret;
-}
-
-/**
- * Retrieve the <code>WM_CLASS</code> of a window and update its
- * <code>win</code> structure.
- */
-static bool
-win_get_class(session_t *ps, win *w) {
-  char **strlst = NULL;
-  int nstr = 0;
-
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-
-  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid))
-    return false;
-
-  // Free and reset old strings
-  free(w->class_instance);
-  free(w->class_general);
-  w->class_instance = NULL;
-  w->class_general = NULL;
-
-  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-  if (!wid_get_text_prop(ps, client->id, ps->atoms.atom_class, &strlst, &nstr))
-      return false;
-
-  // Copy the strings if successful
-  w->class_instance = mstrcpy(strlst[0]);
-
-  if (nstr > 1)
-    w->class_general = mstrcpy(strlst[1]);
-
-  XFreeStringList(strlst);
-
-#ifdef DEBUG_WINDATA
-  printf_dbgf("(%#010lx): client = %#010lx, "
-      "instance = \"%s\", general = \"%s\"\n",
-      w->id, client->id, w->class_instance, w->class_general);
-#endif
-
-  return true;
 }
 
 #ifdef CONFIG_DBUS
@@ -1750,19 +1677,24 @@ ev_circulate_notify(session_t *ps, XCirculateEvent *ev) {
  * Does not change anything if we fail to get the attribute or the window
  * returned could not be found.
  */
-static void
-update_ewmh_active_win(session_t *ps) {
-  // Search for the window
-  Window wid = wid_get_prop_window(ps, ps->root, ps->atoms.atom_ewmh_active_win);
-  win *w = find_win_all(ps, wid);
+static void update_ewmh_active_win(session_t *ps) {
+    // Search for the window
+    Window wid = wid_get_prop_window(ps, ps->root, ps->atoms.atom_ewmh_active_win);
 
-  if(w == NULL) {
-      printf_errf("Window with the id %zu was not found", wid);
-      return;
-  }
+    if(wid == NULL) {
+        // No window focused
+        return;
+    }
 
-  // Mark the window focused. No need to unfocus the previous one.
-  win_set_focused(ps, w);
+    win *w = find_win_all(ps, wid);
+
+    if(w == NULL) {
+        printf_errf("Window with the id %zu was not found", wid);
+        return;
+    }
+
+    // Mark the window focused. No need to unfocus the previous one.
+    win_set_focused(ps, w);
 }
 
 static void
@@ -1851,10 +1783,10 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
     if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
         win *w = find_toplevel(ps, ev->window);
         if (w) {
-            win_get_class(ps, w);
             /* win_on_factor_change(ps, w); */
             win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
             swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
+            swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, wid);
         }
     }
 
@@ -2956,6 +2888,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_BLUR, sizeof(struct glx_blur_cache));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_BLUR);
   swiss_setComponentSize(&ps->win_list, COMPONENT_WINTYPE_CHANGE, sizeof(struct WintypeChangedComponent));
+  swiss_setComponentSize(&ps->win_list, COMPONENT_CLASS_CHANGE, sizeof(struct ClassChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPED, sizeof(struct ShapedComponent));
   swiss_disableAutoRemove(&ps->win_list, COMPONENT_SHAPED);
   swiss_setComponentSize(&ps->win_list, COMPONENT_SHAPE_DAMAGED, sizeof(struct ShapeDamagedEvent));
@@ -4138,13 +4071,11 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
             COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
-        if(w->blur_background) {
-            struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
+        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
 
-            if(blur_cache_init(blur) != 0) {
-                printf_errf("Failed initializing window blur");
-                swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-            }
+        if(blur_cache_init(blur) != 0) {
+            printf_errf("Failed initializing window blur");
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
         }
     }
 
@@ -4152,10 +4083,8 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
-        if(w->blur_background) {
-            struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-            tint->color = (Vector4){{1, 1, 1, .017}};
-        }
+        struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
+        tint->color = (Vector4){{1, 1, 1, .017}};
     }
 
     // No matter what, when we remap a window we want to make sure the blur and
@@ -4191,6 +4120,34 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 
         physical->position = map->position;
         physical->size = map->size;
+    }
+}
+
+void fill_class_changes(Swiss* em, session_t* ps) {
+    // Fetch the new class
+    for_components(it, em,
+            COMPONENT_CLASS_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+        struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+
+        memset(class, 0, sizeof(struct ClassChangedComponent));
+
+        char **strlst = NULL;
+        int nstr = 0;
+
+        if (!wid_get_text_prop(ps, client->id, ps->atoms.atom_class, &strlst, &nstr)) {
+            printf_dbgf("Failed fetching class property");
+            swiss_removeComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+            continue;
+        }
+
+        // Copy the strings if successful
+        class->instance = mstrcpy(strlst[0]);
+
+        if (nstr > 1)
+            class->general = mstrcpy(strlst[1]);
+
+        XFreeStringList(strlst);
     }
 }
 
@@ -4402,11 +4359,26 @@ void session_run(session_t *ps) {
         for_components(it, em, COMPONENT_MAP, CQ_END) {
             swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
         }
+        // Fetch all the class changes for newly mapped windows
+        for_components(it, em, COMPONENT_MAP, CQ_END) {
+            swiss_addComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+        }
 
+        fill_class_changes(&ps->win_list, ps);
         fill_wintype_changes(&ps->win_list, ps);
 
+        // If the wintype actually changed (is still there), then the focus
+        // might have changed
         for_components(it, em, COMPONENT_WINTYPE_CHANGE, CQ_END) {
             swiss_ensureComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
+        }
+
+        // Update legacy fields in the mud structure
+        for_components(it, em, COMPONENT_CLASS_CHANGE, CQ_END) {
+            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+            w->class_general = class->general;
+            w->class_instance = class->instance;
         }
 
         for_components(it, em,
@@ -4455,13 +4427,32 @@ void session_run(session_t *ps) {
         if (ps->o.blur_background_blacklist) {
             zone_enter(&ZONE_update_blur_blacklist);
             for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
+                    COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
+                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+                if(win_mapped(em, it.id)) {
+                    bool blur_background_new = ps->o.blur_background
+                        && !win_match(ps, w, ps->o.blur_background_blacklist);
+                    if(!blur_background_new) {
+                        blur_cache_delete(blur);
+                        swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+                    }
+                }
+            }
+
+            for_components(it, em,
+                    COMPONENT_MUD, CQ_NOT, COMPONENT_BLUR, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
                 if(win_mapped(em, it.id)) {
                     bool blur_background_new = ps->o.blur_background
                         && !win_match(ps, w, ps->o.blur_background_blacklist);
-
-                    win_set_blur_background(ps, w, blur_background_new);
+                    if(blur_background_new) {
+                        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
+                        if(blur_cache_init(blur) != 0) {
+                            printf_errf("Failed initializing window blur");
+                            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+                        }
+                    }
                 }
             }
             zone_leave(&ZONE_update_blur_blacklist);
@@ -4641,8 +4632,9 @@ void session_run(session_t *ps) {
         );
 
         swiss_resetComponent(em, COMPONENT_WINTYPE_CHANGE);
+        swiss_resetComponent(em, COMPONENT_CLASS_CHANGE);
 
-        swiss_resetComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE);
+        swiss_resetComponent(em, COMPONENT_FOCUS_CHANGE);
 
         for_components(it, em, COMPONENT_SHAPE_DAMAGED, CQ_END) {
             struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);

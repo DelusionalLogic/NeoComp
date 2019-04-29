@@ -82,14 +82,6 @@ ifeq "$(NO_VSYNC_DRM)" ""
   CFG += -DCONFIG_VSYNC_DRM
 endif
 
-# ==== D-Bus ====
-# Enables support for --dbus (D-Bus remote control)
-ifeq "$(NO_DBUS)" "y"
-  CFG += -DCONFIG_DBUS
-  PACKAGES += dbus-1
-  SOURCES += dbus.c
-endif
-
 # ==== C2 ====
 # Enable window condition support
 ifeq "$(NO_C2)" ""
