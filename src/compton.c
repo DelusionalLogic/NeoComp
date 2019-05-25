@@ -97,14 +97,6 @@ static win * find_win(session_t *ps, Window id) {
 
 static void discard_ignore(session_t *ps, unsigned long sequence);
 
-static void set_ignore(session_t *ps, unsigned long sequence);
-
-static void set_ignore_next(session_t *ps) {
-    set_ignore(ps, NextRequest(ps->dpy));
-}
-
-static int should_ignore(session_t *ps, unsigned long sequence);
-
 static void wintype_arr_enable(bool arr[]) {
     wintype_t i;
 
@@ -171,11 +163,9 @@ static void win_ev_stop(session_t *ps, win *w) {
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
     // Will get BadWindow if the window is destroyed
-    set_ignore_next(ps);
     XSelectInput(ps->dpy, window->id, 0);
 
     if (client->id) {
-        set_ignore_next(ps);
         XSelectInput(ps->dpy, client->id, 0);
     }
 }
@@ -256,8 +246,6 @@ static win * find_win_all(session_t *ps, const Window wid) {
 static void win_set_focused(session_t *ps, win *w);
 
 static void win_mark_client(session_t *ps, win *w, Window client);
-
-static void win_recheck_client(session_t *ps, win *w);
 
 static void configure_win(session_t *ps, XConfigureEvent *ce);
 
@@ -373,26 +361,6 @@ discard_ignore(session_t *ps, unsigned long sequence) {
       break;
     }
   }
-}
-
-static void
-set_ignore(session_t *ps, unsigned long sequence) {
-  if (ps->o.show_all_xerrors)
-    return;
-
-  ignore_t *i = malloc(sizeof(ignore_t));
-  if (!i) return;
-
-  i->sequence = sequence;
-  i->next = 0;
-  *ps->ignore_tail = i;
-  ps->ignore_tail = &i->next;
-}
-
-static int
-should_ignore(session_t *ps, unsigned long sequence) {
-  discard_ignore(ps, sequence);
-  return ps->ignore_head && ps->ignore_head->sequence == sequence;
 }
 
 // === Windows ===
@@ -684,18 +652,33 @@ static Window find_client_win(session_t *ps, Window w) {
     return ret;
 }
 
-static void paint_preprocess(session_t *ps) {
-    size_t index;
-    win_id* w_id = vector_getLast(&ps->order, &index);
-    while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
+static void determine_fullscreen(session_t *ps) {
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_PHYSICAL, CQ_END) {
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
 
         // @CLEANUP: This should probably be somewhere else
-        w->fullscreen = win_is_fullscreen(ps, *w_id);
-
-        w_id = vector_getPrev(&ps->order, &index);
+        w->fullscreen = win_is_fullscreen(ps, p);
     }
 }
+
+/**
+ * Unmark current client window of a window.
+ *
+ * @param ps current session
+ * @param w struct _win of the parent window
+ */
+static void win_unmark_client(session_t *ps, win *w) {
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+
+    // Recheck event mask
+    XSelectInput(ps->dpy, client->id, determine_evmask(ps, client->id, WIN_EVMODE_UNKNOWN));
+
+    swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
+}
+
 
 static void assign_depth(Swiss* em, Vector* order) {
     float z = 0;
@@ -736,7 +719,40 @@ static void map_win(session_t *ps, win_id wid) {
     // Make sure the XSelectInput() requests are sent
     XFlush(ps->dpy);
 
-    win_recheck_client(ps, w);
+    //Detect client window
+    {
+        // Initialize wmwin to false
+        w->wmwin = false;
+
+        struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
+
+        // Look for the client window
+
+        // Always recursively look for a window with WM_STATE, as Fluxbox
+        // sets override-redirect flags on all frame windows.
+        Window cw = find_client_win(ps, window->id);
+#ifdef DEBUG_CLIENTWIN
+        if (cw)
+            printf_dbgf("(%#010lx): client %#010lx\n", w->id, cw);
+#endif
+        // Set a window's client window to itself if we couldn't find a
+        // client window
+        if (!cw) {
+            cw = window->id;
+            w->wmwin = !w->override_redirect;
+#ifdef DEBUG_CLIENTWIN
+            printf_dbgf("(%#010lx): client self (%s)\n", w->id,
+                    (w->wmwin ? "wmwin": "override-redirected"));
+#endif
+        }
+
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid)) {
+            win_unmark_client(ps, w);
+        }
+
+        // Mark the new one
+        win_mark_client(ps, w, cw);
+    }
 
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
@@ -811,64 +827,6 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   /* win_on_factor_change(ps, w); */
 }
 
-/**
- * Unmark current client window of a window.
- *
- * @param ps current session
- * @param w struct _win of the parent window
- */
-static void win_unmark_client(session_t *ps, win *w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-
-    // Recheck event mask
-    XSelectInput(ps->dpy, client->id, determine_evmask(ps, client->id, WIN_EVMODE_UNKNOWN));
-
-    swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-}
-
-/**
- * Recheck client window of a window.
- *
- * @param ps current session
- * @param w struct _win of the parent window
- */
-static void
-win_recheck_client(session_t *ps, win *w) {
-  // Initialize wmwin to false
-  w->wmwin = false;
-
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-  struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
-
-  // Look for the client window
-
-  // Always recursively look for a window with WM_STATE, as Fluxbox
-  // sets override-redirect flags on all frame windows.
-  Window cw = find_client_win(ps, window->id);
-#ifdef DEBUG_CLIENTWIN
-  if (cw)
-    printf_dbgf("(%#010lx): client %#010lx\n", w->id, cw);
-#endif
-  // Set a window's client window to itself if we couldn't find a
-  // client window
-  if (!cw) {
-    cw = window->id;
-    w->wmwin = !w->override_redirect;
-#ifdef DEBUG_CLIENTWIN
-    printf_dbgf("(%#010lx): client self (%s)\n", w->id,
-        (w->wmwin ? "wmwin": "override-redirected"));
-#endif
-  }
-
-  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid)) {
-      win_unmark_client(ps, w);
-  }
-
-  // Mark the new one
-  win_mark_client(ps, w, cw);
-}
-
 static bool
 add_win(session_t *ps, Window id) {
   const static win win_def = {
@@ -907,7 +865,6 @@ add_win(session_t *ps, Window id) {
   XWindowAttributes attribs;
 
   // Fill structure
-  set_ignore_next(ps);
   if (!XGetWindowAttributes(ps->dpy, id, &attribs) || IsUnviewable == attribs.map_state) {
       // Failed to get window attributes probably means the window is gone
       // already. IsUnviewable means the window is already reparented
@@ -967,7 +924,6 @@ add_win(session_t *ps, Window id) {
 
   if (InputOutput == attribs.class) {
       // Create Damage for window
-      set_ignore_next(ps);
       new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
   }
 
@@ -1191,10 +1147,6 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
 
     int o = 0;
     const char *name = "Unknown";
-
-    if (should_ignore(ps, ev->serial)) {
-        return 0;
-    }
 
     if (xorgContext_convertOpcode(&ps->capabilities, ev->request_code) == PROTO_COMPOSITE
             && ev->minor_code == X_CompositeRedirectSubwindows) {
@@ -4067,7 +4019,6 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
         struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
 
         // Detect window type here
-        set_ignore_next(ps);
         winprop_t prop = wid_get_prop(&ps->xcontext, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
 
         wintypeChanged->newType = WINTYPE_UNKNOWN;
@@ -4154,7 +4105,7 @@ void session_run(session_t *ps) {
 #endif
 
 
-    paint_preprocess(ps);
+    determine_fullscreen(ps);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -4250,7 +4201,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        paint_preprocess(ps);
+        determine_fullscreen(ps);
 
         zone_leave(&ZONE_preprocess);
 
@@ -4282,7 +4233,7 @@ void session_run(session_t *ps) {
         }
 
         // Update legacy fields in the mud structure
-        for_components(it, em, COMPONENT_CLASS_CHANGE, CQ_END) {
+        for_components(it, em, COMPONENT_MUD, COMPONENT_CLASS_CHANGE, CQ_END) {
             struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
             struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
             w->class_general = class->general;

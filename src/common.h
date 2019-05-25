@@ -881,8 +881,7 @@ rect_is_fullscreen(session_t *ps, int x, int y, unsigned wid, unsigned hei) {
  * It's not using w->border_size for performance measures.
  */
 static inline bool
-win_is_fullscreen(session_t *ps, const win_id wid) {
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
+win_is_fullscreen(session_t *ps, struct PhysicalComponent* physical) {
     return rect_is_fullscreen(ps, physical->position.x, physical->position.y, physical->size.x, physical->size.y);
 }
 

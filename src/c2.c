@@ -1184,7 +1184,7 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                             tgt = physical->size.y;
                             break;
                         case C2_L_PBDW:     tgt = 0;        break;
-                        case C2_L_PFULLSCREEN: tgt = win_is_fullscreen(ps, wad); break;
+                        case C2_L_PFULLSCREEN: tgt = win_is_fullscreen(ps, physical); break;
                         case C2_L_POVREDIR: tgt = w->override_redirect;   break;
                         case C2_L_PFOCUSED: tgt = ps->active_win == w; break;
                         case C2_L_PWMWIN:   tgt = w->wmwin;                 break;
@@ -1236,9 +1236,9 @@ static void c2_match_once_leaf(session_t *ps, win *w, const c2_l_t *pleaf,
                         case C2_L_PWINDOWTYPE:  tgt = WINTYPES[w->window_type];
                                                 break;
                         case C2_L_PNAME:        tgt = w->name;            break;
+                        case C2_L_PROLE:        tgt = w->role;            break;
                         case C2_L_PCLASSG:      tgt = w->class_general;   break;
                         case C2_L_PCLASSI:      tgt = w->class_instance;  break;
-                        case C2_L_PROLE:        tgt = w->role;            break;
                         default:                assert(0);                break;
                     }
                 }
