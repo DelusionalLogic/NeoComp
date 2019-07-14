@@ -18,6 +18,7 @@
 #include "renderutil.h"
 #include "shadow.h"
 
+DECLARE_ZONE(poll_visual);
 DECLARE_ZONE(name_pixmap);
 DECLARE_ZONE(bind_pixmap);
 
@@ -325,7 +326,10 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
     assert(drawable != NULL);
 
     XWindowAttributes attribs;
-    XGetWindowAttributes(context->display, wid, &attribs);
+    {
+        zone_scope(&ZONE_poll_visual);
+        XGetWindowAttributes(context->display, wid, &attribs);
+    }
 
     drawable->wid = wid;
     GLXFBConfig* fbconfig = xorgContext_selectConfig(context, XVisualIDFromVisual(attribs.visual));

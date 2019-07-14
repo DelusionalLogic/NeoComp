@@ -16,6 +16,8 @@
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/sync.h>
 
+struct _session_t;
+
 enum X11Protocol {
     PROTO_COMPOSITE,
     PROTO_FIXES,
@@ -65,3 +67,6 @@ enum X11Protocol xorgContext_convertOpcode(const struct X11Capabilities* caps, i
 GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visualid);
 
 void xorgContext_delete(struct X11Context* context);
+
+/* Others */
+void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEvent *ev);

@@ -275,6 +275,72 @@ static void draw_focus_change_component(Swiss* em, enum ComponentType ctype) {
     }
 }
 
+static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct ShapedComponent* s = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    verts: %d", vector_size(&s->face->vertex_buffer));
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    float maxWidth = 200;
+    float maxHeight = 200;
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        struct ShapedComponent* s = swiss_getComponent(em, ctype, it.id);
+
+        debug->pen.y -= 10;
+
+        // @CLEANUP: For whatever reason, I've implemented these debug things
+        // to draw from the bottom left instead of the top left.
+        Vector2 size = {{p->size.x, p->size.y}};
+        float wRatio = maxWidth / p->size.x;
+        float hRatio = maxHeight / p->size.y;
+        // Screens are generally wider, so we are probably more likely to have
+        // a wide window than a tall one. Therefore placing the equal height
+        // window in the wide branch probably helps the branch predictor. What
+        // an speedup!
+        if(wRatio <= hRatio) {
+            vec2_imul(&size, wRatio);
+        } else {
+            vec2_imul(&size, hRatio);
+        }
+        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
+
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        draw_colored_rect(s->face, &pos, &size, &(Vector4){{0.8, 0.8, 0.8, 1.0}});
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        debug->pen.y -= size.y + 10;
+    }
+}
+
 typedef void (*debug_component_renderer)(Swiss* em, enum ComponentType ctype);
 debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     0,
@@ -285,6 +351,7 @@ debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     [COMPONENT_BGOPACITY] = draw_opacity_component,
     [COMPONENT_TRANSITIONING] = draw_transitioning_component,
     [COMPONENT_FOCUS_CHANGE] = draw_focus_change_component,
+    [COMPONENT_SHAPED] = draw_shaped_component,
 };
 
 void draw_component_debug(Swiss* em, Vector2* rootSize) {
@@ -293,7 +360,7 @@ void draw_component_debug(Swiss* em, Vector2* rootSize) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
         Vector2 winPos = X11_rectpos_to_gl(rootSize, &physical->position, &physical->size);
-        debug->pen = (Vector2){{winPos.x, winPos.y + physical->size.y - 20}};
+        debug->pen = (Vector2){{winPos.x + 10, winPos.y + physical->size.y - 20}};
     }
 
     {
@@ -355,14 +422,41 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     draw_colored_rect(face, &winPos, &winSize, &bgColor);
 
+    Vector2 pen = {{winPos.x, winPos.y + winSize.y}};
+    Vector2 scale = {{1, 1}};
+    Vector2 size = {{0}};
+    {
+        static char* buffer = "Frametime";
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{pen.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
     {
         static char buffer[128];
-        Vector2 scale = {{1, 1}};
-        snprintf(buffer, 128, "Stats: %f %f", state->avg[0], state->avg[1]);
+        snprintf(buffer, 128, "%.1f ms", state->avg[0]);
 
-        Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{winPos.x, winPos.y + winSize.y - size.y}};
+        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor2);
+        pen.y -= size.y;
+    }
+    {
+        static char* buffer = "Rectangles";
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{pen.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
+    {
+        static char buffer[128];
+        snprintf(buffer, 128, "%.0f", state->avg[1]);
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
         text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor);
     }

@@ -17,10 +17,10 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
     Matrix root = view;
     {
         Matrix op = {{
-        size.x , 0      , 0     , 0 ,
-        0      , size.y , 0     , 0 ,
-        0      , 0      , 1     , 0 ,
-        pos.x  , pos.y  , pos.z , 1 ,
+            size.x , 0      , 0     , 0 ,
+            0      , size.y , 0     , 0 ,
+            0      , 0      , 1     , 0 ,
+            pos.x  , pos.y  , pos.z , 1 ,
         }};
         root = mat4_multiply(&root, &op);
     }

@@ -51,6 +51,8 @@ DECLARE_ZONE(global);
 DECLARE_ZONE(input);
 DECLARE_ZONE(preprocess);
 
+DECLARE_ZONE(one_event);
+
 DECLARE_ZONE(update);
 DECLARE_ZONE(update_z);
 DECLARE_ZONE(update_wintype);
@@ -60,6 +62,7 @@ DECLARE_ZONE(update_invert_list);
 DECLARE_ZONE(update_blur_blacklist);
 DECLARE_ZONE(update_paint_blacklist);
 DECLARE_ZONE(input_react);
+DECLARE_ZONE(commit_opacity);
 DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
@@ -74,6 +77,8 @@ DECLARE_ZONE(fetch_prop);
 
 DECLARE_ZONE(zsort);
 DECLARE_ZONE(update_fade);
+DECLARE_ZONE(detect_changes);
+DECLARE_ZONE(mark_dirty);
 
 DECLARE_ZONE(update_textures);
 DECLARE_ZONE(update_single_texture);
@@ -827,8 +832,7 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   /* win_on_factor_change(ps, w); */
 }
 
-static bool
-add_win(session_t *ps, Window id) {
+static bool add_win(session_t *ps, Window id) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
@@ -848,8 +852,8 @@ add_win(session_t *ps, Window id) {
     .invert_color = false,
   };
 
-  // Reject overlay window and already added windows
-  if (id == ps->overlay || find_win(ps, id)) {
+  // We don't add the overlay window
+  if (id == ps->overlay) {
     return false;
   }
 
@@ -1733,51 +1737,6 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
-static void
-ev_handle(session_t *ps, XEvent *ev) {
-  if ((ev->type & 0x7f) != KeymapNotify) {
-    discard_ignore(ps, ev->xany.serial);
-  }
-  switch (ev->type) {
-    case CreateNotify:
-      ev_create_notify(ps, (XCreateWindowEvent *)ev);
-      break;
-    case ConfigureNotify:
-      ev_configure_notify(ps, (XConfigureEvent *)ev);
-      break;
-    case DestroyNotify:
-      ev_destroy_notify(ps, (XDestroyWindowEvent *)ev);
-      break;
-    case MapNotify:
-      ev_map_notify(ps, (XMapEvent *)ev);
-      break;
-    case UnmapNotify:
-      ev_unmap_notify(ps, (XUnmapEvent *)ev);
-      break;
-    case ReparentNotify:
-      ev_reparent_notify(ps, (XReparentEvent *)ev);
-      break;
-    case CirculateNotify:
-      ev_circulate_notify(ps, (XCirculateEvent *)ev);
-      break;
-    case Expose:
-      break;
-    case PropertyNotify:
-      ev_property_notify(ps, (XPropertyEvent *)ev);
-      break;
-    default:
-      if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
-              && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
-        ev_shape_notify(ps, (XShapeEvent *) ev);
-        break;
-      }
-      if (isdamagenotify(ps, ev)) {
-        ev_damage_notify(ps, (XDamageNotifyEvent *) ev);
-        break;
-      }
-  }
-}
-
 // === Main ===
 
 /**
@@ -2559,6 +2518,53 @@ static void redir_stop(session_t *ps) {
     XSync(ps->dpy, False);
 }
 
+void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEvent *ev) {
+  zone_enter(&ZONE_one_event);
+  if ((ev->type & 0x7f) != KeymapNotify) {
+    discard_ignore(ps, ev->xany.serial);
+  }
+  switch (ev->type) {
+    case CreateNotify:
+      ev_create_notify(ps, (XCreateWindowEvent *)ev);
+      break;
+    case ConfigureNotify:
+      ev_configure_notify(ps, (XConfigureEvent *)ev);
+      break;
+    case DestroyNotify:
+      ev_destroy_notify(ps, (XDestroyWindowEvent *)ev);
+      break;
+    case MapNotify:
+      ev_map_notify(ps, (XMapEvent *)ev);
+      break;
+    case UnmapNotify:
+      ev_unmap_notify(ps, (XUnmapEvent *)ev);
+      break;
+    case ReparentNotify:
+      ev_reparent_notify(ps, (XReparentEvent *)ev);
+      break;
+    case CirculateNotify:
+      ev_circulate_notify(ps, (XCirculateEvent *)ev);
+      break;
+    case Expose:
+      break;
+    case PropertyNotify:
+      ev_property_notify(ps, (XPropertyEvent *)ev);
+      break;
+    default:
+      if (xorgContext_version(capabilities, PROTO_SHAPE) >= XVERSION_YES
+              && xorgContext_convertEvent(capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
+        ev_shape_notify(ps, (XShapeEvent *) ev);
+        break;
+      }
+      if (isdamagenotify(ps, ev)) {
+        ev_damage_notify(ps, (XDamageNotifyEvent *) ev);
+        break;
+      }
+  }
+  zone_leave(&ZONE_one_event);
+}
+
+
 /**
  * Main loop.
  */
@@ -2575,7 +2581,7 @@ mainloop(session_t *ps) {
     XEvent ev = { };
 
     XNextEvent(ps->dpy, &ev);
-    ev_handle(ps, &ev);
+    ev_handle(ps, &ps->capabilities, &ev);
 
     ps->skip_poll = true;
 
@@ -3329,6 +3335,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 }
 
 static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
+    zone_enter(&ZONE_commit_opacity);
     for_components(it, em,
             COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
@@ -3350,6 +3357,7 @@ static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_ti
         t->time = 0;
         t->duration = fmax(fade_time, bg_fade_time);
     }
+    zone_leave(&ZONE_commit_opacity);
 }
 
 DECLARE_ZONE(fade_damage_blur);
@@ -3367,6 +3375,7 @@ static void damage_blur_over_fade(Swiss* em) {
     vector_qsort(&order, window_zcmp, em);
     zone_leave(&ZONE_zsort);
 
+    zone_enter(&ZONE_detect_changes);
     // @HACK @IMPROVEMENT: This should rather be done with a (dynamically
     // sized) bitfield. We can extract it from the swiss datastructure, which
     // uses a bunch of bitfields. - Jesper Jensen 06/10-2018
@@ -3394,12 +3403,14 @@ static void damage_blur_over_fade(Swiss* em) {
             changes[it.id] = true;
         }
     }
+    zone_leave(&ZONE_detect_changes);
 
     struct ChangeRecord {
         size_t order_slot;
         size_t id;
     };
 
+    zone_enter(&ZONE_mark_dirty);
     struct ChangeRecord* order_slots = malloc(sizeof(struct ChangeRecord) * uniqueChanged);
     {
         size_t nextSlot = 0;
@@ -3431,6 +3442,7 @@ static void damage_blur_over_fade(Swiss* em) {
         }
     }
     free(order_slots);
+    zone_leave(&ZONE_mark_dirty);
 
     vector_kill(&order);
 }
@@ -3625,17 +3637,17 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_NOT, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
-        if(stateful->state == STATE_ACTIVATING) {
-            /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
+        /* swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id); */
+        if(stateful->state == STATE_ACTIVATING || stateful->state == STATE_ACTIVE) {
+            swiss_ensureComponent(em, COMPONENT_DEBUGGED, it.id);
         }
     }
 
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING) {
-            /* swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id); */
+        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING || stateful->state == STATE_INACTIVE) {
+            swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id);
         }
     }
 }

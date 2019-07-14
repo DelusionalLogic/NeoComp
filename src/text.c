@@ -45,7 +45,7 @@ int font_load(struct Font* font, char* filename) {
         // afterwards, since we are GL_RED
         if(texture_init(&chara->texture, GL_TEXTURE_2D, NULL) != 0) {
             // @LEAK: Lets just leak the whole font here for now. It should
-            // never happend right?
+            // never happen right?
             printf("Failed initializing texture for letter %c\n", i);
             return 1;
         }
@@ -86,6 +86,7 @@ void text_debug_unload() {
 }
 
 void text_size(const struct Font* font, const char* text, const Vector2* scale, Vector2* size) {
+    *size = (Vector2){{0, 0}};
     const float line_height = scale->y * font->size;
     size->y = line_height;
 

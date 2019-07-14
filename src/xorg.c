@@ -3,6 +3,10 @@
 #include "assert.h"
 #include "logging.h"
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(select_config);
+
 bool xorgContext_init(struct X11Context* context, Display* display, int screen) {
     assert(context != NULL);
     assert(display != NULL);
@@ -147,6 +151,7 @@ enum X11Protocol xorgContext_convertOpcode(const struct X11Capabilities* caps, i
 }
 
 GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visualid) {
+    zone_scope(&ZONE_select_config);
     assert(visualid != 0);
 
 	GLXFBConfig* selected = NULL;
@@ -201,3 +206,4 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
 void xorgContext_delete(struct X11Context* context) {
     assert(context->display != NULL);
 }
+
