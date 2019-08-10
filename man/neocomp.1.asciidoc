@@ -219,9 +219,6 @@ May also be one of the predefined kernels: `3x3box` (default), `5x5box`, `7x7box
 *--force-win-blend*::
 	Force all windows to be painted with blending. Useful if you have a *--glx-fshader-win* that could turn opaque pixels transparent.
 
-*--dbus*::
-	Enable remote control via D-Bus. See the *D-BUS API* section below for more details.
-
 *--benchmark* 'CYCLES'::
 	Benchmark mode. Repeatedly paint until reaching the specified cycles.
 
@@ -331,13 +328,6 @@ SIGNALS
 -------
 
 * neocomp reinitializes itself upon receiving `SIGUSR1`.
-
-D-BUS API
----------
-
-It's possible to control neocomp via D-Bus messages, by running neocomp with *--dbus* and send messages to `com.github.chjj.neocomp.<DISPLAY>`. `<DISPLAY>` is the display used by neocomp, with all non-alphanumeric characters transformed to underscores. For `DISPLAY=:0.0` you should use `com.github.chjj.neocomp._0_0`, for example.
-
-The D-Bus methods and signals are not yet stable, thus undocumented right now.
 
 EXAMPLES
 --------

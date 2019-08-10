@@ -21,7 +21,6 @@ makedepends=(
     'libxrandr'
     'libxfixes'
     'libconfig'
-    'dbus'
     'freetype2'
     'judy'
 )

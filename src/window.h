@@ -183,6 +183,7 @@ struct StatefulComponent {
 
 struct DebuggedComponent {
     Vector2 pen;
+    float currentHeight;
 };
 
 /// Structure representing a top-level window compton manages.

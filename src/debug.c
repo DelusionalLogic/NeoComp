@@ -279,6 +279,8 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
+    // @CLEANUP @PERFORMANCE: We are doing snprintf twice here for the same
+    // strings
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
@@ -287,9 +289,85 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
 
         Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
+        debug->currentHeight = size.y + 10;
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        Vector2 size = {{200, debug->currentHeight}};
+        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
+
+        struct face* face = assets_load("window.face");
+        draw_colored_rect(face, &pos, &size, &(Vector4){{0.3, 0.2, 0.2, 1.0}});
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        debug->pen.y -= debug->currentHeight;
+
+        text_draw(&debug_font, buffer, &(Vector2){{debug->pen.x, debug->pen.y + 5}}, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        debug->currentHeight = 0;
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct ShapedComponent* s = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    verts: %d", vector_size(&s->face->vertex_buffer));
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->currentHeight += size.y;
+    }
+
+    float maxWidth = 200;
+    float maxHeight = 200;
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        struct ShapedComponent* s = swiss_getComponent(em, ctype, it.id);
+
+        // @CLEANUP: For whatever reason, I've implemented these debug things
+        // to draw from the bottom left instead of the top left.
+        Vector2 size = {{p->size.x, p->size.y}};
+        float wRatio = maxWidth / p->size.x;
+        float hRatio = maxHeight / p->size.y;
+        // Screens are generally wider, so we are probably more likely to have
+        // a wide window than a tall one. Therefore placing the equal height
+        // window in the wide branch probably helps the branch predictor. What
+        // an speedup!
+        if(wRatio <= hRatio) {
+            vec2_imul(&size, wRatio);
+        } else {
+            vec2_imul(&size, hRatio);
+        }
+        debug->currentHeight += size.y + 20;
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        Vector2 size = {{200, debug->currentHeight}};
+        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
+
+        struct face* face = assets_load("window.face");
+        draw_colored_rect(face, &pos, &size, &(Vector4){{0.2, 0.1, 0.1, 1.0}});
     }
 
     for_components(it, em,
@@ -305,9 +383,6 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
 
         text_draw(&debug_font, buffer, &debug->pen, &scale);
     }
-
-    float maxWidth = 200;
-    float maxHeight = 200;
 
     for_components(it, em,
             COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {

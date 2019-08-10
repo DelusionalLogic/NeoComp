@@ -1,6 +1,6 @@
 FROM archlinux/base
 
-RUN pacman --noconfirm -Syu && pacman --noconfirm -S base-devel git libx11 libxcomposite libxdamage libxinerama libxext libxrender libxrandr mesa libconfig dbus freetype2 asciidoc
+RUN pacman --noconfirm -Syu && pacman --noconfirm -S base-devel git libx11 libxcomposite libxdamage libxinerama libxext libxrender libxrandr mesa libconfig freetype2 asciidoc
 
 RUN mkdir /dep && mkdir /app && mkdir /dst
 WORKDIR /dep

@@ -1,3 +1,4 @@
+
 #version 140
 
 in vec2 fragmentUV;
@@ -16,17 +17,24 @@ void main() {
     vec4 texel = texelFetch(sampler, below);
 
     float distance = abs(uv.y - texel.r);
-    float reldist = distance / texel.r;
 
+    // Thanks to graphy for the style for this cool graph shader.
     vec4 pcolor = vec4(0.0);
-
-    if(distance < .004) {
-        pcolor = vec4(color, 1.0);
+    if (uv.y > texel.r) {
+        gl_FragColor = vec4(0, 0, 0, 0);
+        return;
     }
 
-    if(uv.y < texel.r) {
-        pcolor = mix(vec4(0.0), vec4(color, 1), clamp(pow(1.0-reldist, 3), 0, 1));
+    gl_FragColor = vec4(color, 1.0);
+
+    if(texel.r - uv.y > 0.02) {
+        gl_FragColor *= uv.y * 0.3 / texel.r;
     }
 
-    gl_FragColor = pcolor;
+    if (uv.x < 0.03) {
+        gl_FragColor *= 1 - (0.03 - uv.x) / 0.03;
+    }
+    else if (uv.x > 0.97) {
+        gl_FragColor *= (1 - uv.x) / 0.03;
+    }
 }
