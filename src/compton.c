@@ -3644,9 +3644,9 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 
     for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
+            COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING || stateful->state == STATE_INACTIVE) {
+        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING || stateful->state == STATE_INACTIVE || stateful->state == STATE_INVISIBLE) {
             swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id);
         }
     }
