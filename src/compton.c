@@ -163,6 +163,7 @@ static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *s
 }
 
 // Stop listening for events
+// @X11
 static void win_ev_stop(session_t *ps, win *w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
@@ -175,6 +176,7 @@ static void win_ev_stop(session_t *ps, win *w) {
     }
 }
 
+// @X11
 static bool wid_get_children(session_t *ps, Window w,
         Window **children, unsigned *nchildren) {
     Window troot, tparent;
@@ -187,6 +189,7 @@ static bool wid_get_children(session_t *ps, Window w,
     return true;
 }
 
+// @X11
 static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
     if (!pxmap) return false;
 
@@ -222,7 +225,6 @@ static win_id find_toplevel(session_t *ps, Window id) {
 
         if (client->id == id && stateful->state != STATE_DESTROYING)
             return it.id;
-        // swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
     }
 
     return -1;
@@ -258,9 +260,11 @@ static bool wid_get_name(session_t *ps, Window w, char **name);
 
 static bool wid_get_role(session_t *ps, Window w, char **role);
 
+// @X11
 static int win_get_prop_str(session_t *ps, win *w, char **tgt,
         bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt));
 
+// @X11
 static int wii_get_name(session_t *ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
@@ -268,6 +272,7 @@ static int wii_get_name(session_t *ps, win_id wid) {
     return ret;
 }
 
+// @X11
 static int wii_get_role(session_t *ps, win_id wid) {
     struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
     int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
@@ -352,20 +357,19 @@ session_t *ps_g = NULL;
 
 // === Error handling ===
 
-static void
-discard_ignore(session_t *ps, unsigned long sequence) {
-  while (ps->ignore_head) {
-    if ((long) (sequence - ps->ignore_head->sequence) > 0) {
-      ignore_t *next = ps->ignore_head->next;
-      free(ps->ignore_head);
-      ps->ignore_head = next;
-      if (!ps->ignore_head) {
-        ps->ignore_tail = &ps->ignore_head;
-      }
-    } else {
-      break;
+static void discard_ignore(session_t *ps, unsigned long sequence) {
+    while (ps->ignore_head) {
+        if ((long) (sequence - ps->ignore_head->sequence) > 0) {
+            ignore_t *next = ps->ignore_head->next;
+            free(ps->ignore_head);
+            ps->ignore_head = next;
+            if (!ps->ignore_head) {
+                ps->ignore_tail = &ps->ignore_head;
+            }
+        } else {
+            break;
+        }
     }
-  }
 }
 
 // === Windows ===
@@ -385,6 +389,7 @@ discard_ignore(session_t *ps, unsigned long sequence) {
  * @return a <code>winprop_t</code> structure containing the attribute
  *    and number of items. A blank one on failure.
  */
+// @X11
 winprop_t
 wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat) {
   Atom type = None;
@@ -2570,70 +2575,70 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
  */
 static bool
 mainloop(session_t *ps) {
-  // Don't miss timeouts even when we have a LOT of other events!
-  timeout_run(ps);
+    // Don't miss timeouts even when we have a LOT of other events!
+    timeout_run(ps);
 
-  // Process existing events
-  // Sometimes poll() returns 1 but no events are actually read,
-  // causing XNextEvent() to block, I have no idea what's wrong, so we
-  // check for the number of events here.
-  while(XEventsQueued(ps->dpy, QueuedAfterReading)) {
-    XEvent ev = { };
+    // Process existing events
+    // Sometimes poll() returns 1 but no events are actually read,
+    // causing XNextEvent() to block, I have no idea what's wrong, so we
+    // check for the number of events here.
+    while(XEventsQueued(ps->dpy, QueuedAfterReading)) {
+        XEvent ev = { };
 
-    XNextEvent(ps->dpy, &ev);
-    ev_handle(ps, &ps->capabilities, &ev);
+        XNextEvent(ps->dpy, &ev);
+        ev_handle(ps, &ps->capabilities, &ev);
 
-    ps->skip_poll = true;
+        ps->skip_poll = true;
 
-    return true;
-  }
+        return true;
+    }
 
-  /* return false; */
-
-  if (ps->reset)
     return false;
 
-  // Calculate timeout
-  struct timeval *ptv = NULL;
-  {
-    // Consider skip_poll firstly
-    if (ps->skip_poll || ps->o.benchmark) {
-      ptv = malloc(sizeof(struct timeval));
-      ptv->tv_sec = 0L;
-      ptv->tv_usec = 0L;
+    if (ps->reset)
+        return false;
+
+    // Calculate timeout
+    struct timeval *ptv = NULL;
+    {
+        // Consider skip_poll firstly
+        if (ps->skip_poll || ps->o.benchmark) {
+            ptv = malloc(sizeof(struct timeval));
+            ptv->tv_sec = 0L;
+            ptv->tv_usec = 0L;
+        }
+
+        // Don't continue looping for 0 timeout
+        if (ptv && timeval_isempty(ptv)) {
+            free(ptv);
+            return false;
+        }
+
+        // Now consider the waiting time of other timeouts
+        time_ms_t tmout_ms = timeout_get_poll_time(ps);
+        if (tmout_ms < TIME_MS_MAX) {
+            if (!ptv) {
+                ptv = malloc(sizeof(struct timeval));
+                *ptv = ms_to_tv(tmout_ms);
+            }
+            else if (timeval_ms_cmp(ptv, tmout_ms) > 0) {
+                *ptv = ms_to_tv(tmout_ms);
+            }
+        }
+
+        // Don't continue looping for 0 timeout
+        if (ptv && timeval_isempty(ptv)) {
+            free(ptv);
+            return false;
+        }
     }
 
-    // Don't continue looping for 0 timeout
-    if (ptv && timeval_isempty(ptv)) {
-      free(ptv);
-      return false;
-    }
+    // Polling
+    fds_poll(ps, ptv);
+    free(ptv);
+    ptv = NULL;
 
-    // Now consider the waiting time of other timeouts
-    time_ms_t tmout_ms = timeout_get_poll_time(ps);
-    if (tmout_ms < TIME_MS_MAX) {
-      if (!ptv) {
-        ptv = malloc(sizeof(struct timeval));
-        *ptv = ms_to_tv(tmout_ms);
-      }
-      else if (timeval_ms_cmp(ptv, tmout_ms) > 0) {
-        *ptv = ms_to_tv(tmout_ms);
-      }
-    }
-
-    // Don't continue looping for 0 timeout
-    if (ptv && timeval_isempty(ptv)) {
-      free(ptv);
-      return false;
-    }
-  }
-
-  // Polling
-  fds_poll(ps, ptv);
-  free(ptv);
-  ptv = NULL;
-
-  return true;
+    return true;
 }
 
 char* getDisplayName(Display* display) {
@@ -3646,7 +3651,10 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        if(stateful->state == STATE_DEACTIVATING || stateful->state == STATE_HIDING || stateful->state == STATE_INACTIVE || stateful->state == STATE_INVISIBLE) {
+        if(stateful->state == STATE_DEACTIVATING || 
+                stateful->state == STATE_HIDING || 
+                stateful->state == STATE_INACTIVE || 
+                stateful->state == STATE_INVISIBLE) {
             swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id);
         }
     }
@@ -3778,14 +3786,6 @@ static void commit_move(Swiss* em, Vector* order) {
         size_t order_slot = vector_find_uint64(order, it.id);
         assert(order_slot >= 0);
 
-        // @PERFORMANCE: There's a possible performance optimization here, we
-        // don't need to recalculate the blur of windows which aren't affected.
-        // Immediatly that might seem like a simple calculation (windows
-        // collide), but when a window was behind a window before, and it now
-        // not, we also need to handle that, so we need history (particularly
-        // one frame back). For now we just recalculate everything in front of
-        // this window.  Really, how often do you move a window at the bottom
-        // of the stack anyway? - Delusional 16/11-2018
         win_id* other_id = vector_getNext(order, &order_slot);
         while(other_id != NULL) {
             swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
@@ -4115,7 +4115,6 @@ void session_run(session_t *ps) {
     struct ProfilerWriterSession profSess;
     profilerWriter_init(&profSess);
 #endif
-
 
     determine_fullscreen(ps);
 
