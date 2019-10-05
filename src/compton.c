@@ -3266,7 +3266,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         // If we fail to bind we just assume that the window must have been
         // closed and keep the old texture
         printf_err("Failed binding some drawable");
-        zone_leave(&ZONE_x_communication);
     }
 
     // @HACK @CORRECTNESS: If we fail to get a texture for the window (for
