@@ -104,6 +104,8 @@ LDFLAGS ?= -Wl,-O3 -Wl,--as-needed -Wl,--export-dynamic -flto
 
 ifeq "$(CFG_DEV)" ""
   CFLAGS ?= -DNDEBUG -O3 -D_FORTIFY_SOURCE=2
+else ifeq "$(CFG_DEV)" "p"
+  CFLAGS += -O0 -g -Wshadow -Wno-microsoft-anon-tag
 else
   # CFG += -DDEBUG_RESTACK
   LIBS += -lbfd

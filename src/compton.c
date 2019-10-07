@@ -665,7 +665,7 @@ static Window find_client_win(session_t *ps, Window w) {
 static void determine_fullscreen(session_t *ps) {
     for_components(it, &ps->win_list,
             COMPONENT_MUD, COMPONENT_PHYSICAL, CQ_END) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
         struct PhysicalComponent* p = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
 
         // @CLEANUP: This should probably be somewhere else
@@ -3975,7 +3975,9 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
 
-        blur_cache_resize(blur, &map->size);
+        if(!blur_cache_resize(blur, &map->size)) {
+            printf_errf("Failed resizing window blur");
+        }
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
 
@@ -4311,8 +4313,9 @@ void session_run(session_t *ps) {
             }
 
             for_components(it, em,
-                    COMPONENT_MUD, CQ_NOT, COMPONENT_BLUR, CQ_END) {
+                    COMPONENT_MUD, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_BLUR, CQ_END) {
                 struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+                struct PhysicalComponent* phys = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
                 if(win_mapped(em, it.id)) {
                     bool blur_background_new = ps->o.blur_background
                         && !win_match(ps, w, ps->o.blur_background_blacklist);
@@ -4320,6 +4323,11 @@ void session_run(session_t *ps) {
                         struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
                         if(blur_cache_init(blur) != 0) {
                             printf_errf("Failed initializing window blur");
+                            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+                        }
+                        if(!blur_cache_resize(blur, &phys->size)) {
+                            printf_errf("Failed resizing window blur");
+                            blur_cache_delete(blur);
                             swiss_removeComponent(em, COMPONENT_BLUR, it.id);
                         }
                     }
