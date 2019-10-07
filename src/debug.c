@@ -275,6 +275,38 @@ static void draw_focus_change_component(Swiss* em, enum ComponentType ctype) {
     }
 }
 
+static void draw_physical_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(em, ctype, it.id);
+
+        snprintf(buffer, 128, "    Position: %f+%f", p->position.x, p->position.y);
+
+        Vector2 size = {{0}};
+        text_size(&debug_font, buffer, &scale, &size);
+        debug->pen.y -= size.y;
+
+        text_draw(&debug_font, buffer, &debug->pen, &scale);
+    }
+}
+
 static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
@@ -426,6 +458,7 @@ debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     [COMPONENT_BGOPACITY] = draw_opacity_component,
     [COMPONENT_TRANSITIONING] = draw_transitioning_component,
     [COMPONENT_FOCUS_CHANGE] = draw_focus_change_component,
+    [COMPONENT_PHYSICAL] = draw_physical_component,
     [COMPONENT_SHAPED] = draw_shaped_component,
 };
 
