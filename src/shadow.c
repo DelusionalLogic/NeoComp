@@ -46,10 +46,9 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
 
 int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size) {
     assert(cache->initialized == true);
-    Vector2 border = {{SHADOW_RADIUS, SHADOW_RADIUS}};
     cache->wSize = *size;
 
-    Vector2 overflowSize = border;
+    Vector2 overflowSize = cache->border;
     vec2_imul(&overflowSize, 2);
     vec2_add(&overflowSize, size);
 
