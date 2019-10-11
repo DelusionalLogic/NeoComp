@@ -15,6 +15,7 @@ DECLARE_ZONE(shadow_clear);
 DECLARE_ZONE(shadow_copy);
 DECLARE_ZONE(shadow_setup_blur);
 DECLARE_ZONE(shadow_blur);
+DECLARE_ZONE(shadow_clip_create);
 DECLARE_ZONE(shadow_clip);
 
 #define SHADOW_RADIUS 64
@@ -46,10 +47,9 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
 
 int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size) {
     assert(cache->initialized == true);
-    Vector2 border = {{SHADOW_RADIUS, SHADOW_RADIUS}};
     cache->wSize = *size;
 
-    Vector2 overflowSize = border;
+    Vector2 overflowSize = cache->border;
     vec2_imul(&overflowSize, 2);
     vec2_add(&overflowSize, size);
 
@@ -88,14 +88,9 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
     vector_init(&blurDatas, sizeof(struct TextureBlurData), ps->win_list.size);
 
     glDisable(GL_BLEND);
-    glEnable(GL_STENCIL_TEST);
 
     glClearColor(0.0, 0.0, 0.0, 0.0);
-
-    glStencilMask(0xFF);
     glClearStencil(0);
-    glStencilFunc(GL_EQUAL, 0, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
     // Clear all the shadow textures we are about to render into
     for_components(it, &ps->win_list,
@@ -110,9 +105,25 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         framebuffer_rebind(&framebuffer);
 
         glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
+        glClearStencil(0);
 
         glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     }
+
+    Matrix old_view = view;
+
+    struct shader_program* shadow_program = assets_load("shadow.shader");
+    if(shadow_program->shader_type_info != &shadow_info) {
+        printf_errf("Shader was not a shadow shader\n");
+        framebuffer_delete(&framebuffer);
+        view = old_view;
+        return;
+    }
+    struct Shadow* shadow_type = shadow_program->shader_type;
+    shader_set_future_uniform_bool(shadow_type->flip, false);
+    shader_set_future_uniform_sampler(shadow_type->tex_scr, 0);
+
+    shader_use(shadow_program);
 
     // Render into the textures
     for_components(it, &ps->win_list,
@@ -129,33 +140,53 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
         framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
         framebuffer_rebind(&framebuffer);
 
-        Matrix old_view = view;
         view = mat4_orthogonal(0, shadow->texture.size.x, 0, shadow->texture.size.y, -1, 1);
 
         glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
 
         texture_bind(&textured->texture, GL_TEXTURE0);
 
-        // @PERFORMANCE: Don't look up the shader inside the loop you dunce.
-        struct shader_program* shadow_program = assets_load("shadow.shader");
-        if(shadow_program->shader_type_info != &shadow_info) {
-            printf_errf("Shader was not a shadow shader\n");
-            framebuffer_delete(&framebuffer);
-            view = old_view;
-            return;
-        }
-        struct Shadow* shadow_type = shadow_program->shader_type;
-
-        shader_set_future_uniform_bool(shadow_type->flip, textured->texture.flipped);
-        shader_set_future_uniform_sampler(shadow_type->tex_scr, 0);
-
-        shader_use(shadow_program);
+        shader_set_uniform_bool(shadow_type->flip, textured->texture.flipped);
 
         Vector3 pos = vec3_from_vec2(&shadow->border, 0.0);
         draw_rect(shaped->face, shadow_type->mvp, pos, physical->size);
 
-        view = old_view;
     }
+
+    glEnable(GL_STENCIL_TEST);
+    glStencilMask(0xFF);
+    glStencilFunc(GL_EQUAL, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+    // Create stencil
+    for_components(it, &ps->win_list,
+        COMPONENT_MUD, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
+        COMPONENT_SHAPED, CQ_END) {
+        zone_scope(&ZONE_shadow_clip_create);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
+
+        framebuffer_resetTarget(&framebuffer);
+        framebuffer_targetTexture(&framebuffer, &shadow->texture);
+        framebuffer_targetRenderBuffer_stencil(&framebuffer, &shadow->stencil);
+        framebuffer_rebind(&framebuffer);
+
+        view = mat4_orthogonal(0, shadow->texture.size.x, 0, shadow->texture.size.y, -1, 1);
+
+        glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
+
+        shader_set_uniform_bool(shadow_type->flip, false);
+
+        Vector3 pos = vec3_from_vec2(&shadow->border, 0.0);
+        draw_rect(shaped->face, shadow_type->mvp, pos, physical->size);
+
+    }
+
+    view = old_view;
+
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     // Setup the blur request data
     for_components(it, &ps->win_list,
