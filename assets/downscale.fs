@@ -13,7 +13,7 @@ void main() {
     vec4 sum = sample(uv) * 4.0;
     sum += sample(uv + pixeluv);
     sum += sample(uv + -pixeluv);
-    sum += sample(uv + vec2(pixeluv.x, pixeluv.y));
-    sum += sample(uv + vec2(pixeluv.x, pixeluv.y));
+    sum += sample(uv + vec2(pixeluv.x, -pixeluv.y));
+    sum += sample(uv + vec2(-pixeluv.x, pixeluv.y));
     gl_FragColor = sum / 8.0;
 }
