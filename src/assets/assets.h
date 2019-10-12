@@ -19,7 +19,10 @@ void assets_add_handler_internal(asset_type type, const char* extension,
     assets_add_handler_internal(typeid(type), extension, (asset_loader*)loader, \
             (asset_unloader*)unloader)
 
+void assets_init();
+
 void* assets_load(const char* path);
+void assets_hotload();
 
 void assets_add_path(const char* path);
 char* assets_resolve_path(const char* path);

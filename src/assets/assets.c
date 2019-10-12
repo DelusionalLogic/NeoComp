@@ -1,6 +1,9 @@
 #include "assets.h"
 
+#include <errno.h>
+#include <sys/inotify.h>
 #include <unistd.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +58,13 @@ static size_t num_handlers = 0;
 #define MAX_PATHS 16
 char paths[MAX_PATHS][MAX_PATH_LENGTH];
 static size_t num_paths = 0;
+
+static int notifyFd;
+static Pvoid_t watches;
+
+void assets_init() {
+    notifyFd = inotify_init1(IN_NONBLOCK);
+}
 
 void assets_add_handler_internal(asset_type type, const char* extension,
         asset_loader* loader, asset_unloader* unloader) {
@@ -133,6 +143,30 @@ void* assets_load(const char* path) {
         return NULL;
     }
 
+    // Copy the path to save for watch
+    size_t pathlen = strlen(path);
+    char* pathcpy = malloc(pathlen + 1);
+    memcpy(pathcpy, path, pathlen + 1);
+
+    printf("Adding watch for %s\n", abspath);
+    int watch = inotify_add_watch(notifyFd, abspath, IN_MODIFY);
+    if(watch == -1) {
+        printf("Failed establishing inotify watch on %s\n", path);
+        free(abspath);
+        return NULL;
+    }
+
+    // Save the watch id
+    char** watchPath;
+    JLI(watchPath, watches, watch);
+    if(watchPath == NULL) {
+        printf("Failed allocating space for the watch for %s\n", path);
+        free(abspath);
+        return NULL;
+    }
+
+    *watchPath = pathcpy;
+
     // Allocate space in the loaded array before we actually load the asset to
     // make it easy to bail
     JSLI(asset, handler->loaded, path);
@@ -146,6 +180,34 @@ void* assets_load(const char* path) {
 
     free(abspath);
     return *asset;
+}
+
+void assets_hotload() {
+    struct inotify_event *event = malloc(sizeof(struct inotify_event) * NAME_MAX + 1);
+    while(read(notifyFd, event, sizeof(struct inotify_event) * NAME_MAX + 1) != -1) {
+        printf("EVENT\n");
+        char **pathPtr;
+        JLG(pathPtr, watches, event->wd);
+
+        struct asset_handler* handler = find_handler(*pathPtr);
+        if(handler == NULL) {
+            printf("There was no handler for this path %s\n", "shadow.shader");
+            return;
+        }
+
+        void** asset = NULL;
+        JSLG(asset, handler->loaded, *pathPtr);
+        assert(asset != NULL);
+
+        handler->unloader(*asset);
+        int i = 0;
+        JSLD(i, handler->loaded, *pathPtr);
+    }
+    free(event);
+
+    if(errno != EAGAIN) {
+        printf("Bad errorno on hotload read %s\n", strerror(errno));
+    }
 }
 
 void assets_add_path(const char* new_path) {
