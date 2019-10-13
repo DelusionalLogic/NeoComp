@@ -1,5 +1,6 @@
 #include "assets.h"
 
+#include <assert.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -44,17 +45,23 @@ struct asset_handler {
     char extension[MAX_EXTENSION];
     asset_loader* loader;
     asset_unloader* unloader;
-    Pvoid_t loaded;
 };
 
 #define MAX_HANDLERS 16
-struct asset_handler asset_handlers[MAX_HANDLERS];
+struct asset_handler asset_handlers[MAX_HANDLERS] = {0};
 static size_t num_handlers = 0;
 
 #define MAX_PATH_LENGTH 64
 #define MAX_PATHS 16
 char paths[MAX_PATHS][MAX_PATH_LENGTH];
 static size_t num_paths = 0;
+
+struct asset_handle {
+    void* asset;
+    struct asset_handler* handler;
+};
+
+static Pvoid_t loaded = NULL;
 
 void assets_add_handler_internal(asset_type type, const char* extension,
         asset_loader* loader, asset_unloader* unloader) {
@@ -116,15 +123,17 @@ char* assets_resolve_path(const char* path) {
 }
 
 void* assets_load(const char* path) {
+    struct asset_handle** handlePtr = NULL;
+    JSLG(handlePtr, loaded, path);
+    if(handlePtr != NULL) {
+        assert(*handlePtr != NULL);
+        return (*handlePtr)->asset;
+    }
+
     struct asset_handler* handler = find_handler(path);
     if(handler == NULL) {
         printf("There was no handler for this path %s\n", path); return NULL;
     }
-
-    void** asset = NULL;
-    JSLG(asset, handler->loaded, path);
-    if(asset != NULL)
-        return *asset;
 
     char* abspath = assets_resolve_path(path);
     if(abspath == NULL) {
@@ -135,17 +144,29 @@ void* assets_load(const char* path) {
 
     // Allocate space in the loaded array before we actually load the asset to
     // make it easy to bail
-    JSLI(asset, handler->loaded, path);
-    if(asset == NULL) {
+    JSLI(handlePtr, loaded, path);
+    if(handlePtr == NULL) {
         printf("Failed allocating space for the asset %s\n", path);
         free(abspath);
         return NULL;
     }
 
-    *asset = handler->loader(abspath);
+    // Asset handlers are allowed to load subassets, which might invalidate all
+    // pointers before this call
+    void* asset = handler->loader(abspath);
+
+    // Find the handles again
+    JSLG(handlePtr, loaded, path);
+
+    *handlePtr = malloc(sizeof(struct asset_handle));
+    assert(*handlePtr != NULL);
+    struct asset_handle* handle = *handlePtr;
+
+    handle->asset = asset;
+    handle->handler = handler;
 
     free(abspath);
-    return *asset;
+    return asset;
 }
 
 void assets_add_path(const char* new_path) {
