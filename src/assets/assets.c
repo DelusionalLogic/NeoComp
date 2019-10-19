@@ -1,7 +1,10 @@
 #include "assets.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <sys/inotify.h>
 #include <unistd.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,12 +59,24 @@ static size_t num_handlers = 0;
 char paths[MAX_PATHS][MAX_PATH_LENGTH];
 static size_t num_paths = 0;
 
+#define MAX_DEPS 16
 struct asset_handle {
     void* asset;
+    char* path;
     struct asset_handler* handler;
+    struct asset_handle *depends[MAX_DEPS];
+    size_t num_depends;
 };
 
 static Pvoid_t loaded = NULL;
+
+static int notifyFd;
+static struct asset_handle* current;
+static Pvoid_t watches;
+
+void assets_init() {
+    notifyFd = inotify_init1(IN_NONBLOCK);
+}
 
 void assets_add_handler_internal(asset_type type, const char* extension,
         asset_loader* loader, asset_unloader* unloader) {
@@ -122,11 +137,39 @@ char* assets_resolve_path(const char* path) {
     return resolved;
 }
 
+// Watch for changes on an asset.
+static void watch_asset(struct asset_handle *handle) {
+    int watch = inotify_add_watch(notifyFd, handle->path, IN_MODIFY);
+    if(watch == -1) {
+        printf("Failed establishing inotify watch on %s\n", handle->path);
+        return;
+    }
+
+    // Save the watch id
+    char** value;
+    JLI(value, watches, watch);
+    if(value == NULL) {
+        printf("Failed allocating space for the watch for %s\n", handle->path);
+        inotify_rm_watch(notifyFd, watch);
+        return;
+    }
+
+    *value = handle;
+}
+
 void* assets_load(const char* path) {
     struct asset_handle** handlePtr = NULL;
     JSLG(handlePtr, loaded, path);
     if(handlePtr != NULL) {
         assert(*handlePtr != NULL);
+
+        if(current != NULL) {
+            // Add a dependency. Keep in mind that _current_ here is not our
+            // handle, but rather the handle that has loaded us.
+            current->depends[current->num_depends] = *handlePtr;
+            current->num_depends++;
+        }
+
         return (*handlePtr)->asset;
     }
 
@@ -142,6 +185,11 @@ void* assets_load(const char* path) {
         return NULL;
     }
 
+    // Copy the path to save for watch
+    size_t pathlen = strlen(path);
+    char* pathcpy = malloc(pathlen + 1);
+    memcpy(pathcpy, path, pathlen + 1);
+
     // Allocate space in the loaded array before we actually load the asset to
     // make it easy to bail
     JSLI(handlePtr, loaded, path);
@@ -151,22 +199,103 @@ void* assets_load(const char* path) {
         return NULL;
     }
 
+    struct asset_handle* parent = current;
+    current = malloc(sizeof(struct asset_handle));
+    if(current == NULL) {
+        printf("Failed allocating space for the asset handle %s\n", path);
+        current = parent;
+        free(abspath);
+        return NULL;
+    }
+    *handlePtr = current;
+    if(parent != NULL) {
+        parent->depends[parent->num_depends] = current;
+        parent->num_depends++;
+    }
+
+    current->num_depends = 0;
+    current->handler = handler;
+    current->path = abspath;
+
     // Asset handlers are allowed to load subassets, which might invalidate all
     // pointers before this call
     void* asset = handler->loader(abspath);
 
-    // Find the handles again
-    JSLG(handlePtr, loaded, path);
+    current->asset = asset;
 
-    *handlePtr = malloc(sizeof(struct asset_handle));
-    assert(*handlePtr != NULL);
-    struct asset_handle* handle = *handlePtr;
+    watch_asset(current);
 
-    handle->asset = asset;
-    handle->handler = handler;
+    current = parent;
 
-    free(abspath);
     return asset;
+}
+
+// Find assets with a dependency on this asset. In this context we call them
+// _users_.
+static void find_users(struct asset_handle* handle, struct asset_handle **users, size_t *num_users) {
+    char name[MAX_PATH_LENGTH] = {0};
+    struct asset_handle** valuePtr;
+    JSLF(valuePtr, loaded, (uint8_t*)name);
+    while(valuePtr != NULL) {
+        struct asset_handle *value = *valuePtr;
+        for(int i = 0; i < value->num_depends; i++) {
+            if(value->depends[i] == handle) {
+                assert(*num_users < MAX_DEPS);
+                users[(*num_users)++] = value;
+                break;
+            }
+        }
+        JSLN(valuePtr, loaded, (uint8_t*)name);
+    }
+}
+
+// Reload an assset that has changed on disk.
+static void hotload_asset(struct asset_handle* handle) {
+    printf("Hotloading %s\n", handle->path);
+    struct asset_handle* parent = current;
+
+    struct asset_handle *reload[MAX_DEPS];
+    size_t num_reload = 0;
+
+    find_users(handle, &reload, &num_reload);
+
+    current = handle;
+    handle->num_depends = 0;
+    void* newAsset = handle->handler->loader(handle->path); 
+    // If we fail to load the new asset, just leave the old one.
+    if(newAsset == NULL) {
+        printf("Reload failed \n");
+        current = parent;
+        return;
+    }
+    handle->handler->unloader(handle->asset);
+    handle->asset = newAsset;
+
+    // Reload everyone that depended on us.
+    for(int i = 0; i < num_reload; i++) {
+        hotload_asset(reload[i]);
+    }
+
+    current = parent;
+}
+
+// Called once per iteration. Figure out if any assets were hotloaded and
+// reload them.
+void assets_hotload() {
+    struct inotify_event *event = malloc(sizeof(struct inotify_event) * NAME_MAX + 1);
+    while(read(notifyFd, event, sizeof(struct inotify_event) * NAME_MAX + 1) != -1) {
+        char **handlePtr;
+        JLG(handlePtr, watches, event->wd);
+        struct asset_handle* handle = *handlePtr;
+
+        hotload_asset(handle);
+    }
+
+    if(errno != EAGAIN) {
+        printf("Bad errorno on hotload read %s\n", strerror(errno));
+    }
+
+    free(event);
 }
 
 void assets_add_path(const char* new_path) {
