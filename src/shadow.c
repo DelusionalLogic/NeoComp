@@ -223,6 +223,8 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
     glEnable(GL_STENCIL_TEST);
 
+    struct face* face = assets_load("window.face");
+
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
@@ -244,7 +246,7 @@ void windowlist_updateShadow(session_t* ps, Vector* paints) {
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        draw_tex(shaped->face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
+        draw_tex(face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
 
         view = old_view;
     }

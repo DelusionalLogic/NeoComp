@@ -74,6 +74,8 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
 
+    struct face* face = assets_load("window.face");
+
     size_t index;
     win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
@@ -169,7 +171,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
                 Vector2 rsize = shadow->texture.size;
 
-                draw_rect(shaped->face, shader_type->mvp, tdrpos, rsize);
+                draw_rect(face, shader_type->mvp, tdrpos, rsize);
             }
         }
 
