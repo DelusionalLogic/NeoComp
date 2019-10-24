@@ -415,6 +415,12 @@ struct shader_program* shader_program_load_file(const char* path) {
         printf("\tUniform \"%s\" has id %d, required %d\n", names[i], uniform->gl_uniform, uniform->required);
     }
 
+    // Clear (initialize) all uniforms
+    for(int i = 0; i < uniform_cursor; i++) {
+        struct shader_value* uniform = &program->uniforms[i];
+        shader_clear_future_uniform(uniform);
+    }
+
     return program;
 }
 
