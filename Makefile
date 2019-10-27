@@ -42,10 +42,6 @@ ifneq "$(GLX_MARK)" ""
     CFG += -DDEBUG_GLX_MARK
 endif
 
-ifneq "$(GLX_CONTEXT_DEBUG)" ""
-    CFG += -DDEBUG_GLX_DEBUG_CONTEXT
-endif
-
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
   # CFG += -DDEBUG_GLX_PAINTREG

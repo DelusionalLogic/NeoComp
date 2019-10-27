@@ -1015,14 +1015,6 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
       redir_start(ps);
     }
 
-    // Reinitialize GLX on root change
-    if (ps->o.glx_reinit_on_root_change && ps->psglx) {
-        if (!glx_reinit(ps, true))
-            printf_errf("(): Failed to reinitialize GLX, troubles ahead.");
-        if (!init_filters(ps))
-            printf_errf("(): Failed to initialize filters.");
-    }
-
     // GLX root change callback
     glx_on_root_change(ps);
 
@@ -2041,7 +2033,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "version", no_argument, NULL, 318 },
     { "no-x-selection", no_argument, NULL, 319 },
     { "reredir-on-root-change", no_argument, NULL, 731 },
-    { "glx-reinit-on-root-change", no_argument, NULL, 732 },
     // Must terminate with a NULL entry
     { NULL, 0, NULL, 0 },
   };
@@ -2208,7 +2199,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
-      P_CASEBOOL(732, glx_reinit_on_root_change);
       default:
         usage(1);
         break;
@@ -2337,8 +2327,8 @@ static bool
 init_filters(session_t *ps) {
   // Blur filter
   if (ps->o.blur_background) {
-      if (!glx_init_blur(ps))
-          return false;
+	  blur_init(&ps->psglx->blur);
+	  glx_check_err(ps);
   }
 
   return true;

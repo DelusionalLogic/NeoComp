@@ -65,26 +65,6 @@ static XVisualInfo * get_visualinfo_from_visual(session_t *ps, Visual *visual) {
   return XGetVisualInfo(ps->dpy, VisualIDMask, &vreq, &nitems);
 }
 
-#ifdef DEBUG_GLX_DEBUG_CONTEXT
-static void
-glx_debug_msg_callback(GLenum source, GLenum type,
-    GLuint id, GLenum severity, GLsizei length, const GLchar *message,
-    GLvoid *userParam) {
-  printf_dbgf("(): source 0x%04X, type 0x%04X, id %u, severity 0x%0X, \"%s\"\n",
-      source, type, id, severity, message);
-  void* returns[5];
-  backtrace(returns, 5);
-  char** names = backtrace_symbols(returns, 5);
-  for(int i = 0; i < 5; i++) {
-      char* str = names[i];
-      if(str == NULL)
-          break;
-      printf_dbgf("(): backtrace: %s\n", str);
-  }
-  free(names);
-}
-#endif
-
 /**
  * Check if a GLX extension exists.
  */
@@ -184,19 +164,6 @@ glx_init(session_t *ps, bool need_render) {
       goto glx_init_end;
     }
 
-#ifdef DEBUG_GLX_DEBUG_CONTEXT
-    {
-      f_DebugMessageCallback p_DebugMessageCallback =
-        (f_DebugMessageCallback)
-        glXGetProcAddress((const GLubyte *) "glDebugMessageCallback");
-      if (!p_DebugMessageCallback) {
-        printf_errf("(): Failed to get glDebugMessageCallback(0.");
-        goto glx_init_end;
-      }
-      p_DebugMessageCallback(glx_debug_msg_callback, ps);
-    }
-#endif
-
   }
   const GLubyte* version = glGetString(GL_VERSION);
   printf("Opengl version %s\n", version);
@@ -290,20 +257,6 @@ glx_destroy(session_t *ps) {
   if (!ps->psglx)
     return;
 
-  for_components(it, &ps->win_list,
-      COMPONENT_SHADOW, CQ_END) {
-      struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
-
-      shadow_cache_delete(shadow);
-  }
-
-  // Free all GLX resources of windows
-  for_components(it, &ps->win_list,
-      COMPONENT_BLUR, CQ_END) {
-      struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id);
-      blur_cache_delete(blur);
-  }
-
   blur_destroy(&ps->psglx->blur);
 
   glx_check_err(ps);
@@ -329,46 +282,11 @@ glx_destroy(session_t *ps) {
 }
 
 /**
- * Reinitialize GLX.
- */
-bool
-glx_reinit(session_t *ps, bool need_render) {
-  // Reinitialize VSync as well
-  vsync_deinit(ps);
-
-  glx_destroy(ps);
-  if (!glx_init(ps, need_render)) {
-    printf_errf("(): Failed to initialize GLX.");
-    return false;
-  }
-
-  if (!vsync_init(ps)) {
-    printf_errf("(): Failed to initialize VSync.");
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Callback to run on root window size change.
  */
-void
-glx_on_root_change(session_t *ps) {
+void glx_on_root_change(session_t *ps) {
   glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
   ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
   view = ps->psglx->view;
-}
-
-/**
- * Initialize GLX blur filter.
- */
-bool
-glx_init_blur(session_t *ps) {
-  blur_init(&ps->psglx->blur);
-
-  glx_check_err(ps);
-
-  return true;
 }

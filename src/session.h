@@ -101,8 +101,6 @@ typedef struct _options_t {
   int blur_level;
   /// Whether to re-redirect screen on root size change.
   bool reredir_on_root_change;
-  /// Whether to reinitialize GLX on root size change.
-  bool glx_reinit_on_root_change;
   /// Path to log file.
   char *logpath;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.
