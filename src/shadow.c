@@ -17,6 +17,7 @@ DECLARE_ZONE(shadow_setup_blur);
 DECLARE_ZONE(shadow_blur);
 DECLARE_ZONE(shadow_clip_create);
 DECLARE_ZONE(shadow_clip);
+DECLARE_ZONE(update_shadow);
 
 #define SHADOW_RADIUS 64
 
@@ -72,7 +73,18 @@ void shadow_cache_delete(struct glx_shadow_cache* cache) {
     return;
 }
 
-void windowlist_updateShadow(session_t* ps, Vector* paints) {
+void shadowsystem_delete(Swiss *em) {
+    for_components(it, em,
+            COMPONENT_SHADOW, CQ_END) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        shadow_cache_delete(shadow);
+    }
+    swiss_resetComponent(em, COMPONENT_SHADOW);
+}
+
+void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
+    zone_scope(&ZONE_update_shadow);
+
     Vector shadow_updates;
     vector_init(&shadow_updates, sizeof(win_id), paints->size);
 

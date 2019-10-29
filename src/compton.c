@@ -72,7 +72,6 @@ DECLARE_ZONE(x_communication);
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
-DECLARE_ZONE(update_shadow);
 DECLARE_ZONE(fetch_prop);
 
 DECLARE_ZONE(zsort);
@@ -996,9 +995,6 @@ restack_win(session_t *ps, win *w, Window new_above) {
 
     vector_circulate(&ps->order, w_loc, above_loc);
 }
-
-static bool
-init_filters(session_t *ps);
 
 static void
 configure_win(session_t *ps, XConfigureEvent *ce) {
@@ -2321,20 +2317,6 @@ init_overlay(session_t *ps) {
 }
 
 /**
- * Query needed X Render / OpenGL filters to check for their existence.
- */
-static bool
-init_filters(session_t *ps) {
-  // Blur filter
-  if (ps->o.blur_background) {
-	  blur_init(&ps->psglx->blur);
-	  glx_check_err(ps);
-  }
-
-  return true;
-}
-
-/**
  * Redirect all windows.
  */
 static void redir_start(session_t *ps) {
@@ -2889,8 +2871,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   bezier_init(&ps->curve, 0.29, 0.1, 0.29, 1);
 
   // Initialize filters, must be preceded by OpenGL context creation
-  if (!init_filters(ps))
-    exit(1);
+  blur_init(&ps->psglx->blur);
+  glx_check_err(ps);
 
   fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
 
@@ -2986,12 +2968,7 @@ void session_destroy(session_t *ps) {
       wd_delete(&bindsTexture->drawable);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
-  for_components(it, &ps->win_list,
-      COMPONENT_SHADOW, CQ_END) {
-      struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
-      shadow_cache_delete(shadow);
-  }
-  swiss_resetComponent(&ps->win_list, COMPONENT_SHADOW);
+  shadowsystem_delete(&ps->win_list);
   for_components(it, &ps->win_list,
       COMPONENT_BLUR, CQ_END) {
       struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id);
@@ -4434,12 +4411,10 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_effect_textures);
 
-        zone_enter(&ZONE_update_shadow);
-        windowlist_updateShadow(ps, &transparent);
-        zone_leave(&ZONE_update_shadow);
+        shadowsystem_updateShadow(ps, &transparent);
 
         if(ps->o.blur_background)
-            windowlist_updateBlur(ps);
+            blursystem_updateBlur(&ps->psglx->blur, &ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, ps);
 
         zone_leave(&ZONE_effect_textures);
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "swiss.h"
 #include "vmath.h"
 #include "vector.h"
 #include "texture.h"
@@ -17,8 +18,9 @@ struct glx_shadow_cache {
     Vector2 border;
 };
 
-void windowlist_updateShadow(struct _session_t* ps, Vector* paints);
-
 int shadow_cache_init(struct glx_shadow_cache* cache);
 int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size);
 void shadow_cache_delete(struct glx_shadow_cache* cache);
+
+void shadowsystem_delete(Swiss *em);
+void shadowsystem_updateShadow(struct _session_t* ps, Vector* paints);

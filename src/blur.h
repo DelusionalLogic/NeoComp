@@ -9,11 +9,22 @@
 
 #include <GL/glx.h>
 
+struct _session;
 struct _win;
 
 struct blur {
     struct Framebuffer fbo;
     GLuint array;
+
+    // Per pools
+    Vector to_blur;
+    Vector opaque_renderable;
+    Vector shadow_renderable;
+    Vector transparent_renderable;
+
+    // Multiple use per frame
+    Vector opaque_behind;
+    Vector transparent_behind;
 };
 
 typedef struct glx_blur_cache {
@@ -31,6 +42,8 @@ typedef struct glx_blur_cache {
 
 void blur_init(struct blur* blur);
 void blur_destroy(struct blur* blur);
+void blursystem_updateBlur(struct blur* blur, Swiss* em, Vector2* root_size,
+        struct Texture* texture, int level, struct _session* ps);
 
 bool blur_backbuffer(struct blur* blur, struct _session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
