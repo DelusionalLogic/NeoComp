@@ -8,7 +8,6 @@
 #include "logging.h"
 #include "bezier.h"
 #include "windowlist.h"
-#include "blur.h"
 #include "assets/assets.h"
 #include "profiler/zone.h"
 #include "assets/shader.h"
@@ -16,7 +15,9 @@
 #include "xtexture.h"
 #include "textureeffects.h"
 #include "renderutil.h"
-#include "shadow.h"
+
+#include "systems/blur.h"
+#include "systems/shadow.h"
 
 DECLARE_ZONE(poll_visual);
 DECLARE_ZONE(name_pixmap);

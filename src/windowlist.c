@@ -5,12 +5,13 @@
 #include "assets/shader.h"
 #include "assets/assets.h"
 
+#include "systems/blur.h"
+
 #include "shaders/shaderinfo.h"
 
 #include "textureeffects.h"
 
 #include "window.h"
-#include "blur.h"
 #include "renderutil.h"
 
 DECLARE_ZONE(paint_backgrounds);

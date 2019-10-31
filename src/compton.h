@@ -10,8 +10,9 @@
 
 #include "common.h"
 #include "window.h"
-#include "blur.h"
 #include "shadow.h"
+
+#include "systems/blur.h"
 
 #include <math.h>
 #include <sys/select.h>

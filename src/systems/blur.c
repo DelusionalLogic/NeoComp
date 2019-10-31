@@ -67,6 +67,30 @@ void blur_destroy(struct blur* blur) {
 
 void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
         struct Texture* texture, int level, struct _session* ps) {
+    for_components(it, em,
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
+
+        if(blur_cache_init(blur) != 0) {
+            printf_errf("Failed initializing window blur");
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_MAP, COMPONENT_BLUR, CQ_END) {
+        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+
+        if(!blur_cache_resize(blur, &map->size)) {
+            printf_errf("Failed resizing window blur");
+        }
+        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
+
+
     zone_scope(&ZONE_update_blur);
 
     {

@@ -13,13 +13,14 @@
 #include "vmath.h"
 #include "texture.h"
 #include "framebuffer.h"
-#include "blur.h"
 #include "shadow.h"
 #include "textureeffects.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "assets/face.h"
 #include "shaders/shaderinfo.h"
+
+#include "systems/blur.h"
 
 #include "renderutil.h"
 

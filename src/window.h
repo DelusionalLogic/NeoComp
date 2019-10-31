@@ -9,13 +9,14 @@
 
 #include "swiss.h"
 #include "switch.h"
-#include "shadow.h"
 #include "xtexture.h"
 #include "session.h"
 #include "renderbuffer.h"
-#include "blur.h"
 #include "c2.h"
 #include "wintypes.h"
+
+#include "systems/blur.h"
+#include "systems/shadow.h"
 
 struct _session_t;
 

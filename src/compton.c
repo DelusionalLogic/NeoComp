@@ -22,16 +22,17 @@
 #include "vmath.h"
 #include "window.h"
 #include "windowlist.h"
-#include "blur.h"
-#include "fullscreen.h"
-#include "shape.h"
-#include "shadow.h"
 #include "xtexture.h"
 #include "buffer.h"
 #include "timer.h"
 #include "timeout.h"
 #include "paths.h"
 #include "debug.h"
+
+#include "systems/blur.h"
+#include "systems/shape.h"
+#include "systems/shadow.h"
+#include "systems/fullscreen.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -3879,17 +3880,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         }
     }
 
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
-        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
-
-        if(blur_cache_init(blur) != 0) {
-            printf_errf("Failed initializing window blur");
-            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-        }
-    }
+    // Blur has been migrated to the blur system
 
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
@@ -3910,16 +3901,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
         swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
     }
 
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_BLUR, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-
-        if(!blur_cache_resize(blur, &map->size)) {
-            printf_errf("Failed resizing window blur");
-        }
-        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
-    }
+    // Blur has been migrated to the blur system
 
     // After a map we'd like to immediately bind the window.
     for_components(it, em,

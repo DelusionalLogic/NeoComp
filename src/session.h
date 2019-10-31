@@ -6,12 +6,13 @@
 #include "xorg.h"
 #include "xtexture.h"
 #include "debug.h"
-#include "blur.h"
 #include "framebuffer.h"
 #include "renderbuffer.h"
 #include "swiss.h"
 #include "vector.h"
 #include "winprop.h"
+
+#include "systems/blur.h"
 
 #include <X11/extensions/Xinerama.h>
 
