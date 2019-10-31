@@ -867,25 +867,6 @@ rect_crop(XRectangle *pdst, const XRectangle *psrc, const XRectangle *pbound) {
 }
 
 /**
- * Check if a rectangle includes the whole screen.
- */
-static inline bool
-rect_is_fullscreen(session_t *ps, int x, int y, unsigned wid, unsigned hei) {
-  return (x <= 0 && y <= 0
-      && (x + wid) >= ps->root_size.x && (y + hei) >= ps->root_size.y);
-}
-
-/**
- * Check if a window is a fullscreen window.
- *
- * It's not using w->border_size for performance measures.
- */
-static inline bool
-win_is_fullscreen(session_t *ps, struct PhysicalComponent* physical) {
-    return rect_is_fullscreen(ps, physical->position.x, physical->position.y, physical->size.x, physical->size.y);
-}
-
-/**
  * Determine if a window has a specific property.
  *
  * @param ps current session

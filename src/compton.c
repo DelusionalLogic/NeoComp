@@ -23,6 +23,7 @@
 #include "window.h"
 #include "windowlist.h"
 #include "blur.h"
+#include "fullscreen.h"
 #include "shape.h"
 #include "shadow.h"
 #include "xtexture.h"
@@ -642,17 +643,6 @@ static Window find_client_win(session_t *ps, Window w) {
     cxfree(children);
 
     return ret;
-}
-
-static void determine_fullscreen(session_t *ps) {
-    for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_PHYSICAL, CQ_END) {
-        win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-        struct PhysicalComponent* p = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
-
-        // @CLEANUP: This should probably be somewhere else
-        w->fullscreen = win_is_fullscreen(ps, p);
-    }
 }
 
 /**
@@ -4068,7 +4058,7 @@ void session_run(session_t *ps) {
     profilerWriter_init(&profSess);
 #endif
 
-    determine_fullscreen(ps);
+	fullscreensystem_determine(&ps->win_list, &ps->root_size);
 
     timestamp lastTime;
     if(!getTime(&lastTime)) {
@@ -4095,7 +4085,6 @@ void session_run(session_t *ps) {
 
         Swiss* em = &ps->win_list;
 
-        shapesystem_updateShapes(em, &ps->xcontext);
 
         // Process all the events added by X
 
@@ -4128,7 +4117,8 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_preprocess);
 
-        determine_fullscreen(ps);
+        shapesystem_updateShapes(em, &ps->xcontext);
+        fullscreensystem_determine(&ps->win_list, &ps->root_size);
 
         zone_leave(&ZONE_preprocess);
 
@@ -4140,7 +4130,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update_wintype);
 
-        // We want to fatch the wintype on a map, useful because we don't track the
+        // We want to fetch the wintype on a map, useful because we don't track the
         // wintype when unmapped
         for_components(it, em, COMPONENT_MAP, CQ_END) {
             swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
