@@ -83,6 +83,33 @@ void shadowsystem_delete(Swiss *em) {
 }
 
 void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
+    Swiss* em = &ps->win_list;
+
+    for_components(it, em,
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_SHADOW, CQ_END) {
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        // Legacy value for disabling shadows
+        if(w->shadow) {
+            struct glx_shadow_cache* shadow = swiss_addComponent(em, COMPONENT_SHADOW, it.id);
+
+            if(shadow_cache_init(shadow) != 0) {
+                printf_errf("Failed initializing window shadow");
+                swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
+            }
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_MAP, COMPONENT_SHADOW, CQ_END) {
+        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+
+        shadow_cache_resize(shadow, &map->size);
+        // Since the cache was resized, the shadow will have to be recalculated
+        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
+    }
+
     zone_scope(&ZONE_update_shadow);
 
     Vector shadow_updates;

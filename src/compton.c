@@ -33,6 +33,8 @@
 #include "systems/shape.h"
 #include "systems/shadow.h"
 #include "systems/fullscreen.h"
+#include "systems/texture.h"
+#include "systems/xorg.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -3803,105 +3805,19 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
 }
 
 static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
-    // Mapping a window causes us to start redirecting it
-    {
-        zone_enter(&ZONE_fetch_prop);
-        for_components(it, em,
-                COMPONENT_MAP, COMPONENT_HAS_CLIENT, COMPONENT_TRACKS_WINDOW, CQ_END) {
-            struct HasClientComponent* hasClient = swiss_godComponent(em, COMPONENT_HAS_CLIENT, it.id);
 
-            winprop_t prop = wid_get_prop(xcontext, hasClient->id, atoms->atom_bypass, 1L, XA_CARDINAL, 32);
-            // A value of 1 means that the window has taken special care to ask
-            // us not to do compositing.
-            if(prop.nitems == 0 || *prop.data.p32 != 1) {
-                swiss_ensureComponent(em, COMPONENT_REDIRECTED, it.id);
-            }
-            free_winprop(&prop);
-        }
-        zone_leave(&ZONE_fetch_prop);
-
-        for_components(it, em,
-                COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
-            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-
-            XCompositeRedirectWindow(xcontext->display, tracksWindow->id, CompositeRedirectManual);
-        }
-    }
-
-    // Mapping a window causes it to bind from X
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
-        struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-        struct BindsTextureComponent* bindsTexture = swiss_addComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
-
-        if(!wd_init(&bindsTexture->drawable, xcontext, tracksWindow->id)) {
-            printf_errf("Failed initializing window drawable on map");
-        }
-    }
-
-    // Resize textures when mapping a window with a texture
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_REDIRECTED, COMPONENT_TEXTURED, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
-
-        texture_resize(&textured->texture, &map->size);
-        renderbuffer_resize(&textured->stencil, &map->size);
-    }
-
-    // Create a texture when mapping windows without one
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_REDIRECTED, CQ_NOT, COMPONENT_TEXTURED, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-
-        struct TexturedComponent* textured = swiss_addComponent(em, COMPONENT_TEXTURED, it.id);
-
-        if(texture_init(&textured->texture, GL_TEXTURE_2D, &map->size) != 0)  {
-            printf_errf("Failed initializing window contents texture");
-        }
-
-        if(renderbuffer_stencil_init(&textured->stencil, &map->size) != 0)  {
-            printf_errf("Failed initializing window contents stencil");
-        }
-    }
+    // Texture init handled in system
 
     // When we map a window, and blur/shadow isn't there, we want to add them.
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_SHADOW, CQ_END) {
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
-        if(w->shadow) {
-            struct glx_shadow_cache* shadow = swiss_addComponent(em, COMPONENT_SHADOW, it.id);
-
-            if(shadow_cache_init(shadow) != 0) {
-                printf_errf("Failed initializing window shadow");
-                swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
-            }
-        }
-    }
-
-    // Blur has been migrated to the blur system
+    // Blur and shadow have been migrated to the system
 
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
         struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
         tint->color = (Vector4){{1, 1, 1, .017}};
     }
 
-    // No matter what, when we remap a window we want to make sure the blur and
-    // shadow are the correct size
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_SHADOW, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-
-        shadow_cache_resize(shadow, &map->size);
-        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
-    }
-
-    // Blur has been migrated to the blur system
+    // Blur and shadow have been migrated to the system
 
     // After a map we'd like to immediately bind the window.
     for_components(it, em,
@@ -4236,7 +4152,9 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_input_react);
         commit_destroy(&ps->win_list);
+        xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
+        texturesystem_tick(&ps->win_list);
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         commit_move(&ps->win_list, &ps->order);
