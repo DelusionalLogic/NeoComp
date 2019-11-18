@@ -141,6 +141,7 @@ void* assets_load(const char* path) {
         free(abspath);
         return NULL;
     }
+    printf("Cold-loading file %s\n", abspath);
 
     // Allocate space in the loaded array before we actually load the asset to
     // make it easy to bail

@@ -37,3 +37,7 @@
 #define THIS "types/graph.h"
 #include HEADER
 #undef THIS
+
+#define THIS "types/bgblit.h"
+#include HEADER
+#undef THIS

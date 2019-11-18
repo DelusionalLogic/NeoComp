@@ -44,6 +44,7 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
             struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
             struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
             struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
 
             Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
@@ -51,7 +52,25 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
                 struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
                 Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
 
-                draw_tex(shaped->face, &blur->texture[0], &dglPos, &physical->size);
+                {
+                    struct shader_program* shader = assets_load("bgblit.shader");
+                    if(shader->shader_type_info != &bgblit_info) {
+                        printf_errf("Shader was not a bgblit shader\n");
+                        return;
+                    }
+                    struct BgBlit* shader_type = shader->shader_type;
+                    shader_set_future_uniform_bool(shader_type->flip, blur->texture[0].flipped);
+                    shader_set_future_uniform_float(shader_type->opacity, (float)1.0);
+                    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+                    shader_set_future_uniform_sampler(shader_type->win_tex, 1);
+
+                    shader_use(shader);
+
+                    texture_bind(&blur->texture[0], GL_TEXTURE0);
+                    texture_bind(&textured->texture, GL_TEXTURE1);
+
+                    draw_rect(shaped->face, shader_type->mvp, dglPos, physical->size);
+                }
             }
 
             w_id = vector_getNext(opaque, &index);
