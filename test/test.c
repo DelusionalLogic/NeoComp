@@ -304,72 +304,6 @@ static struct TestResult vector__keep_elements_after_new__circulating_forward() 
     assertEqString(substr, "def", 3);
 }
 
-static struct TestResult convert_xrects_to_relative_rect__keep_all_rects__converting() {
-    XRectangle rects[2] = {
-        {
-            .x = 0,
-            .y = 0,
-            .width = 100,
-            .height = 10,
-        },
-        {
-            .x = 0,
-            .y = 10,
-            .width = 100,
-            .height = 10,
-        },
-    };
-    Vector2 extents = {{ 100, 20 }};
-
-    Vector mrects;
-    vector_init(&mrects, sizeof(struct Rect), 2);
-
-    convert_xrects_to_relative_rect(rects, 2, &extents, &VEC2_ZERO, &mrects);
-
-    assertEq(mrects.size, 2);
-}
-
-static struct TestResult convert_xrects_to_relative_rect__keep_x_coordinate__converting() {
-    XRectangle rects[2] = {
-        {
-            .x = 0,
-            .y = 0,
-            .width = 100,
-            .height = 10,
-        },
-    };
-    Vector2 extents = {{ 100, 10 }};
-
-    Vector mrects;
-    vector_init(&mrects, sizeof(struct Rect), 1);
-
-    convert_xrects_to_relative_rect(rects, 1, &extents, &VEC2_ZERO, &mrects);
-
-    struct Rect* rect = vector_get(&mrects, 0);
-    assertEq(rect->pos.x, 0);
-}
-
-static struct TestResult convert_xrects_to_relative_rect__translate_y_coordinate__converting() {
-    XRectangle rects[2] = {
-        {
-            .x = 0,
-            .y = 0,
-            .width = 100,
-            .height = 10,
-        },
-    };
-    Vector2 extents = {{ 100, 10 }};
-
-    Vector mrects;
-    vector_init(&mrects, sizeof(struct Rect), 1);
-
-    convert_xrects_to_relative_rect(rects, 1, &extents, &VEC2_ZERO, &mrects);
-
-    struct Rect* rect = vector_get(&mrects, 0);
-    // Y is also converted to relative coordinates 10/10 = 1
-    assertEq(rect->pos.y, 1);
-}
-
 static struct TestResult swiss__be_empty__initialized() {
     Swiss swiss;
     swiss_clearComponentSizes(&swiss);
@@ -1052,10 +986,6 @@ int main(int argc, char** argv) {
     TEST(vector__keep_elements_after_new__circulating_forward);
     TEST(vector__shift_elements_between_positions_right__circulating_backward);
     TEST(vector__keep_elements_after_old__circulating_backward);
-
-    TEST(convert_xrects_to_relative_rect__keep_all_rects__converting);
-    TEST(convert_xrects_to_relative_rect__keep_x_coordinate__converting);
-    TEST(convert_xrects_to_relative_rect__translate_y_coordinate__converting);
 
     TEST(swiss__be_empty__initialized);
     TEST(swiss__grow__allocating);
