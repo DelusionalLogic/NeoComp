@@ -2804,6 +2804,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   add_shader_type(&stencil_info);
   add_shader_type(&colored_info);
   add_shader_type(&graph_info);
+  add_shader_type(&bgblit_info);
 
   assets_add_handler(struct shader, "vs", vert_shader_load_file, shader_unload_file);
   assets_add_handler(struct shader, "fs", frag_shader_load_file, shader_unload_file);

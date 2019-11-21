@@ -19,7 +19,7 @@ static void free_winprop(winprop_t *pprop) {
 void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
     // Mapping a window causes us to start redirecting it
     {
-        zone_enter(&ZONE_xfetch_prop);
+        zone_enter(&ZONE_fetch_xprop);
         for_components(it, em,
                 COMPONENT_MAP, COMPONENT_HAS_CLIENT, COMPONENT_TRACKS_WINDOW, CQ_END) {
             struct HasClientComponent* hasClient = swiss_godComponent(em, COMPONENT_HAS_CLIENT, it.id);
@@ -34,7 +34,7 @@ void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms
 
             free_winprop(&prop);
         }
-        zone_leave(&ZONE_fetch_prop);
+        zone_leave(&ZONE_fetch_xprop);
 
         for_components(it, em,
                 COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
