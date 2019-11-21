@@ -34,6 +34,7 @@
 #include "systems/shadow.h"
 #include "systems/fullscreen.h"
 #include "systems/texture.h"
+#include "systems/physical.h"
 #include "systems/xorg.h"
 
 #include "assets/assets.h"
@@ -1003,38 +1004,13 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
 
   restack_win(ps, w, ce->above);
 
-  {
-    Vector2 position = {{ce->x, ce->y}};
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-    if(swiss_hasComponent(&ps->win_list, COMPONENT_MOVE, wid)) {
-        // If we already have a move, just override it
-        // @SPEED: We might want to deduplicate before we do this
-        struct MoveComponent* move = swiss_getComponent(&ps->win_list, COMPONENT_MOVE, wid);
-        move->newPosition = position;
-    } else if(!vec2_eq(&physical->position, &position)) {
-        // Only add a move if the reconfigure has a new position
-        struct MoveComponent* move = swiss_addComponent(&ps->win_list, COMPONENT_MOVE, wid);
-        move->newPosition = position;
-    }
-
-    w->border_size = ce->border_width;
-
-    Vector2 size = {{
-        ce->width + w->border_size * 2,
-        ce->height + w->border_size * 2,
-    }};
-    if(swiss_hasComponent(&ps->win_list, COMPONENT_RESIZE, wid)) {
-        // If we already have a resize, just override it
-        // @SPEED: We might want to deduplicate before we do this
-        struct ResizeComponent* resize = swiss_getComponent(&ps->win_list, COMPONENT_RESIZE, wid);
-        resize->newSize = size;
-    } else if(!vec2_eq(&physical->size, &size)) {
-        // Only add a resize if the reconfigure has a size
-        struct ResizeComponent* resize = swiss_addComponent(&ps->win_list, COMPONENT_RESIZE, wid);
-        resize->newSize = size;
-    }
-
-  }
+  Vector2 position = {{ce->x, ce->y}};
+  w->border_size = ce->border_width;
+  Vector2 size = {{
+      ce->width + w->border_size * 2,
+      ce->height + w->border_size * 2,
+  }};
+  physics_move_window(&ps->win_list, wid, &position, &size);
 
   // override_redirect flag cannot be changed after window creation, as far
   // as I know, so there's no point to re-match windows here.
@@ -3671,14 +3647,6 @@ static void commit_resize(Swiss* em, Vector* order) {
         renderbuffer_resize(&textured->stencil, &resize->newSize);
     }
 
-    for_components(it, em,
-            COMPONENT_RESIZE, COMPONENT_PHYSICAL, COMPONENT_MUD, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
-        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-
-        physical->size = resize->newSize;
-    }
-
     // Damage all windows on top of windows that resize
     for_components(it, em, COMPONENT_RESIZE, CQ_END) {
         size_t order_slot = vector_find_uint64(order, it.id);
@@ -3735,14 +3703,6 @@ static void commit_move(Swiss* em, Vector* order) {
             swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
             other_id = vector_getNext(order, &order_slot);
         }
-    }
-
-    for_components(it, em,
-            COMPONENT_MOVE, COMPONENT_PHYSICAL, CQ_END) {
-        struct MoveComponent* move = swiss_getComponent(em, COMPONENT_MOVE, it.id);
-        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-
-        physical->position = move->newPosition;
     }
 }
 
@@ -3824,15 +3784,6 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
     for_components(it, em,
             COMPONENT_MAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
-    }
-
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_PHYSICAL, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-
-        physical->position = map->position;
-        physical->size = map->size;
     }
 }
 
@@ -4158,6 +4109,7 @@ void session_run(session_t *ps) {
         texturesystem_tick(&ps->win_list);
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
+        physics_tick(&ps->win_list);
         commit_move(&ps->win_list, &ps->order);
         commit_resize(&ps->win_list, &ps->order);
         commit_reshape(&ps->win_list, &ps->xcontext);
