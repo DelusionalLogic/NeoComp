@@ -4,6 +4,8 @@
 #include "compton.h"
 #include "assets/face.h"
 
+#include "systems/physical.h"
+
 #include <string.h>
 #include <stdio.h>
 
@@ -769,6 +771,60 @@ struct TestResult win_fade__skip_keyframes_superseded_by_others__a_fade_is_runni
     assertEq(fade_done(&fo->fade), true);
 }
 
+struct TestResult physical_move__add_a_move__no_previous_move() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_MOVE, sizeof(struct MoveComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct PhysicalComponent* p = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    p->position = (Vector2){{1, 1}};
+
+    physics_move_window(&swiss, wid, &(Vector2){{0, 0}}, &(Vector2){{0, 0}});
+
+    assertEq(swiss_hasComponent(&swiss, COMPONENT_MOVE, wid), true);
+}
+
+struct TestResult physical_move__not_add_a_move__no_previous_move_and_same_position() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_MOVE, sizeof(struct MoveComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct PhysicalComponent* p = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    p->position = (Vector2){{0, 0}};
+
+    physics_move_window(&swiss, wid, &(Vector2){{0, 0}}, &(Vector2){{0, 0}});
+
+    assertEq(swiss_hasComponent(&swiss, COMPONENT_MOVE, wid), false);
+}
+
+struct TestResult physical_move__change_the_move__previous_move() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_MOVE, sizeof(struct MoveComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct PhysicalComponent* p = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    p->position = (Vector2){{0, 0}};
+    struct MoveComponent* m = swiss_addComponent(&swiss, COMPONENT_MOVE, wid);
+    m->newPosition = (Vector2){{2, 2}};
+
+    physics_move_window(&swiss, wid, &(Vector2){{1, 1}}, &(Vector2){{0, 0}});
+
+    Vector2 v = (Vector2){{1, 1}};
+    assertEqArray(&m->newPosition, &v, sizeof(Vector2));
+}
+
 static make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
     for(int i = 0; i < cnt; i++) {
         win_id wid = swiss_allocate(swiss);
@@ -1026,6 +1082,10 @@ int main(int argc, char** argv) {
     TEST(win_fade__remove_completed_keyframes__a_fade_is_running);
     TEST(win_fade__skip_keyframes_superseded_by_others__a_fade_is_running);
     TEST(win_fade__set_a_keyframe_duration__keyframe_becomes_head);
+
+    TEST(physical_move__add_a_move__no_previous_move);
+    TEST(physical_move__not_add_a_move__no_previous_move_and_same_position);
+    TEST(physical_move__change_the_move__previous_move);
 
     TEST(binaryZSearch__return_first_index_with_value_larger__finding_value_in_the_middle);
     TEST(binaryZSearch__return_an_index_larger_than_size__all_values_are_smaller);
