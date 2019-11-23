@@ -3373,16 +3373,6 @@ static void damage_blur_over_fade(Swiss* em) {
 }
 
 static void finish_destroyed_windows(Swiss* em, session_t* ps) {
-    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_SHADOW, CQ_END) {
-        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
-            shadow_cache_delete(shadow);
-            swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
-        }
-    }
-
     for_components(it, em, COMPONENT_STATEFUL, COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
@@ -3615,15 +3605,6 @@ static void commit_resize(Swiss* em, Vector* order) {
     for_components(it, em,
             COMPONENT_RESIZE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
-    }
-
-    for_components(it, em,
-            COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
-        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
-
-        shadow_cache_resize(shadow, &resize->newSize);
-        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
     }
 
     for_components(it, em,
@@ -4172,6 +4153,7 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_fade);
 
         transition_faded_entities(&ps->win_list);
+        shadowsystem_tick(em);
         remove_texture_invis_windows(&ps->win_list);
         finish_destroyed_windows(&ps->win_list, ps);
         zone_leave(&ZONE_update);

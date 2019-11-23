@@ -82,6 +82,27 @@ void shadowsystem_delete(Swiss *em) {
     swiss_resetComponent(em, COMPONENT_SHADOW);
 }
 
+void shadowsystem_tick(Swiss* em) {
+    for_components(it, em,
+            COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+
+        shadow_cache_resize(shadow, &resize->newSize);
+        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
+    }
+
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_SHADOW, CQ_END) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
+            shadow_cache_delete(shadow);
+            swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
+        }
+    }
+}
+
 void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
     Swiss* em = &ps->win_list;
 

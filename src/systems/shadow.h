@@ -23,4 +23,5 @@ int shadow_cache_resize(struct glx_shadow_cache* cache, const Vector2* size);
 void shadow_cache_delete(struct glx_shadow_cache* cache);
 
 void shadowsystem_delete(Swiss *em);
+void shadowsystem_tick(Swiss* em);
 void shadowsystem_updateShadow(struct _session_t* ps, Vector* paints);
