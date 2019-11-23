@@ -1,6 +1,7 @@
 # NeoComp (Compton)
 
-[![Build Status](https://travis-ci.org/DelusionalLogic/NeoComp.svg?branch=master)](https://travis-ci.org/DelusionalLogic/NeoComp)
+![Build Status](https://github.com/delusionallogic/neocomp/workflows/CI/badge.svg)
+
 
 __NeoComp__ is a fork of __Compton__, a compositor for X11
 
