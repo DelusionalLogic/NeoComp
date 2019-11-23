@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 
 Vector results;
 
@@ -240,6 +241,10 @@ void test_shouldAssert() {
     if(!test_sentAssertSignal) {
         uint8_t assertBuf[1] = {1};
         write_complete(test_fd, &assertBuf, 1);
+        struct rlimit rlim;
+        getrlimit(RLIMIT_CORE, &rlim);
+        rlim.rlim_cur = 0;
+        setrlimit(RLIMIT_CORE, &rlim);
     }
     test_sentAssertSignal = true;
 }
