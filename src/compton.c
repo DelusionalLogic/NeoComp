@@ -3726,11 +3726,19 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
         );
     }
 
-    swiss_removeComponentWhere(
-        em,
-        COMPONENT_BINDS_TEXTURE,
-        (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
-    );
+    {
+        for_components(it, em,
+                COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END) {
+            struct BindsTextureComponent* b = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
+
+            wd_delete(&b->drawable);
+        }
+        swiss_removeComponentWhere(
+                em,
+                COMPONENT_BINDS_TEXTURE,
+                (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
+                );
+    }
 
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {

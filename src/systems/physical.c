@@ -7,7 +7,7 @@ void physics_move_window(Swiss* em, win_id wid, Vector2* pos, Vector2* size) {
         // @SPEED: We might want to deduplicate before we do this
         struct MoveComponent* move = swiss_getComponent(em, COMPONENT_MOVE, wid);
         move->newPosition = *pos;
-    } else if(!vec2_eq(&physical->position, &pos)) {
+    } else if(!vec2_eq(&physical->position, pos)) {
         // Only add a move if the reconfigure has a new position
         struct MoveComponent* move = swiss_addComponent(em, COMPONENT_MOVE, wid);
         move->newPosition = *pos;
@@ -18,7 +18,7 @@ void physics_move_window(Swiss* em, win_id wid, Vector2* pos, Vector2* size) {
         // @SPEED: We might want to deduplicate before we do this
         struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, wid);
         resize->newSize = *size;
-    } else if(!vec2_eq(&physical->size, &size)) {
+    } else if(!vec2_eq(&physical->size, size)) {
         // Only add a resize if the reconfigure has a size
         struct ResizeComponent* resize = swiss_addComponent(em, COMPONENT_RESIZE, wid);
         resize->newSize = *size;
