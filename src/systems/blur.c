@@ -54,6 +54,15 @@ void blur_init(struct blur* blur) {
 	vector_init(&blur->transparent_behind, sizeof(win_id), 16);
 }
 
+void blursystem_delete(Swiss* em) {
+    for_components(it, em,
+            COMPONENT_BLUR, CQ_END) {
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+        blur_cache_delete(blur);
+    }
+    swiss_resetComponent(em, COMPONENT_BLUR);
+}
+
 void blur_destroy(struct blur* blur) {
     glDeleteVertexArrays(1, &blur->array);
     vector_kill(&blur->to_blur);

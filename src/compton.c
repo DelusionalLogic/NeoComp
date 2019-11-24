@@ -2922,12 +2922,7 @@ void session_destroy(session_t *ps) {
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
   shadowsystem_delete(&ps->win_list);
-  for_components(it, &ps->win_list,
-      COMPONENT_BLUR, CQ_END) {
-      struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, it.id);
-      blur_cache_delete(blur);
-  }
-  swiss_resetComponent(&ps->win_list, COMPONENT_BLUR);
+  blursystem_delete(&ps->win_list);
   for_components(it, &ps->win_list,
       COMPONENT_SHAPED, CQ_END) {
       struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
