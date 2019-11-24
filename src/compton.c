@@ -3415,9 +3415,6 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
 }
 
 static void transition_faded_entities(Swiss* em) {
-    // @INCOMPLETE: For right now we are only transitioning on the main content
-    // fade, and not the bg fade. We have to figure that out somehow.
-
     // Update state when fading complete
     for_components(it, em,
             COMPONENT_STATEFUL, CQ_NOT, COMPONENT_TRANSITIONING, CQ_END) {
