@@ -54,15 +54,6 @@ void blur_init(struct blur* blur) {
 	vector_init(&blur->transparent_behind, sizeof(win_id), 16);
 }
 
-void blursystem_delete(Swiss* em) {
-    for_components(it, em,
-            COMPONENT_BLUR, CQ_END) {
-        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-        blur_cache_delete(blur);
-    }
-    swiss_resetComponent(em, COMPONENT_BLUR);
-}
-
 void blur_destroy(struct blur* blur) {
     glDeleteVertexArrays(1, &blur->array);
     vector_kill(&blur->to_blur);
@@ -72,6 +63,151 @@ void blur_destroy(struct blur* blur) {
 
 	vector_kill(&blur->opaque_behind);
 	vector_kill(&blur->transparent_behind);
+}
+
+void blursystem_delete(Swiss* em) {
+    for_components(it, em,
+            COMPONENT_BLUR, CQ_END) {
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+        blur_cache_delete(blur);
+    }
+    swiss_resetComponent(em, COMPONENT_BLUR);
+}
+
+DECLARE_ZONE(fade_damage_blur);
+
+static void damage_blur_over_fade(Swiss* em) {
+    zone_scope(&ZONE_fade_damage_blur);
+    Vector order;
+    vector_init(&order, sizeof(uint64_t), em->size);
+
+    zone_enter(&ZONE_zsort);
+    for_components(it, em,
+            COMPONENT_MUD, CQ_END) {
+        vector_putBack(&order, &it.id);
+    }
+    vector_qsort(&order, window_zcmp, em);
+    zone_leave(&ZONE_zsort);
+
+    zone_enter(&ZONE_detect_changes);
+    // @HACK @IMPROVEMENT: This should rather be done with a (dynamically
+    // sized) bitfield. We can extract it from the swiss datastructure, which
+    // uses a bunch of bitfields. - Jesper Jensen 06/10-2018
+    bool* changes = calloc(sizeof(bool) * em->capacity, 1);
+    size_t uniqueChanged = 0;
+
+    for_components(it, em, COMPONENT_FADES_OPACITY, CQ_END) {
+        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+        if(!fade_done(&fo->fade)) {
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
+    for_components(it, em, COMPONENT_FADES_BGOPACITY, CQ_END) {
+        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+        if(!fade_done(&fo->fade)) {
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
+    for_components(it, em, COMPONENT_FADES_DIM, CQ_END) {
+        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+        if(!fade_done(&fo->fade)) {
+            uniqueChanged += changes[it.id] ? 0 : 1;
+            changes[it.id] = true;
+        }
+    }
+    zone_leave(&ZONE_detect_changes);
+
+    struct ChangeRecord {
+        size_t order_slot;
+        size_t id;
+    };
+
+    zone_enter(&ZONE_mark_dirty);
+    struct ChangeRecord* order_slots = malloc(sizeof(struct ChangeRecord) * uniqueChanged);
+    {
+        size_t nextSlot = 0;
+        for(size_t i = 0; i < em->capacity; i++) {
+            if(!changes[i])
+                continue;
+
+            order_slots[nextSlot] = (struct ChangeRecord){
+                .order_slot = vector_find_uint64(&order, i),
+                .id = i,
+            };
+            nextSlot++;
+        }
+        assert(nextSlot == uniqueChanged);
+    }
+    free(changes);
+
+    for(size_t i = 0; i < uniqueChanged; i++) {
+        struct ChangeRecord* change = &order_slots[i];
+
+        size_t index = change->order_slot;
+        win_id* other_id = vector_getPrev(&order, &index);
+        while(other_id != NULL) {
+            if(win_overlap(em, change->id, *other_id)) {
+                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            }
+
+            other_id = vector_getPrev(&order, &index);
+        }
+    }
+    free(order_slots);
+    zone_leave(&ZONE_mark_dirty);
+
+    vector_kill(&order);
+}
+
+
+void blursystem_tick(Swiss* em, Vector* order) {
+    damage_blur_over_fade(em);
+
+    // Damage all windows on top of windows that resize
+    for_components(it, em, COMPONENT_RESIZE, CQ_END) {
+        size_t order_slot = vector_find_uint64(order, it.id);
+        assert(order_slot >= 0);
+
+        // @PERFORMANCE: There's a possible performance optimization here, we
+        // don't need to recalculate the blur of windows which aren't affected.
+        // Immediatly that might seem like a simple calculation (windows
+        // collide), but when a window was behind a window before, and it now
+        // not, we also need to handle that, so we need history (particularly
+        // one frame back). For now we just recalculate everything in front of
+        // this window.  Really, how often do you move a window at the bottom
+        // of the stack anyway? - Delusional 16/11-2018
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            other_id = vector_getNext(order, &order_slot);
+        }
+    }
+
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_BLUR, CQ_END) {
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED || stateful->state == STATE_INVISIBLE) {
+            blur_cache_delete(blur);
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_RESIZE, COMPONENT_BLUR, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
+        struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
+
+
+        if(!blur_cache_resize(blur, &resize->newSize)) {
+            printf_errf("Failed resizing window blur");
+            blur_cache_delete(blur);
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+        }
+        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
 }
 
 void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
