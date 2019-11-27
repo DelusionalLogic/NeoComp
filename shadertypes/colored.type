@@ -1,0 +1,10 @@
+#version 1
+
+name colored
+info colored_info
+struct Colored
+
+uniform mvp
+uniform viewport
+uniform opacity 
+uniform color

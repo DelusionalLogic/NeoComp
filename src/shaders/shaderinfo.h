@@ -1,6 +1,6 @@
 #pragma once
 
-#include "include.h"
+#include "shaders/include.h"
 
 void add_shader_type(struct shader_type_info* info);
 

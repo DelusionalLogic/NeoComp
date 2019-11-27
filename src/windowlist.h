@@ -12,4 +12,6 @@ void windowlist_draw(session_t* ps, Vector* order);
 void windowlist_updateStencil(session_t* ps, Vector* paints);
 void windowlist_updateBlur(session_t* ps);
 
+size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle);
+
 void windowlist_drawDebug(Swiss* em, session_t* ps);

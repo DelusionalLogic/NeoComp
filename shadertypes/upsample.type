@@ -1,0 +1,12 @@
+#version 1
+
+name upsample
+info upsample_info
+struct Upsample
+
+uniform mvp
+uniform uvscale
+uniform flip
+uniform pixeluv
+uniform tex_scr
+uniform extent

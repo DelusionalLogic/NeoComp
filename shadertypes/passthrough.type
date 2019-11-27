@@ -1,0 +1,10 @@
+#version 1
+
+name passthough
+info passthough_info
+struct Passthough
+
+uniform mvp
+uniform flip
+uniform opacity
+uniform tex_scr

@@ -11,30 +11,27 @@ ASTDIR ?= $(CFGDIR)/assets
 
 OBJDIR ?= obj
 SRCDIR ?= src
+GENDIR ?= gen
 
 
 LIBS = -lGL -lm -lrt -lJudy
-INCS = -Isrc/
+INCS = -Isrc/ -Igen/
 
 CFG = -std=gnu11 -fms-extensions -flto
 
 PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x11-xcb xcb-composite
+# Text rendering
+PACKAGES += freetype2
 
-MAIN_SOURCE = main.c
-
-SOURCES = compton.c opengl.c vmath.c bezier.c timer.c swiss.c vector.c atoms.c paths.c session.c
-SOURCES += assets/assets.c assets/shader.c assets/face.c
-SOURCES += shaders/shaderinfo.c shaders/include.c
-SOURCES += systems/blur.c systems/shadow.c texture.c renderutil.c textureeffects.c buffer.c systems/shape.c systems/fullscreen.c systems/texture.c systems/xorg.c systems/physical.c
-SOURCES += framebuffer.c renderbuffer.c window.c windowlist.c xorg.c xtexture.c
-SOURCES += profiler/zone.c profiler/render.c profiler/dump_events.c profiler/malloc_profile.c
-SOURCES += debug.c
+SOURCES = $(shell find $(SRCDIR) -name "*.c")
 
 TEST_SOURCES = $(wildcard test/*.c)
 
-# Text rendering
-SOURCES += text.c
-PACKAGES += freetype2
+SHADEGEN_SOURCES = $(wildcard shadegen/*.c)
+SHADERTYPE_SOURCES = $(wildcard shadertypes/*.type)
+
+print-%  : ; @echo $* = $($*)
+
 
 # === Configuration flags ===
 
@@ -78,19 +75,7 @@ ifeq "$(NO_VSYNC_DRM)" ""
   CFG += -DCONFIG_VSYNC_DRM
 endif
 
-# ==== C2 ====
-# Enable window condition support
-ifeq "$(NO_C2)" ""
-  CFG += -DCONFIG_C2
-  SOURCES += c2.c
-endif
-
-# ==== X resource checker ====
-# Enable X resource leakage checking (Pixmap only, presently)
-ifneq "$(ENABLE_XRESCHECK)" ""
-  CFG += -DDEBUG_XRC
-  SOURCES += xrescheck.c
-endif
+CFG += -DCONFIG_C2
 
 # === Version string ===
 COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1 --date=short --pretty=format:%cd)
@@ -115,17 +100,16 @@ INCS += $(shell pkg-config --cflags $(PACKAGES))
 
 CFLAGS += -Wall -Wno-microsoft-anon-tag
 
-MAIN_SOURCE_C = $(MAIN_SOURCE:%.c=$(SRCDIR)/%.c)
-SOURCES_C = $(SOURCES:%.c=$(SRCDIR)/%.c)
-TEST_SOURCES_C = $(TEST_SOURCES)
 
-MAIN_OBJS_C = $(MAIN_SOURCE:%.c=$(OBJDIR)/%.o)
 OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
-TEST_OBJS_C = $(TEST_SOURCES_C:%.c=%.o)
+TEST_OBJS_C = $(TEST_SOURCES:%.c=$(OBJDIR)/%.o)
+SHADEGEN_OBJS_C = $(SHADEGEN_SOURCES:%.c=$(OBJDIR)/%.o)
+# Generated shadertype source
+OBJS_C += $(OBJDIR)/gen/shaders/include.o
 
-MAIN_DEPS_C = $(MAIN_OBJS_C:%.o=%.d)
 DEPS_C = $(OBJS_C:%.o=%.d)
 TEST_DEPS_C = $(TEST_OBJS_C:%.o=%.d)
+SHADEGEN_DEPS_C = $(SHDEGEN_OBJS_C:%.o=%.d)
 
 BINS = neocomp
 MANPAGES = man/neocomp.1
@@ -137,12 +121,12 @@ MANPAGES_HTML = $(addsuffix .html,$(MANPAGES))
 src/.clang_complete: Makefile
 	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
 
-neocomp: $(MAIN_OBJS_C) $(OBJS_C)
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+neocomp: gen/shaders/include.h $(OBJS_C)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(LIBS)
 
--include $(MAIN_DEPS_C) $(DEPS_C)
+-include $(DEPS_C)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
+$(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -MMD -o $@ -c $<
 
@@ -174,19 +158,29 @@ ifneq "$(DOCDIR)" ""
 endif
 
 clean:
-	@rm -f $(OBJS_C) $(DEPS_C) $(MAIN_OBJS_C) $(MAIN_DEPS_C) neocomp $(MANPAGES) $(MANPAGES_HTML) .clang_complete
+	@rm -rf $(OBJDIR) gen/
+	@rm -f $(OBJDIR) neocomp $(MANPAGES) $(MANPAGES_HTML) .clang_complete
 	@rm -f test/test test/test.o
+	@rm -f shadegen/shadegen
 
 version:
 	@echo "$(COMPTON_VERSION)"
 
-test/%.o: test/%.c
-	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -MMD -o $@ -c $<
-
-test/test: $(TEST_OBJS_C) $(OBJS_C)
+test/test: gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test: test/test
 	test/test
 
-.PHONY: uninstall clean docs version
+$(OBJDIR)/shadegen/shadegen: $(SHADEGEN_OBJS_C)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^
+
+gen/shaders/include.h: $(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES)
+	@mkdir -p $(dir $@)
+	$(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES) -o $@
+
+gen/shaders/include.c: $(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES)
+	@mkdir -p $(dir $@)
+	$(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES) -c -o $@
+
+.PHONY: test install uninstall clean docs version

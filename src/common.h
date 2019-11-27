@@ -131,11 +131,6 @@ typedef uint64_t win_id;
 /// Macro used for shortening some debugging code.
 #define CASESTRRET(s)   case s: return #s
 
-// X resource checker
-#ifdef DEBUG_XRC
-#include "xrescheck.h"
-#endif
-
 // === Constants ===
 #if !(COMPOSITE_MAJOR > 0 || COMPOSITE_MINOR >= 2)
 #error libXcomposite version unsupported

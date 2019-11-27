@@ -1,0 +1,11 @@
+#version 1
+
+name bgblit
+info bgblit_info
+struct BgBlit
+
+uniform mvp
+uniform flip
+uniform opacity 
+uniform tex_scr
+uniform win_tex 

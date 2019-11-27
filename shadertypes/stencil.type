@@ -1,0 +1,9 @@
+#version 1
+
+name stencil
+info stencil_info
+struct Stencil
+
+uniform mvp
+uniform flip
+uniform tex_scr

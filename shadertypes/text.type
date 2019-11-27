@@ -1,0 +1,11 @@
+#version 1
+
+name text
+info text_info
+struct Text
+
+uniform mvp
+uniform tex_scr
+uniform flip
+uniform color
+uniform opacity

@@ -26,3 +26,4 @@ compile_commands.json
 man/*.html
 man/*.1
 /compton*.trace
+shadegen/shadegen
