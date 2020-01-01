@@ -1,0 +1,10 @@
+#version 1
+
+name graph
+info graph_info
+struct Graph
+
+uniform mvp
+uniform color
+uniform width
+uniform sampler

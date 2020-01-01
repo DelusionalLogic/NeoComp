@@ -1,0 +1,13 @@
+#version 1
+
+name global
+info global_info
+struct Global
+
+uniform mvp
+uniform tex_scr
+uniform flip
+uniform invert
+uniform dim
+uniform uvscale
+uniform opacity

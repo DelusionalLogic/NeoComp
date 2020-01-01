@@ -2994,11 +2994,6 @@ free_wincondlst(&ps->o.blur_background_blacklist);
   // Flush all events -- Why?
   XSync(ps->dpy, True);
 
-#ifdef DEBUG_XRC
-  // Report about resource leakage
-  xrc_report_xid();
-#endif
-
   // Free timeouts
   timeout_clear(ps);
 

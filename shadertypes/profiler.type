@@ -1,0 +1,9 @@
+#version 1
+
+name profiler
+info profiler_info
+struct Profiler
+
+uniform mvp
+uniform opacity 
+uniform color 

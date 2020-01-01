@@ -1,0 +1,12 @@
+#version 1
+
+name downsample
+info downsample_info
+struct Downsample
+
+uniform mvp
+uniform uvscale
+uniform pixeluv
+uniform flip
+uniform tex_scr
+uniform extent 

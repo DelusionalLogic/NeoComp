@@ -5,6 +5,7 @@
 #include "assets/face.h"
 
 #include "systems/physical.h"
+#include "windowlist.h"
 
 #include <string.h>
 #include <stdio.h>
