@@ -160,39 +160,6 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
         }
 
-        // Shadow
-        // This renders shadows for all windows, transparent or no.
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
-            struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
-            struct shader_program* program = assets_load("passthough.shader");
-            if(program->shader_type_info != &passthough_info) {
-                printf_errf("Shader was not a passthrough shader");
-                return;
-            }
-            struct Passthough* shader_type = program->shader_type;
-
-            shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
-            shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
-            if(opacity != NULL) {
-                shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
-            } else {
-                shader_set_future_uniform_float(shader_type->opacity, 1.0);
-            }
-            shader_use(program);
-
-            texture_bind(&shadow->effect, GL_TEXTURE0);
-
-            {
-                Vector2 rpos = {{glPos.x, glPos.y}};
-                vec2_sub(&rpos, &shadow->border);
-                Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
-                Vector2 rsize = shadow->texture.size;
-
-                draw_rect(face, shader_type->mvp, tdrpos, rsize);
-            }
-        }
-
-
         // Content
         if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
@@ -644,4 +611,57 @@ void windowlist_drawDebug(Swiss* em, session_t* ps) {
     }
     zone_leave(&ZONE_paint_debugProps);
     zone_leave(&ZONE_paint_debug);
+}
+
+void windowlist_drawShadow(session_t* ps) {
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
+
+    struct face* face = assets_load("window.face");
+
+    for_components(it, &ps->win_list,
+            COMPONENT_PHYSICAL, COMPONENT_SHADOW, CQ_END) {
+        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
+        struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
+        struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
+        struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, it.id);
+        Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+
+        struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, it.id);
+
+        struct shader_program* program = assets_load("passthough.shader");
+        if(program->shader_type_info != &passthough_info) {
+            printf_errf("Shader was not a passthrough shader");
+            return;
+        }
+        struct Passthough* shader_type = program->shader_type;
+
+        shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
+        shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+        if(opacity != NULL) {
+            shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
+        } else {
+            shader_set_future_uniform_float(shader_type->opacity, 1.0);
+        }
+        shader_use(program);
+
+        texture_bind(&shadow->effect, GL_TEXTURE0);
+
+        {
+            Vector2 rpos = {{glPos.x, glPos.y}};
+            vec2_sub(&rpos, &shadow->border);
+            Vector3 tdrpos = vec3_from_vec2(&rpos, z->z);
+            Vector2 rsize = shadow->texture.size;
+
+            draw_rect(face, shader_type->mvp, tdrpos, rsize);
+        }
+    }
+
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_DEPTH_TEST);
 }

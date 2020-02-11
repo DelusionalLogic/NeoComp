@@ -67,6 +67,11 @@ int font_load(struct Font* font, char* filename) {
             face->glyph->bitmap.buffer
         );
     }
+
+    if(FT_Done_FreeType(ft)) {
+        printf("Failed destroying freetype\n");
+        return 1;
+    }
     return 0;
 }
 

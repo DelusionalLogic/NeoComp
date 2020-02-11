@@ -59,5 +59,6 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
         vector_init(&shapeDamaged->rects, sizeof(struct Rect), rect_count);
 
         convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &shapeDamaged->rects);
+        XFree(rects);
     }
 }

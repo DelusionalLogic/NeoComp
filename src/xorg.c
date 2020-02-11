@@ -5,6 +5,8 @@
 
 #include "profiler/zone.h"
 
+#include <stdlib.h>
+
 DECLARE_ZONE(select_config);
 
 bool xorgContext_init(struct X11Context* context, Display* display, int screen) {
@@ -205,5 +207,6 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
 
 void xorgContext_delete(struct X11Context* context) {
     assert(context->display != NULL);
+    free(context->configs);
 }
 

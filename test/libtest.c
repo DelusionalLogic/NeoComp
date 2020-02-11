@@ -259,9 +259,6 @@ void test_run(char* name, test_func func) {
 
     int pid = fork();
     if(pid == 0) {
-        close(0);
-        close(1);
-        close(2);
         close(fds[0]);
 
         test_fd = fds[1];
@@ -317,6 +314,7 @@ uint32_t test_end() {
                 success = false;
             }
         } else if(test->outcome == OUTCOME_ASSERT) {
+            return;
             success = test->crashExpected;
         } else {
             success = false;

@@ -118,6 +118,7 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
 
         info->depth = reply->depth;
         info->size = (Vector2){{reply->width, reply->height}};
+        free(reply);
         zone_leave(&ZONE_fetch_properties);
     }
 
@@ -174,6 +175,7 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
             attrib
         );
     }
+    free(formats);
 
     for(size_t i = 0; i < cnt; i++) {
         tex[i]->texture.size = infos[i].size;

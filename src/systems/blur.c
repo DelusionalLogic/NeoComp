@@ -13,7 +13,10 @@
 
 #include <stdio.h>
 
+DECLARE_ZONE(zsort);
 DECLARE_ZONE(update_blur);
+DECLARE_ZONE(detect_changes);
+DECLARE_ZONE(mark_dirty);
 DECLARE_ZONE(fetch_candidates);
 
 // @CUTNPASTE: This has been copied around a bunch. Maybe it needs someplace

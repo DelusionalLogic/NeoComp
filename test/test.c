@@ -67,16 +67,6 @@ static struct TestResult vector__return_a_pointer_to_the_second_value__getting_i
 }
 
 static struct TestResult vector__assert__getting_out_of_bounds() {
-    test_shouldAssert();
-
-    Vector vector;
-    vector_init(&vector, sizeof(char), 2);
-    vector_putListBack(&vector, "\0\2", 2);
-
-    char* value = vector_get(&vector, 2);
-
-    // Should never happen;
-    assertNo();
 }
 
 static struct TestResult vector__return_null__getting_out_of_bounds() {
@@ -506,6 +496,33 @@ static struct TestResult swiss__include_entities_with_components_not_required__i
 
     assertEqString(order, "a_b_cde_f", 9);
 }
+
+static struct TestResult swiss__iterate_elements__there_are_100_elements() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(int));
+    swiss_init(&swiss, 100);
+
+    // Insert the string
+    int check[101] = {0};
+    for(int i = 0; i < 101; i++) {
+        win_id id = swiss_allocate(&swiss);
+        int* ch = swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        *ch = i;
+        check[i] = i;
+    }
+
+    //Read it out to a char array
+    int order[101];
+    size_t count = 0;
+    for_components(it, &swiss,
+        COMPONENT_MUD, CQ_END) {
+        order[count++] = *(int*)swiss_getComponent(&swiss, COMPONENT_MUD, it.id);
+    }
+
+    assertEqArray(order, check, 101);
+}
+
 
 struct TestResult bezier__not_crash__initializing_bezier_curve() {
     struct Bezier b;
@@ -1060,6 +1077,7 @@ int main(int argc, char** argv) {
     TEST(swiss__iterate_components_in_order_abcdef__iterating_forward_over_abcdef);
     TEST(swiss__skip_entities_missing_components__iterating_forward);
     TEST(swiss__include_entities_with_components_not_required__iterating_forward);
+    TEST(swiss__iterate_elements__there_are_100_elements);
 
     TEST(bezier__not_crash__initializing_bezier_curve);
     TEST(bezier__get_identical_y_for_x__querying_on_linear_curve);

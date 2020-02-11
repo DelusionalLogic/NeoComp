@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "logging.h"
+
 #define SWISS_FREELIST_BUCKET_SIZE (64)
 #define SWISS_FREELIST_BUCKET_SIZE_BYTES (64/8)
 
@@ -22,9 +24,11 @@ static void resize_real(Swiss* vector, size_t newSize) {
         void* newMem = NULL;
         // If a component has no size (which is valid) the memory required for
         // the array is 0.
-        if(vector->componentSize[i] != 0) {
-            newMem = realloc(vector->data[i], newSize * vector->componentSize[i]);
+        size_t cSize = vector->componentSize[i];
+        if(cSize != 0) {
+            newMem = realloc(vector->data[i], newSize * cSize);
             assert(newMem != NULL);
+            memset(newMem + (vector->capacity * cSize), 0x00, newSize * cSize);
         }
         vector->data[i] = newMem;
 
@@ -59,11 +63,8 @@ static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, 
         }
         uint64_t* freelist = index->freelist[types[i]];
 
-        uint64_t value = freelist[bucket];
-        if(flip) {
-            value = ~value;
-            flip = false;
-        }
+        uint64_t value = flip ? ~freelist[bucket] : freelist[bucket];
+        flip = false;
 
         finalKey &= value;
     }
@@ -179,10 +180,14 @@ void swiss_init(Swiss* index, size_t initialsize) {
 void swiss_kill(Swiss* index) {
     assert(index->capacity != 0);
 
+    enum ComponentType type[2] = {
+        CQ_END,
+        CQ_END,
+    };
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
         if(index->safemode[i]) {
-            enum ComponentType type = i;
-            assert(findNextUsed(index, &type, 0) == -1);
+            type[0] = i;
+            assert(findNextUsed(index, type, 0) == -1);
         }
     }
 
@@ -362,19 +367,82 @@ void swiss_ensureComponentWhere(Swiss* index, const enum ComponentType type, con
 
 struct SwissIterator swiss_getFirstInit(const Swiss* index, const enum ComponentType* types) {
     struct SwissIterator it;
-    it.types = types;
-    it.id = findNextUsed(index, it.types, 0);
-    it.done = it.id == -1;
+    swiss_getFirst(index, types, &it);
     return it;
 }
 
 void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it) {
     it->types = types;
-    it->id = findNextUsed(index, it->types, 0);
-    it->done = it->id == -1;
+
+    it->id = 0;
+
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    if(numBuckets == 0) {
+        it->id = -1;
+        it->done = true;
+        return;
+    }
+
+    size_t ibucket = 0;
+    it->bucket = makeBucket(index, types, 0);
+
+    while(it->bucket == 0) {
+        ibucket++;
+        if(ibucket >= numBuckets) {
+            it->id = -1;
+            it->done = true;
+            return;
+        }
+
+        it->bucket = makeBucket(index, types, ibucket);
+    }
+
+    size_t ind = findFirstSet(it->bucket);
+    if(ind >= index->capacity) {
+        it->id = -1;
+        it->done = true;
+        return;
+    }
+
+    // Clear the bit we are returning now
+    it->bucket ^= (1ULL) << (63 - ind);
+    it->id = ibucket * SWISS_FREELIST_BUCKET_SIZE + ind;
+    it->done = false;
 }
 
 void swiss_getNext(const Swiss* index, struct SwissIterator* it) {
-    it->id = findNextUsed(index, it->types, it->id + 1);
-    it->done = it->id == -1;
+    if(it->done) {
+        return;
+    }
+
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    if(numBuckets == 0) {
+        it->id = -1;
+        it->done = true;
+        return;
+    }
+
+    size_t ibucket = it->id / SWISS_FREELIST_BUCKET_SIZE;
+
+    while(it->bucket == 0) {
+        ibucket++;
+        if(ibucket >= numBuckets) {
+            it->id = -1;
+            it->done = true;
+            return;
+        }
+
+        it->bucket = makeBucket(index, it->types, ibucket);
+    }
+
+    size_t ind = findFirstSet(it->bucket);
+    if(ind >= index->capacity) {
+        it->id = -1;
+        it->done = true;
+        return;
+    }
+
+    it->bucket ^= (1ULL) << (63 - ind);
+    it->id = ibucket * SWISS_FREELIST_BUCKET_SIZE + ind;
+    it->done = false;
 }

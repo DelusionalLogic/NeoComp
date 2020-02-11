@@ -80,10 +80,7 @@ DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
 DECLARE_ZONE(fetch_prop);
 
-DECLARE_ZONE(zsort);
 DECLARE_ZONE(update_fade);
-DECLARE_ZONE(detect_changes);
-DECLARE_ZONE(mark_dirty);
 
 DECLARE_ZONE(update_textures);
 DECLARE_ZONE(update_single_texture);
@@ -608,7 +605,7 @@ static void paint_root(session_t *ps) {
         get_root_tile(ps);
 
     assert(ps->root_texture.bound);
-    glClearColor(0.0, 0.0, 1.0, 1.0);
+    /* glClearColor(0.0, 0.0, 1.0, 1.0); */
     /* glClear(GL_COLOR_BUFFER_BIT); */
 
     glViewport(0, 0, ps->root_size.x, ps->root_size.y);
@@ -2927,6 +2924,7 @@ void session_destroy(session_t *ps) {
       COMPONENT_SHAPED, CQ_END) {
       struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
       face_unload_file(shaped->face);
+      free(shaped->face);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_SHAPED);
   for_components(it, &ps->win_list,
@@ -3188,6 +3186,8 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         zone_leave(&ZONE_x_communication);
     }
 
+    free(drawables);
+
     // @HACK @CORRECTNESS: If we fail to get a texture for the window (for
     // whatever reason) we currently remove textured component, since it's not
     // really textured. Arguably we shouldn't be allocating the texture before
@@ -3291,8 +3291,10 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
         if(stateful->state == STATE_DESTROYED) {
-            if(shaped->face != NULL)
+            if(shaped->face != NULL) {
                 face_unload_file(shaped->face);
+                free(shaped->face);
+            }
             swiss_removeComponent(em, COMPONENT_SHAPED, it.id);
         }
     }
@@ -3514,8 +3516,10 @@ static void commit_reshape(Swiss* em, struct X11Context* context) {
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
         struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
 
-        if(shaped->face != NULL)
+        if(shaped->face != NULL) {
             face_unload_file(shaped->face);
+            free(shaped->face);
+        }
 
         struct face* face = malloc(sizeof(struct face));
         // Triangulate the rectangles into a triangle vertex stream
@@ -4078,6 +4082,7 @@ void session_run(session_t *ps) {
 
             paint_root(ps);
 
+            windowlist_drawShadow(ps);
             windowlist_drawTransparent(ps, &transparent);
 
 #ifdef DEBUG_WINDOWS

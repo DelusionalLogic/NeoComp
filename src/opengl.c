@@ -55,6 +55,7 @@ static GLXFBConfig get_fbconfig_from_visualinfo(session_t *ps, const XVisualInfo
         && visual_id == visualinfo->visualid)
       return fbconfigs[i];
   }
+  free(fbconfigs);
 
   return NULL;
 }
@@ -268,15 +269,12 @@ glx_destroy(session_t *ps) {
     ps->psglx->fbconfigs[i] = NULL;
   }
 
-  xorgContext_delete(&ps->xcontext);
-
   framebuffer_delete(&ps->psglx->shared_fbo);
 
   // Destroy GLX context
-  if (ps->psglx->context) {
-    glXDestroyContext(ps->dpy, ps->psglx->context);
-    ps->psglx->context = NULL;
-  }
+  glXMakeCurrent(ps->dpy, 0, 0);
+  glXDestroyContext(ps->dpy, ps->psglx->context);
+  ps->psglx->context = NULL;
 
   free(ps->psglx);
   ps->psglx = NULL;

@@ -135,6 +135,7 @@ struct SwissIterator {
     win_id id;
     bool done;
     const enum ComponentType* types;
+    uint64_t bucket;
 };
 struct SwissIterator swiss_getFirstInit(const Swiss* index, const enum ComponentType* types);
 void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct SwissIterator* it);

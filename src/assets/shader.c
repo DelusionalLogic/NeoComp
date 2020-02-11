@@ -369,9 +369,9 @@ struct shader_program* shader_program_load_file(const char* path) {
     shader_program_link(program);
 
     struct shader_type_info* shader_info = get_shader_type_info(shader_type);
+    free(shader_type);
     if(shader_info == NULL) {
         printf("Failed to find shader type info for %s\n", shader_type);
-        free(shader_type);
         glDeleteProgram(program->gl_program);
         free(program);
         return NULL;
@@ -382,7 +382,6 @@ struct shader_program* shader_program_load_file(const char* path) {
     program->shader_type = malloc(shader_info->size);
     if(program->shader_type == NULL) {
         printf("Failed to allocate space for the shader type\n");
-        free(shader_type);
         glDeleteProgram(program->gl_program);
         free(program);
         return NULL;

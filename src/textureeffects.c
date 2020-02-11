@@ -260,6 +260,7 @@ bool textures_blur(Vector* datas, struct Framebuffer* buffer, int stength, bool 
     struct shader_program* downscale_program = assets_load("downscale.shader");
     if(downscale_program->shader_type_info != &downsample_info) {
         printf("shader was not a downsample shader\n");
+        vector_kill(&otherBlurVec);
         return false;
     }
 
@@ -338,6 +339,7 @@ bool textures_blur(Vector* datas, struct Framebuffer* buffer, int stength, bool 
         printf("Shader was not a upsample shader");
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
+        vector_kill(&otherBlurVec);
         return false;
     }
 
@@ -412,6 +414,7 @@ bool textures_blur(Vector* datas, struct Framebuffer* buffer, int stength, bool 
         data = vector_getNext(datas, &index);
     }
 
+    vector_kill(&otherBlurVec);
     view = old_view;
     return true;
 }

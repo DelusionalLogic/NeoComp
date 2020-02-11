@@ -56,4 +56,5 @@ void add_xdg_asset_paths() {
 
     add_xdg_home(&curPath, appPath, appPath_len);
     add_xdg_config_dirs(&curPath, appPath, appPath_len);
+    vector_kill(&curPath);
 }
