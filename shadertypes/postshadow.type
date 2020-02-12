@@ -1,0 +1,10 @@
+#version 1
+
+name postshadow
+info postshadow_info
+struct PostShadow
+
+uniform mvp
+uniform flip
+uniform tex_scr
+uniform noise_scr

@@ -2778,6 +2778,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   add_shader_type(&colored_info);
   add_shader_type(&graph_info);
   add_shader_type(&bgblit_info);
+  add_shader_type(&postshadow_info);
 
   assets_init();
 
