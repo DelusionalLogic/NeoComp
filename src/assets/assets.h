@@ -13,6 +13,8 @@ typedef type_id asset_type;
 typedef void* asset_loader(const char* path);
 typedef void* asset_unloader(const char* path);
 
+void assets_init();
+
 void assets_add_handler_internal(asset_type type, const char* extension,
         asset_loader* loader, asset_unloader* unloader);
 #define assets_add_handler(type, extension, loader, unloader) \
@@ -20,6 +22,7 @@ void assets_add_handler_internal(asset_type type, const char* extension,
             (asset_unloader*)unloader)
 
 void* assets_load(const char* path);
+void assets_hotload();
 
 void assets_add_path(const char* path);
 char* assets_resolve_path(const char* path);
