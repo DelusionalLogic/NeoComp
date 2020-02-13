@@ -67,6 +67,13 @@ static struct TestResult vector__return_a_pointer_to_the_second_value__getting_i
 }
 
 static struct TestResult vector__assert__getting_out_of_bounds() {
+    test_shouldAssert();
+    Vector vector;
+    vector_init(&vector, sizeof(char), 2);
+    vector_putListBack(&vector, "\0\2", 2);
+
+    char* value = vector_get(&vector, 2);
+    assertEq(value, NULL);
 }
 
 static struct TestResult vector__return_null__getting_out_of_bounds() {
@@ -111,7 +118,7 @@ static struct TestResult vector__have_no_data__killed() {
 
     vector_kill(&vector);
 
-    assertEq(vector.data, 0x42424242);
+    assertEq(vector.data, (void*)0x42424242);
 }
 
 static struct TestResult vector__keep_data_linearly__storing() {
@@ -843,7 +850,7 @@ struct TestResult physical_move__change_the_move__previous_move() {
     assertEqArray(&m->newPosition, &v, sizeof(Vector2));
 }
 
-static make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
+static void make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
     for(int i = 0; i < cnt; i++) {
         win_id wid = swiss_allocate(swiss);
         vector_putBack(wids, &wid);

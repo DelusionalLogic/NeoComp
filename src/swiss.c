@@ -28,7 +28,7 @@ static void resize_real(Swiss* vector, size_t newSize) {
         if(cSize != 0) {
             newMem = realloc(vector->data[i], newSize * cSize);
             assert(newMem != NULL);
-            memset(newMem + (vector->capacity * cSize), 0x00, newSize * cSize);
+            memset(newMem + (vector->capacity * cSize), 0x00, (newSize - vector->capacity) * cSize);
         }
         vector->data[i] = newMem;
 

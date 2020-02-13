@@ -314,7 +314,6 @@ uint32_t test_end() {
                 success = false;
             }
         } else if(test->outcome == OUTCOME_ASSERT) {
-            return;
             success = test->crashExpected;
         } else {
             success = false;

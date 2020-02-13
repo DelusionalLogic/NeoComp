@@ -167,7 +167,7 @@ version:
 	@echo "$(COMPTON_VERSION)"
 
 test/test: gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C)) $(LIBS)
 
 test: test/test
 	test/test
