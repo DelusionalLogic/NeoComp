@@ -390,21 +390,7 @@ struct shader_program* shader_program_load_file(const char* path) {
     program->uniforms_num = uniform_cursor;
 
     // Bind the static shadertype members to the shader_value structs
-    for(int i = 0; i < shader_info->member_count; i++) {
-        struct shader_uniform_info* uniform_info = &shader_info->members[i];
-        struct shader_value** field = (struct shader_value**)(program->shader_type + uniform_info->offset);
-        *field = NULL;
-        for(int j = 0; j < uniform_cursor; j++) {
-            if(strcmp(names[j], uniform_info->name) == 0) {
-                *field = &program->uniforms[j];
-                break;
-            }
-        }
-        if(*field == NULL) {
-            printf("Uniform \"%s\" is not defined in shader %s\n", uniform_info->name, path);
-            exit(1);
-        }
-    }
+    shader_info->binder(program->shader_type, program, names);
 
     printf("Uniforms in shader \"%s\"\n", program->shader_type_info->name);
     // Bind the uniforms to the shader program
