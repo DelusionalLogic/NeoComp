@@ -850,7 +850,26 @@ struct TestResult physical_move__change_the_move__previous_move() {
     assertEqArray(&m->newPosition, &v, sizeof(Vector2));
 }
 
-static void make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
+struct TestResult physical_tick__change_size_of_window__window_was_resized() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_setComponentSize(&swiss, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    struct PhysicalComponent* p = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    p->position = (Vector2){{0, 0}};
+    struct ResizeComponent* r = swiss_addComponent(&swiss, COMPONENT_RESIZE, wid);
+    r->newSize = (Vector2){{2, 2}};
+
+    physics_tick(&swiss);
+
+    Vector2 v = (Vector2){{2, 2}};
+    assertEqArray(&p->size, &v, sizeof(Vector2));
+}
+
+static make_z(Swiss* swiss, Vector* wids, double* vals, int cnt) {
     for(int i = 0; i < cnt; i++) {
         win_id wid = swiss_allocate(swiss);
         vector_putBack(wids, &wid);
@@ -1112,6 +1131,8 @@ int main(int argc, char** argv) {
     TEST(physical_move__add_a_move__no_previous_move);
     TEST(physical_move__not_add_a_move__no_previous_move_and_same_position);
     TEST(physical_move__change_the_move__previous_move);
+
+    TEST(physical_tick__change_size_of_window__window_was_resized);
 
     TEST(binaryZSearch__return_first_index_with_value_larger__finding_value_in_the_middle);
     TEST(binaryZSearch__return_an_index_larger_than_size__all_values_are_smaller);
