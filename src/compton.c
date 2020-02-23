@@ -3236,7 +3236,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
 
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
 
         view = old_view;
