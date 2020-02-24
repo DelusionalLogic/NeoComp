@@ -124,18 +124,14 @@ int main(int argc, char **argv) {
         fprintf(out, "#pragma once\n");
         fprintf(out, "#include <stdio.h>\n");
         fprintf(out, "#include \"assets/shader.h\"\n");
-        fprintf(out, "typedef void (*st_ubind)(void* type, struct shader_program* program, char (*names)[64]);\n");
+        fprintf(out, "typedef void* (*st_ubind)(void* type, struct shader_program* program, char (*names)[64]);\n");
         fprintf(out, "struct shader_uniform_info {\n");
         fprintf(out, "    char* name;\n");
-        fprintf(out, "    size_t offset;\n");
         fprintf(out, "};\n");
         fprintf(out, "\n");
         fprintf(out, "struct shader_type_info {\n");
         fprintf(out, "    char* name;\n");
-        fprintf(out, "    size_t size;\n");
-        fprintf(out, "    st_ubind binder;\n");
-        fprintf(out, "    size_t member_count;\n");
-        fprintf(out, "    struct shader_uniform_info members[];\n");
+        fprintf(out, "    st_ubind create;\n");
         fprintf(out, "};\n");
 
         for(int i = 0; i < num_types; i++) {
@@ -153,8 +149,11 @@ int main(int argc, char **argv) {
         fprintf(out, "#include <string.h>\n");
 
         for(int i = 0; i < num_types; i++) {
-            fprintf(out, "void st_%s_ubind(void* vtype, struct shader_program* program, char (*names)[64]) {\n", type[i].name);
-            fprintf(out, "    struct %s* type = (struct %s*)vtype;\n", type[i].struc, type[i].struc);
+            fprintf(out, "void* st_%s_ubind(void* vtype, struct shader_program* program, char (*names)[64]) {\n", type[i].name);
+            fprintf(out, "    struct %s* type = malloc(sizeof(struct %s));\n", type[i].struc, type[i].struc);
+            fprintf(out, "    if(type == NULL) {\n");
+            fprintf(out, "        return NULL;\n");
+            fprintf(out, "    }\n");
             fprintf(out, "    bool found[%d] = {false};\n", type[i].num_uniforms);
             fprintf(out, "    for(int i = 0; i < program->uniforms_num; i++) {\n");
             for(int j = 0; j < type[i].num_uniforms; j++) {
@@ -174,24 +173,14 @@ int main(int argc, char **argv) {
                 fprintf(out, "        exit(1);\n");
                 fprintf(out, "    }\n");
             }
+            fprintf(out, "    return type;\n");
             fprintf(out, "}\n");
         }
 
         for(int i = 0; i < num_types; i++) {
             fprintf(out, "struct shader_type_info %s = {\n", type[i].info);
             fprintf(out, "    .name = \"%s\",\n", type[i].name);
-            fprintf(out, "    .size = sizeof(struct %s),\n", type[i].struc);
-            fprintf(out, "    .binder = &st_%s_ubind,\n", type[i].name);
-            fprintf(out, "    .member_count = %d,\n", type[i].num_uniforms);
-            fprintf(out, "    .members = {\n");
-            for(int j = 0; j < type[i].num_uniforms; j++) {
-                fprintf(out, "        {\"%s\", offsetof(struct %s, %s)},\n",
-                    type[i].uniforms[j],
-                    type[i].struc,
-                    type[i].uniforms[j]
-                );
-            }
-            fprintf(out, "    }\n");
+            fprintf(out, "    .create = &st_%s_ubind,\n", type[i].name);
             fprintf(out, "};\n");
         }
     }
