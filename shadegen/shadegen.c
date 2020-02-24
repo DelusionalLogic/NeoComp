@@ -155,16 +155,21 @@ int main(int argc, char **argv) {
         for(int i = 0; i < num_types; i++) {
             fprintf(out, "void st_%s_ubind(void* vtype, struct shader_program* program, char (*names)[64]) {\n", type[i].name);
             fprintf(out, "    struct %s* type = (struct %s*)vtype;\n", type[i].struc, type[i].struc);
-            fprintf(out, "    bool found;\n");
+            fprintf(out, "    bool found[%d] = {false};\n", type[i].num_uniforms);
+            fprintf(out, "    for(int i = 0; i < program->uniforms_num; i++) {\n");
             for(int j = 0; j < type[i].num_uniforms; j++) {
-                fprintf(out, "    found = false;\n");
-                fprintf(out, "    for(int i = 0; i < program->uniforms_num; i++) {\n");
-                fprintf(out, "        if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
-                fprintf(out, "            type->%s = &program->uniforms[i];\n", type[i].uniforms[j], type[i].uniforms[j]);
-                fprintf(out, "            found = true;\n");
+                if(j == 0) {
+                    fprintf(out, "        if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
+                } else {
+                    fprintf(out, "        else if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
+                }
+                fprintf(out, "            type->%s = &program->uniforms[i];\n", type[i].uniforms[j]);
+                fprintf(out, "            found[%d] = true;\n", j);
                 fprintf(out, "        }\n");
-                fprintf(out, "    }\n");
-                fprintf(out, "    if(!found) {\n");
+            }
+            fprintf(out, "    }\n");
+            for(int j = 0; j < type[i].num_uniforms; j++) {
+                fprintf(out, "    if(!found[%d]) {\n", j);
                 fprintf(out, "        printf(\"Uniform \\\"%s\\\" is not defined in shader\\n\");\n", type[i].uniforms[j]);
                 fprintf(out, "        exit(1);\n");
                 fprintf(out, "    }\n");
