@@ -378,32 +378,15 @@ struct shader_program* shader_program_load_file(const char* path) {
     }
 
     program->shader_type_info = shader_info;
-
-    program->shader_type = malloc(shader_info->size);
-    if(program->shader_type == NULL) {
-        printf("Failed to allocate space for the shader type\n");
-        glDeleteProgram(program->gl_program);
-        free(program);
-        return NULL;
-    }
-
     program->uniforms_num = uniform_cursor;
 
     // Bind the static shadertype members to the shader_value structs
-    for(int i = 0; i < shader_info->member_count; i++) {
-        struct shader_uniform_info* uniform_info = &shader_info->members[i];
-        struct shader_value** field = (struct shader_value**)(program->shader_type + uniform_info->offset);
-        *field = NULL;
-        for(int j = 0; j < uniform_cursor; j++) {
-            if(strcmp(names[j], uniform_info->name) == 0) {
-                *field = &program->uniforms[j];
-                break;
-            }
-        }
-        if(*field == NULL) {
-            printf("Uniform \"%s\" is not defined in shader %s\n", uniform_info->name, path);
-            exit(1);
-        }
+    program->shader_type = shader_info->create(program->shader_type, program, names);
+    if(program->shader_type == NULL) {
+        printf("Failed to create shader type\n");
+        glDeleteProgram(program->gl_program);
+        free(program);
+        return NULL;
     }
 
     printf("Uniforms in shader \"%s\"\n", program->shader_type_info->name);

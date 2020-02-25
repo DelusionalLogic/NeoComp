@@ -123,16 +123,15 @@ int main(int argc, char **argv) {
     if(mode == MODE_H) {
         fprintf(out, "#pragma once\n");
         fprintf(out, "#include <stdio.h>\n");
+        fprintf(out, "#include \"assets/shader.h\"\n");
+        fprintf(out, "typedef void* (*st_ubind)(void* type, struct shader_program* program, char (*names)[64]);\n");
         fprintf(out, "struct shader_uniform_info {\n");
         fprintf(out, "    char* name;\n");
-        fprintf(out, "    size_t offset;\n");
         fprintf(out, "};\n");
         fprintf(out, "\n");
         fprintf(out, "struct shader_type_info {\n");
         fprintf(out, "    char* name;\n");
-        fprintf(out, "    size_t size;\n");
-        fprintf(out, "    size_t member_count;\n");
-        fprintf(out, "    struct shader_uniform_info members[];\n");
+        fprintf(out, "    st_ubind create;\n");
         fprintf(out, "};\n");
 
         for(int i = 0; i < num_types; i++) {
@@ -145,22 +144,43 @@ int main(int argc, char **argv) {
             fprintf(out, "extern struct shader_type_info %s;\n", type[i].info);
         }
     } else if(mode == MODE_C) {
-        fprintf(out, "#include <stddef.h>\n");
         fprintf(out, "#include \"shaders/include.h\"\n");
+        fprintf(out, "#include <stddef.h>\n");
+        fprintf(out, "#include <string.h>\n");
+
+        for(int i = 0; i < num_types; i++) {
+            fprintf(out, "void* st_%s_ubind(void* vtype, struct shader_program* program, char (*names)[64]) {\n", type[i].name);
+            fprintf(out, "    struct %s* type = malloc(sizeof(struct %s));\n", type[i].struc, type[i].struc);
+            fprintf(out, "    if(type == NULL) {\n");
+            fprintf(out, "        return NULL;\n");
+            fprintf(out, "    }\n");
+            fprintf(out, "    bool found[%d] = {false};\n", type[i].num_uniforms);
+            fprintf(out, "    for(int i = 0; i < program->uniforms_num; i++) {\n");
+            for(int j = 0; j < type[i].num_uniforms; j++) {
+                if(j == 0) {
+                    fprintf(out, "        if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
+                } else {
+                    fprintf(out, "        else if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
+                }
+                fprintf(out, "            type->%s = &program->uniforms[i];\n", type[i].uniforms[j]);
+                fprintf(out, "            found[%d] = true;\n", j);
+                fprintf(out, "        }\n");
+            }
+            fprintf(out, "    }\n");
+            for(int j = 0; j < type[i].num_uniforms; j++) {
+                fprintf(out, "    if(!found[%d]) {\n", j);
+                fprintf(out, "        printf(\"Uniform \\\"%s\\\" is not defined in shader\\n\");\n", type[i].uniforms[j]);
+                fprintf(out, "        exit(1);\n");
+                fprintf(out, "    }\n");
+            }
+            fprintf(out, "    return type;\n");
+            fprintf(out, "}\n");
+        }
+
         for(int i = 0; i < num_types; i++) {
             fprintf(out, "struct shader_type_info %s = {\n", type[i].info);
             fprintf(out, "    .name = \"%s\",\n", type[i].name);
-            fprintf(out, "    .size = sizeof(struct %s),\n", type[i].struc);
-            fprintf(out, "    .member_count = %d,\n", type[i].num_uniforms);
-            fprintf(out, "    .members = {\n");
-            for(int j = 0; j < type[i].num_uniforms; j++) {
-                fprintf(out, "        {\"%s\", offsetof(struct %s, %s)},\n",
-                    type[i].uniforms[j],
-                    type[i].struc,
-                    type[i].uniforms[j]
-                );
-            }
-            fprintf(out, "    }\n");
+            fprintf(out, "    .create = &st_%s_ubind,\n", type[i].name);
             fprintf(out, "};\n");
         }
     }
