@@ -25,14 +25,21 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
     Vector2 border = {{SHADOW_RADIUS, SHADOW_RADIUS}};
     cache->border = border;
 
-    if(texture_init(&cache->texture, GL_TEXTURE_2D, NULL) != 0) {
+    if(texture_init_hp(&cache->texture, GL_TEXTURE_2D, NULL) != 0) {
         printf("Couldn't create texture for shadow\n");
         return 1;
     }
 
-    if(texture_init(&cache->effect, GL_TEXTURE_2D, NULL) != 0) {
+    if(texture_init_hp(&cache->effect, GL_TEXTURE_2D, NULL) != 0) {
         printf("Couldn't create effect texture for shadow\n");
         texture_delete(&cache->texture);
+        return 1;
+    }
+
+    if(texture_init_noise(&cache->noise, GL_TEXTURE_2D) != 0) {
+        printf("Couldn't create noiseatexture for shadow\n");
+        texture_delete(&cache->texture);
+        texture_delete(&cache->effect);
         return 1;
     }
 
@@ -40,6 +47,7 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
         printf("Couldn't create renderbuffer stencil for shadow\n");
         texture_delete(&cache->texture);
         texture_delete(&cache->effect);
+        texture_delete(&cache->noise);
         return 1;
     }
     cache->initialized = true;
@@ -285,6 +293,19 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
 
     struct face* face = assets_load("window.face");
 
+    struct shader_program* shader = assets_load("postshadow.shader");
+    if(shader->shader_type_info != &postshadow_info) {
+        printf_errf("Shader was not a passthough shader\n");
+        return;
+    }
+    struct PostShadow* shader_type = shader->shader_type;
+    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+    shader_set_future_uniform_sampler(shader_type->noise_scr, 1);
+
+    shader_use(shader);
+
+
+    old_view = view;
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
         COMPONENT_SHAPED, CQ_END) {
@@ -300,16 +321,20 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
             continue;
         }
 
-        Matrix old_view = view;
         view = mat4_orthogonal(0, shadow->effect.size.x, 0, shadow->effect.size.y, -1, 1);
         glViewport(0, 0, shadow->effect.size.x, shadow->effect.size.y);
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        draw_tex(face, &shadow->texture, &VEC3_ZERO, &shadow->effect.size);
+        shader_set_uniform_bool(shader_type->flip, shadow->texture.flipped);
 
-        view = old_view;
+        texture_bind(&shadow->texture, GL_TEXTURE0);
+        texture_bind(&shadow->noise, GL_TEXTURE1);
+
+        draw_rect(face, shader_type->mvp, VEC3_ZERO, shadow->effect.size);
+
     }
+    view = old_view;
 
     swiss_resetComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED);
 

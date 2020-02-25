@@ -36,6 +36,7 @@
 #include "systems/texture.h"
 #include "systems/physical.h"
 #include "systems/xorg.h"
+#include "systems/opacity.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -2778,6 +2779,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   add_shader_type(&colored_info);
   add_shader_type(&graph_info);
   add_shader_type(&bgblit_info);
+  add_shader_type(&postshadow_info);
 
   assets_init();
 
@@ -3001,50 +3003,6 @@ free_wincondlst(&ps->o.blur_background_blacklist);
     ps_g = NULL;
 }
 
-DECLARE_ZONE(calculate_opacity);
-
-void calculate_window_opacity(session_t* ps, Swiss* em) {
-    zone_scope(&ZONE_calculate_opacity);
-    for_components(it, &ps->win_list,
-        COMPONENT_MUD, COMPONENT_FOCUS_CHANGE, COMPONENT_STATEFUL, CQ_END) {
-        win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        // Try obeying window type opacity
-        if(ps->o.wintype_opacity[w->window_type] != -1.0) {
-            f->newOpacity = ps->o.wintype_opacity[w->window_type];
-            f->newDim = 100.0;
-            continue;
-        }
-
-        if(stateful->state != STATE_INVISIBLE && stateful->state != STATE_HIDING && stateful->state != STATE_DESTROYING) {
-            void* val;
-            if (c2_matchd(ps, w, ps->o.opacity_rules, NULL, &val)) {
-                f->newOpacity = (double)(long)val;
-                f->newDim = 100.0;
-                continue;
-            }
-        }
-
-        f->newOpacity = 100.0;
-        f->newDim = 100.0;
-
-        // Respect inactive_opacity in some cases
-        if (stateful->state == STATE_DEACTIVATING || stateful->state == STATE_INACTIVE) {
-            f->newOpacity = ps->o.inactive_opacity;
-            f->newDim = ps->o.inactive_dim;
-            continue;
-        }
-
-        // Respect active_opacity only when the window is physically focused
-        if (ps->o.active_opacity && ps->active_win == w) {
-            f->newOpacity = ps->o.active_opacity;
-            f->newDim = 100.0;
-        }
-    }
-}
-
 // @CLEANUP: This shouldn't be here
 bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     bool skip_poll = false;
@@ -3053,18 +3011,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     vector_init(&fadeable, sizeof(struct Fading*), 128);
 
     // Collect everything fadeable
-    for_components(it, em,
-        COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        struct Fading* fade = &fo->fade;
-        vector_putBack(&fadeable, &fade);
-    }
-    for_components(it, em,
-        COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        struct Fading* fade = &fo->fade;
-        vector_putBack(&fadeable, &fade);
-    }
+    opacity_collect_fades(em, &fadeable);
     for_components(it, em,
         COMPONENT_FADES_DIM, CQ_END) {
         struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
@@ -3235,7 +3182,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
 
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
 
         view = old_view;
@@ -3249,32 +3196,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     XUngrabServer(xcontext->display);
     glXWaitX();
     zone_leave(&ZONE_x_communication);
-}
-
-static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
-    zone_enter(&ZONE_commit_opacity);
-    for_components(it, em,
-            COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        fade_keyframe(&fadesOpacity->fade, 0, fade_time);
-    }
-    for_components(it, em,
-            COMPONENT_UNMAP, COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-
-        fade_keyframe(&fadesOpacity->fade, 0, bg_fade_time);
-    }
-
-    swiss_removeComponentWhere(em, COMPONENT_TRANSITIONING,
-            (enum ComponentType[]){COMPONENT_UNMAP, CQ_END});
-
-    for_components(it, em,
-            COMPONENT_UNMAP, CQ_END) {
-        struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
-        t->time = 0;
-        t->duration = fmax(fade_time, bg_fade_time);
-    }
-    zone_leave(&ZONE_commit_opacity);
 }
 
 static void finish_destroyed_windows(Swiss* em, session_t* ps) {
@@ -3346,49 +3267,8 @@ DECLARE_ZONE(synchronize_opacity);
 
 static void syncronize_fade_opacity(Swiss* em) {
     zone_scope(&ZONE_synchronize_opacity);
-    for_components(it, em,
-            COMPONENT_FADES_OPACITY, CQ_END) {
-    struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-    if(fo->fade.value < 100.0) {
-            swiss_ensureComponent(em, COMPONENT_OPACITY, it.id);
-        }
-    }
-    for_components(it, em,
-            COMPONENT_OPACITY, COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
 
-        opacity->opacity = fo->fade.value;
-    }
-    for_components(it, em,
-            COMPONENT_OPACITY, CQ_END) {
-        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
-        if(opacity->opacity >= 100.0) {
-            swiss_removeComponent(em, COMPONENT_OPACITY, it.id);
-        }
-    }
-
-    for_components(it, em,
-            COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        if(fo->fade.value < 100.0) {
-            swiss_ensureComponent(em, COMPONENT_BGOPACITY, it.id);
-        }
-    }
-    for_components(it, em,
-            COMPONENT_BGOPACITY, COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
-
-        opacity->opacity = fo->fade.value;
-    }
-    for_components(it, em,
-            COMPONENT_BGOPACITY, CQ_END) {
-        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
-        if(opacity->opacity >= 100.0) {
-            swiss_removeComponent(em, COMPONENT_BGOPACITY, it.id);
-        }
-    }
+    opacity_commit_fades(em);
 
     for_components(it, em,
             COMPONENT_DIM, COMPONENT_FADES_DIM, CQ_END) {
@@ -3464,7 +3344,7 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 }
 
-static void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double dim_fade_time) {
+void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double dim_fade_time) {
     for_components(it, em,
             COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);

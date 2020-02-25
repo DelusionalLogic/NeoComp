@@ -44,7 +44,7 @@ void physics_tick(Swiss* em) {
     }
 
     for_components(it, em,
-            COMPONENT_RESIZE, COMPONENT_PHYSICAL, COMPONENT_MUD, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+            COMPONENT_RESIZE, COMPONENT_PHYSICAL, CQ_END) {
         struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 

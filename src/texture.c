@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-static GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
+static GLuint generate_texture(GLenum tex_tgt, GLint format, const Vector2* size) {
     GLuint tex = 0;
 
     glGenTextures(1, &tex);
@@ -17,14 +17,64 @@ static GLuint generate_texture(GLenum tex_tgt, const Vector2* size) {
     glTexParameteri(tex_tgt, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     if(size != NULL)
-        glTexImage2D(tex_tgt, 0, GL_RGBA8, size->x, size->y, 0, GL_RGBA,
+        glTexImage2D(tex_tgt, 0, format, size->x, size->y, 0, GL_RGBA,
                 GL_UNSIGNED_BYTE, NULL);
 
     return tex;
 }
 
+int texture_init_noise(struct Texture* texture, GLenum target) {
+    static const char pattern[] = {
+         0, 32,  8, 40,  2, 34, 10, 42,   /* 8x8 Bayer ordered dithering  */
+        48, 16, 56, 24, 50, 18, 58, 26,  /* pattern.  Each input pixel   */
+        12, 44,  4, 36, 14, 46,  6, 38,  /* is scaled to the 0..63 range */
+        60, 28, 52, 20, 62, 30, 54, 22,  /* before looking in this table */
+         3, 35, 11, 43,  1, 33,  9, 41,   /* to determine the action.     */
+        51, 19, 59, 27, 49, 17, 57, 25,
+        15, 47,  7, 39, 13, 45,  5, 37,
+        63, 31, 55, 23, 61, 29, 53, 21
+    };
+
+    glGenTextures(1, &texture->gl_texture);
+    if(!texture->gl_texture)
+        return 1;
+    glBindTexture(target, texture->gl_texture);
+    glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(target, 0, GL_RED, 8, 8, 0, GL_RED, GL_UNSIGNED_BYTE,
+            pattern);
+
+    texture->target = target;
+    texture->size = (Vector2){{8, 8}};
+    texture->hasSpace = true;
+
+    return 0;
+}
+
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
-    texture->gl_texture = generate_texture(target, size);
+    texture->gl_texture = generate_texture(target, GL_RGBA8, size);
+    if(texture->gl_texture == 0) {
+        return 1;
+    }
+
+    texture->target = target;
+
+    // If the size was NULL, then we didn't allocate any space in the
+    // generate_texture call
+    if(size != NULL) {
+        texture->size = *size;
+        texture->hasSpace = true;
+    } else {
+        texture->hasSpace = false;
+    }
+
+    return 0;
+}
+
+int texture_init_hp(struct Texture* texture, GLenum target, const Vector2* size) {
+    texture->gl_texture = generate_texture(target, GL_RGBA32F, size);
     if(texture->gl_texture == 0) {
         return 1;
     }
@@ -45,7 +95,7 @@ int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
 
 int texture_init_buffer(struct Texture* texture, const size_t size, struct BufferObject* bo, GLenum format) {
     GLenum target = GL_TEXTURE_BUFFER;
-    texture->gl_texture = generate_texture(target, NULL);
+    texture->gl_texture = generate_texture(target, GL_RGBA8, NULL);
     if(texture->gl_texture == 0) {
         return 1;
     }
@@ -60,7 +110,7 @@ int texture_init_buffer(struct Texture* texture, const size_t size, struct Buffe
 }
 
 int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* size) {
-    texture->gl_texture = generate_texture(target, size);
+    texture->gl_texture = generate_texture(target, GL_RGBA8, size);
     if(texture->gl_texture == 0) {
         return 1;
     }

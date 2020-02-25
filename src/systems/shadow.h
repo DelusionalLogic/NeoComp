@@ -13,6 +13,7 @@ struct glx_shadow_cache {
     bool initialized;
     struct Texture texture;
     struct Texture effect;
+    struct Texture noise;
     struct RenderBuffer stencil;
     Vector2 wSize;
     Vector2 border;

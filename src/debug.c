@@ -297,7 +297,7 @@ static void draw_physical_component(Swiss* em, enum ComponentType ctype) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* p = swiss_getComponent(em, ctype, it.id);
 
-        snprintf(buffer, 128, "    Position: %f+%f", p->position.x, p->position.y);
+        snprintf(buffer, 128, "    Geom: %fx%f %f+%f", p->size.x, p->size.y, p->position.x, p->position.y);
 
         Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
