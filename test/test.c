@@ -1048,6 +1048,147 @@ struct TestResult commit_unmap__not_crash__window_with_destroy_event_has_no_stat
     assertYes();
 }
 
+struct TestResult fullscreen_system__mark_window_fullscreen__window_is_extactly_monitor_size() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
+    w->fullscreen = false;
+    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    physical->position = (Vector2){{0, 0}};
+    physical->size = (Vector2){{100, 100}};
+
+    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
+
+    assertEq(w->fullscreen, true);
+}
+
+struct TestResult fullscreen_system__not_mark_window_fullscreen__window_is_small_on_monitor() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
+    w->fullscreen = false;
+    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    physical->position = (Vector2){{10, 10}};
+    physical->size = (Vector2){{25, 25}};
+
+    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
+
+    assertEq(w->fullscreen, false);
+}
+
+struct TestResult fullscreen_system__not_mark_window_fullscreen__window_is_large_off_monitor() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
+    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_init(&swiss, 1);
+
+    win_id wid = swiss_allocate(&swiss);
+    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
+    w->fullscreen = false;
+    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
+    physical->position = (Vector2){{10, 10}};
+    physical->size = (Vector2){{100, 100}};
+
+    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
+
+    assertEq(w->fullscreen, false);
+}
+
+// This should be in a header instead of 10 different files
+static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
+    for_componentsArr(it, em, query) {
+        vector_putBack(result, &it.id);
+    }
+    vector_qsort(result, window_zcmp, em);
+}
+#define fetchSortedWindowsWith(em, result, ...) \
+    fetchSortedWindowsWithArr(em, result, (CType[]){ __VA_ARGS__ })
+
+struct TestResult fetch_sorted_windows__fetch_2_windows_in_insert_order__increasing_z_order() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+
+    win_id wids[2];
+    struct ZComponent* z;
+
+    wids[0] = swiss_allocate(&swiss);
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[0]);
+    z->z = 1;
+    swiss_addComponent(&swiss, COMPONENT_SHADOW_DAMAGED, wids[0]);
+    wids[1] = swiss_allocate(&swiss);
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[1]);
+    z->z = 2;
+    swiss_addComponent(&swiss, COMPONENT_SHADOW_DAMAGED, wids[1]);
+
+    Vector v;
+    vector_init(&v, sizeof(win_id*), 2);
+    fetchSortedWindowsWith(&swiss, &v, COMPONENT_SHADOW_DAMAGED, CQ_END);
+
+    assertEqArray(vector_detach(&v), wids, 2);
+}
+
+struct TestResult fetch_sorted_windows__exclude_window__one_window_without_component() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+
+    win_id wids[2];
+    struct ZComponent* z;
+
+    wids[0] = swiss_allocate(&swiss);
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[0]);
+    z->z = 1;
+    wids[1] = swiss_allocate(&swiss);
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[1]);
+    z->z = 2;
+    swiss_addComponent(&swiss, COMPONENT_SHADOW_DAMAGED, wids[1]);
+
+    Vector v;
+    vector_init(&v, sizeof(win_id*), 1);
+    fetchSortedWindowsWith(&swiss, &v, COMPONENT_SHADOW_DAMAGED, CQ_END);
+
+    assertEqArray(vector_detach(&v), &wids[1], 1);
+}
+
+struct TestResult fetch_sorted_windows__reorder_windows__windows_have_inverted_z_order() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    swiss_setComponentSize(&swiss, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_init(&swiss, 2);
+
+    win_id wids[2];
+    struct ZComponent* z;
+
+    wids[1] = swiss_allocate(&swiss);
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[1]);
+    z->z = 2;
+    swiss_addComponent(&swiss, COMPONENT_SHADOW_DAMAGED, wids[1]);
+    wids[0] = swiss_allocate(&swiss); // 0 inserted after 1
+    z = swiss_addComponent(&swiss, COMPONENT_Z, wids[0]);
+    z->z = 1;
+    swiss_addComponent(&swiss, COMPONENT_SHADOW_DAMAGED, wids[0]);
+
+    Vector v;
+    vector_init(&v, sizeof(win_id*), 2);
+    fetchSortedWindowsWith(&swiss, &v, COMPONENT_SHADOW_DAMAGED, CQ_END);
+
+    assertEqArray(vector_detach(&v), wids, 2);
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
 
@@ -1145,6 +1286,14 @@ int main(int argc, char** argv) {
     TEST(commit_unmap__not_transision__has_no_destroy_event);
     TEST(commit_unmap__transision_last_window__has_multiple_windows_and_last_has_destroy_event);
     TEST(commit_unmap__not_crash__window_with_destroy_event_has_no_state);
+
+    TEST(fullscreen_system__mark_window_fullscreen__window_is_extactly_monitor_size);
+    TEST(fullscreen_system__not_mark_window_fullscreen__window_is_small_on_monitor);
+    TEST(fullscreen_system__not_mark_window_fullscreen__window_is_large_off_monitor);
+
+    TEST(fetch_sorted_windows__fetch_2_windows_in_insert_order__increasing_z_order);
+    TEST(fetch_sorted_windows__exclude_window__one_window_without_component);
+    TEST(fetch_sorted_windows__reorder_windows__windows_have_inverted_z_order);
 
     return test_end();
 }
