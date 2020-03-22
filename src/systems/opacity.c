@@ -3,6 +3,7 @@
 #include "profiler/zone.h"
 
 DECLARE_ZONE(calculate_opacity);
+DECLARE_ZONE(commit_opacity);
 
 void calculate_window_opacity(session_t* ps, Swiss* em) {
     zone_scope(&ZONE_calculate_opacity);
@@ -17,15 +18,6 @@ void calculate_window_opacity(session_t* ps, Swiss* em) {
             f->newOpacity = ps->o.wintype_opacity[w->window_type];
             f->newDim = 100.0;
             continue;
-        }
-
-        if(stateful->state != STATE_INVISIBLE && stateful->state != STATE_HIDING && stateful->state != STATE_DESTROYING) {
-            void* val;
-            if (c2_matchd(ps, w, ps->o.opacity_rules, NULL, &val)) {
-                f->newOpacity = (double)(long)val;
-                f->newDim = 100.0;
-                continue;
-            }
         }
 
         f->newOpacity = 100.0;

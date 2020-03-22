@@ -2,6 +2,7 @@
 
 #include "logging.h"
 #include "window.h"
+#include "assert.h"
 
 static void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector2* offset, Vector* mrects) {
     // Convert the XRectangles into application specific (and non-scaled) rectangles

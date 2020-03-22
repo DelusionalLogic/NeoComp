@@ -17,8 +17,6 @@
 #include <X11/extensions/Xinerama.h>
 
 typedef long time_ms_t;
-struct _c2l_ptr;
-typedef struct _c2_lptr c2_lptr_t;
 
 typedef void (*f_DebugMessageCallback) (GLDEBUGPROC, void *userParam);
 
@@ -108,8 +106,6 @@ typedef struct _options_t {
   int benchmark;
   /// Window to constantly repaint in benchmark mode. 0 for full-screen.
   Window benchmark_wid;
-  /// A list of conditions of windows not to paint.
-  c2_lptr_t *paint_blacklist;
   /// Whether to show all X errors.
   bool show_all_xerrors;
   /// Whether to avoid acquiring X Selection.
@@ -118,16 +114,12 @@ typedef struct _options_t {
   // === Shadow ===
   /// Enable/disable shadow for specific window types.
   bool wintype_shadow[NUM_WINTYPES];
-  /// Shadow blacklist. A linked list of conditions.
-  c2_lptr_t *shadow_blacklist;
   /// Whether to respect _COMPTON_SHADOW.
   bool respect_prop_shadow;
 
   // === Fading ===
   /// Enable/disable fading for specific window types.
   bool wintype_fade[NUM_WINTYPES];
-  /// Fading blacklist. A linked list of conditions.
-  c2_lptr_t *fade_blacklist;
 
   // === Opacity ===
   /// Default opacity for specific window types
@@ -146,24 +138,18 @@ typedef struct _options_t {
   /// Whether to blur background when the window frame is not opaque.
   /// Implies blur_background.
   bool blur_background_frame;
-  /// Background blur blacklist. A linked list of conditions.
-  c2_lptr_t *blur_background_blacklist;
   /// How much to dim an inactive window. 0.0 - 100.0.
   double inactive_dim;
   double dim_fade_time;
   /// Whether to use fixed inactive dim opacity, instead of deciding
   /// based on window opacity.
   bool inactive_dim_fixed;
-  /// Rules to change window opacity.
-  c2_lptr_t *opacity_rules;
 
   // === Focus related ===
   /// Consider windows of specific types to be always focused.
   bool wintype_focus[NUM_WINTYPES];
   /// Whether to try to detect WM windows and mark them as focused.
   bool mark_wmwin_focused;
-  /// A list of windows always to be considered focused.
-  c2_lptr_t *focus_blacklist;
 
   // === Calculated ===
   /// Whether compton needs to track focus changes.

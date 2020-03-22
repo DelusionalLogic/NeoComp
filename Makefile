@@ -75,8 +75,6 @@ ifeq "$(NO_VSYNC_DRM)" ""
   CFG += -DCONFIG_VSYNC_DRM
 endif
 
-CFG += -DCONFIG_C2
-
 # === Version string ===
 COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1 --date=short --pretty=format:%cd)
 CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""

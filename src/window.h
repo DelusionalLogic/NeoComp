@@ -12,7 +12,6 @@
 #include "xtexture.h"
 #include "session.h"
 #include "renderbuffer.h"
-#include "c2.h"
 #include "wintypes.h"
 
 #include "systems/blur.h"

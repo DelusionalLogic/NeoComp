@@ -63,13 +63,8 @@ DECLARE_ZONE(one_event);
 DECLARE_ZONE(update);
 DECLARE_ZONE(update_z);
 DECLARE_ZONE(update_wintype);
-DECLARE_ZONE(update_shadow_blacklist);
-DECLARE_ZONE(update_fade_blacklist);
 DECLARE_ZONE(update_invert_list);
-DECLARE_ZONE(update_blur_blacklist);
-DECLARE_ZONE(update_paint_blacklist);
 DECLARE_ZONE(input_react);
-DECLARE_ZONE(commit_opacity);
 DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
@@ -111,13 +106,6 @@ static void wintype_arr_enable(bool arr[]) {
     for (i = 0; i < NUM_WINTYPES; ++i) {
         arr[i] = true;
     }
-}
-
-static void free_wincondlst(c2_lptr_t **pcondlst) {
-#ifdef CONFIG_C2
-    while ((*pcondlst = c2_free_lptr(*pcondlst)))
-        continue;
-#endif
 }
 
 static time_ms_t get_time_ms(void) {
@@ -203,14 +191,6 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-static bool win_match(session_t *ps, win *w, c2_lptr_t *condlst) {
-#ifdef CONFIG_C2
-    return c2_match(ps, w, condlst, NULL);
-#else
-    return false;
-#endif
-}
-
 /**
  * Find out the WM frame of a client window using existing data.
  *
@@ -232,8 +212,6 @@ static win_id find_toplevel(session_t *ps, Window id) {
 
     return -1;
 }
-
-static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern);
 
 static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 
@@ -460,23 +438,6 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
     w->face = face;
 }
 */
-
-/**
- * Add a pattern to a condition linked list.
- */
-static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern) {
-    if (!pattern)
-        return false;
-
-#ifdef CONFIG_C2
-    if (!c2_parse(ps, pcondlst, pattern))
-        exit(1);
-#else
-    printf_errfq(1, "(): Condition support not compiled in.");
-#endif
-
-    return true;
-}
 
 /**
  * Determine the event mask for a window.
@@ -1903,42 +1864,6 @@ parse_geometry_end:
 }
 
 /**
- * Parse a list of opacity rules.
- */
-static bool
-parse_rule_opacity(session_t *ps, const char *src) {
-#ifdef CONFIG_C2
-  // Find opacity value
-  char *endptr = NULL;
-  long val = strtol(src, &endptr, 0);
-  if (!endptr || endptr == src) {
-    printf_errf("(\"%s\"): No opacity specified?", src);
-    return false;
-  }
-  if (val > 100 || val < 0) {
-    printf_errf("(\"%s\"): Opacity %ld invalid.", src, val);
-    return false;
-  }
-
-  // Skip over spaces
-  while (*endptr && isspace(*endptr))
-    ++endptr;
-  if (':' != *endptr) {
-    printf_errf("(\"%s\"): Opacity terminator not found.", src);
-    return false;
-  }
-  ++endptr;
-
-  // Parse pattern
-  // I hope 1-100 is acceptable for (void *)
-  return c2_parsed(ps, &ps->o.opacity_rules, endptr, (void *) val);
-#else
-  printf_errf("(\"%s\"): Condition support not compiled in.", src);
-  return false;
-#endif
-}
-
-/**
  * Process arguments and configuration files.
  */
 static void
@@ -2102,19 +2027,11 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         ps->o.inactive_dim = atof(optarg);
         break;
       P_CASEBOOL(262, mark_wmwin_focused);
-      case 263:
-        // --shadow-exclude
-        condlst_add(ps, &ps->o.shadow_blacklist, optarg);
-        break;
       case 264:
         // --inactive-dim
         ps->o.dim_fade_time = atof(optarg);
         break;
       P_CASEBOOL(277, respect_prop_shadow);
-      case 279:
-        // --focus-exclude
-        condlst_add(ps, &ps->o.focus_blacklist, optarg);
-        break;
       P_CASEBOOL(283, blur_background);
       case 287:
         // --logpath
@@ -2125,24 +2042,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --benchmark-wid
         ps->o.benchmark_wid = strtol(optarg, NULL, 0);
         break;
-      case 296:
-        // --blur-background-exclude
-        condlst_add(ps, &ps->o.blur_background_blacklist, optarg);
-        break;
-      case 300:
-        // --fade-exclude
-        condlst_add(ps, &ps->o.fade_blacklist, optarg);
-        break;
       P_CASELONG(301, blur_level);
-      case 304:
-        // --opacity-rule
-        if (!parse_rule_opacity(ps, optarg))
-          exit(1);
-        break;
-      case 306:
-        // --paint-exclude
-        condlst_add(ps, &ps->o.paint_blacklist, optarg);
-        break;
       P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
       default:
@@ -2614,11 +2514,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .logpath = NULL,
 
       .wintype_shadow = { false },
-      .shadow_blacklist = NULL,
       .respect_prop_shadow = false,
 
       .wintype_fade = { false },
-      .fade_blacklist = NULL,
 
       .wintype_opacity = { -1.0 },
       .inactive_opacity = 100.0,
@@ -2627,14 +2525,11 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .bg_opacity_fade_time = 1000.0,
 
       .blur_background = false,
-      .blur_background_blacklist = NULL,
       .inactive_dim = 100.0,
       .inactive_dim_fixed = false,
       .dim_fade_time = 1000.0,
-      .opacity_rules = NULL,
 
       .wintype_focus = { false },
-      .focus_blacklist = NULL,
 
       .track_focus = false,
       .track_wdata = true,
@@ -2937,16 +2832,6 @@ void session_destroy(session_t *ps) {
       vector_kill(&damaged->rects);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
-
-#ifdef CONFIG_C2
-  // Free blacklists
-  free_wincondlst(&ps->o.shadow_blacklist);
-  free_wincondlst(&ps->o.fade_blacklist);
-free_wincondlst(&ps->o.focus_blacklist);
-free_wincondlst(&ps->o.blur_background_blacklist);
-  free_wincondlst(&ps->o.opacity_rules);
-  free_wincondlst(&ps->o.paint_blacklist);
-#endif
 
   // Free tracked atom list
   atoms_kill(&ps->atoms);
@@ -3303,8 +3188,6 @@ static void update_focused_state(Swiss* em, session_t* ps) {
         } else if(ps->o.mark_wmwin_focused && w->wmwin) {
             newState = STATE_ACTIVATING;
         } else if(ps->active_win == w) {
-            newState = STATE_ACTIVATING;
-        } else if(win_mapped(em, it.id) && win_match(ps, w, ps->o.focus_blacklist)) {
             newState = STATE_ACTIVATING;
         }
 
@@ -3751,92 +3634,6 @@ void session_run(session_t *ps) {
             w->window_type = wintypeChanged->newType;
         }
         zone_leave(&ZONE_update_wintype);
-
-
-        if (ps->o.shadow_blacklist) {
-            zone_enter(&ZONE_update_shadow_blacklist);
-            for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if (win_mapped(em, it.id)) {
-                    w->shadow = (ps->o.wintype_shadow[w->window_type]
-                            && !win_match(ps, w, ps->o.shadow_blacklist)
-                            && !(ps->o.respect_prop_shadow));
-                }
-            }
-            zone_leave(&ZONE_update_shadow_blacklist);
-        }
-
-        if (ps->o.fade_blacklist) {
-            zone_enter(&ZONE_update_fade_blacklist);
-            for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
-                if(win_mapped(em, it.id)) {
-                    // Ignore other possible causes of fading state changes after window
-                    // gets unmapped
-                    if (win_match(ps, w, ps->o.fade_blacklist)) {
-                        w->fade = false;
-                    } else {
-                        w->fade = ps->o.wintype_fade[w->window_type];
-                    }
-                }
-            }
-            zone_leave(&ZONE_update_fade_blacklist);
-        }
-
-        if (ps->o.blur_background_blacklist) {
-            zone_enter(&ZONE_update_blur_blacklist);
-            for_components(it, em,
-                    COMPONENT_MUD, COMPONENT_BLUR, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
-                if(win_mapped(em, it.id)) {
-                    bool blur_background_new = ps->o.blur_background
-                        && !win_match(ps, w, ps->o.blur_background_blacklist);
-                    if(!blur_background_new) {
-                        blur_cache_delete(blur);
-                        swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-                    }
-                }
-            }
-
-            for_components(it, em,
-                    COMPONENT_MUD, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_BLUR, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                struct PhysicalComponent* phys = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-                if(win_mapped(em, it.id)) {
-                    bool blur_background_new = ps->o.blur_background
-                        && !win_match(ps, w, ps->o.blur_background_blacklist);
-                    if(blur_background_new) {
-                        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
-                        if(blur_cache_init(blur) != 0) {
-                            printf_errf("Failed initializing window blur");
-                            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-                        }
-                        if(!blur_cache_resize(blur, &phys->size)) {
-                            printf_errf("Failed resizing window blur");
-                            blur_cache_delete(blur);
-                            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-                        }
-                    }
-                }
-            }
-            zone_leave(&ZONE_update_blur_blacklist);
-        }
-
-        if (ps->o.paint_blacklist) {
-            zone_enter(&ZONE_update_paint_blacklist);
-            for_components(it, em,
-                    COMPONENT_MUD, CQ_END) {
-                struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                if(win_mapped(em, it.id)) {
-                    w->paint_excluded = win_match(ps, w, ps->o.paint_blacklist);
-                }
-            }
-            zone_leave(&ZONE_update_paint_blacklist);
-        }
 
         zone_enter(&ZONE_input_react);
         commit_destroy(&ps->win_list);

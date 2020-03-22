@@ -1,7 +1,6 @@
 #include "session.h"
 
 #include "common.h"
-#include "c2.h"
 
 #include <libconfig.h>
 
@@ -110,65 +109,12 @@ void usage(int ret) {
   exit(ret);
 }
 
-/**
- * Add a pattern to a condition linked list.
- */
-static bool condlst_add(session_t *ps, c2_lptr_t **pcondlst, const char *pattern) {
-    if (!pattern)
-        return false;
-
-#ifdef CONFIG_C2
-    if (!c2_parse(ps, pcondlst, pattern))
-        exit(1);
-#else
-    printf_errfq(1, "(): Condition support not compiled in.");
-#endif
-
-    return true;
-}
-
 static void wintype_arr_enable(bool arr[]) {
     wintype_t i;
 
     for (i = 0; i < NUM_WINTYPES; ++i) {
         arr[i] = true;
     }
-}
-
-/**
- * Parse a list of opacity rules.
- */
-static bool
-parse_rule_opacity(session_t *ps, const char *src) {
-#ifdef CONFIG_C2
-    // Find opacity value
-    char *endptr = NULL;
-    long val = strtol(src, &endptr, 0);
-    if (!endptr || endptr == src) {
-        printf_errf("(\"%s\"): No opacity specified?", src);
-        return false;
-    }
-    if (val > 100 || val < 0) {
-        printf_errf("(\"%s\"): Opacity %ld invalid.", src, val);
-        return false;
-    }
-
-    // Skip over spaces
-    while (*endptr && isspace(*endptr))
-        ++endptr;
-    if (':' != *endptr) {
-        printf_errf("(\"%s\"): Opacity terminator not found.", src);
-        return false;
-    }
-    ++endptr;
-
-    // Parse pattern
-    // I hope 1-100 is acceptable for (void *)
-    return c2_parsed(ps, &ps->o.opacity_rules, endptr, (void *) val);
-#else
-    printf_errf("(\"%s\"): Condition support not compiled in.", src);
-    return false;
-#endif
 }
 
 #ifdef CONFIG_LIBCONFIG
@@ -253,48 +199,6 @@ open_config_file(char *cpath, char **ppath) {
   }
 
   return NULL;
-}
-
-/**
- * Parse a condition list in configuration file.
- */
-static void
-parse_cfg_condlst(session_t *ps, const config_t *pcfg, c2_lptr_t **pcondlst,
-    const char *name) {
-  config_setting_t *setting = config_lookup(pcfg, name);
-  if (setting) {
-    // Parse an array of options
-    if (config_setting_is_array(setting)) {
-      int i = config_setting_length(setting);
-      while (i--)
-        condlst_add(ps, pcondlst, config_setting_get_string_elem(setting, i));
-    }
-    // Treat it as a single pattern if it's a string
-    else if (CONFIG_TYPE_STRING == config_setting_type(setting)) {
-      condlst_add(ps, pcondlst, config_setting_get_string(setting));
-    }
-  }
-}
-
-/**
- * Parse an opacity rule list in configuration file.
- */
-static void
-parse_cfg_condlst_opct(session_t *ps, const config_t *pcfg, const char *name) {
-  config_setting_t *setting = config_lookup(pcfg, name);
-  if (setting) {
-    // Parse an array of options
-    if (config_setting_is_array(setting)) {
-      int i = config_setting_length(setting);
-      while (i--)
-        if (!parse_rule_opacity(ps, config_setting_get_string_elem(setting, i)))
-          exit(1);
-    }
-    // Treat it as a single pattern if it's a string
-    else if (CONFIG_TYPE_STRING == config_setting_type(setting)) {
-      parse_rule_opacity(ps, config_setting_get_string(setting));
-    }
-  }
 }
 
 static void lcfg_lookup_bool(const config_t *config, const char *path, bool *value) {
@@ -399,16 +303,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
         ps->o.dim_fade_time = dval;
     // --mark-wmwin-focused
     lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
-    // --shadow-exclude
-    parse_cfg_condlst(ps, &cfg, &ps->o.shadow_blacklist, "shadow-exclude");
-    // --fade-exclude
-    parse_cfg_condlst(ps, &cfg, &ps->o.fade_blacklist, "fade-exclude");
-    // --focus-exclude
-    parse_cfg_condlst(ps, &cfg, &ps->o.focus_blacklist, "focus-exclude");
-    // --blur-background-exclude
-    parse_cfg_condlst(ps, &cfg, &ps->o.blur_background_blacklist, "blur-background-exclude");
-    // --opacity-rule
-    parse_cfg_condlst_opct(ps, &cfg, "opacity-rule");
     // --blur-background
     lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
     // --blur-level
