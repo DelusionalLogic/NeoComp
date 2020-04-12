@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vmath.h"
+
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
 
@@ -15,6 +17,10 @@
 #include <X11/extensions/Xdbe.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/sync.h>
+
+#include <Judy.h>
+
+#define XORG_EVENTBUF_MAX 2
 
 struct _session_t;
 
@@ -47,17 +53,62 @@ struct X11Capabilities {
     enum XExtensionVersion version[PROTO_COUNT];
 };
 
+enum EventType {
+    ET_NONE,
+    ET_ADD,
+    ET_DESTROY,
+    ET_CLIENT,
+    ET_RAW,
+};
+
+struct AddWin {
+    Window xid;
+    Damage xdamage;
+    float border_size;
+    Vector2 pos;
+    Vector2 size;
+    bool mapped;
+    bool override_redirect;
+};
+
+struct DestroyWin {
+    Window xid;
+};
+
+struct GetsClient {
+    Window xid;
+    Window client_xid;
+};
+
+struct Event {
+    enum EventType type;
+    union {
+        struct AddWin add;
+        struct DestroyWin des;
+        struct GetsClient cli;
+        XEvent raw;
+    };
+};
+
 struct X11Context {
     Display* display;
     int screen;
+    Window root;
+
+    struct X11Capabilities capabilities;
 
     GLXFBConfig* configs;
     int numConfigs;
+
+    void* active;
+    struct Event buffer[XORG_EVENTBUF_MAX] ;
+    size_t readCursor;
+    size_t writeCursor;
 };
 
 bool xorgContext_init(struct X11Context* context, Display* display, int screen);
 
-int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* context);
+// @CLEANUP: Take the context instead of the capabilities
 int xorgContext_ensure_capabilities(const struct X11Capabilities* caps);
 int xorgContext_convertEvent(const struct X11Capabilities* caps, enum X11Protocol proto, int ev);
 int xorgContext_convertError(const struct X11Capabilities* caps, enum X11Protocol proto, int ev);
@@ -70,3 +121,5 @@ void xorgContext_delete(struct X11Context* context);
 
 /* Others */
 void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEvent *ev);
+
+void xorg_nextEvent(struct X11Context* xcontext, struct Event* event);

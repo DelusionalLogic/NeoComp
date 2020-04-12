@@ -6,24 +6,9 @@
 #include "profiler/zone.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 DECLARE_ZONE(select_config);
-
-bool xorgContext_init(struct X11Context* context, Display* display, int screen) {
-    assert(context != NULL);
-    assert(display != NULL);
-
-    context->display = display;
-    context->screen = screen;
-
-    context->configs = glXGetFBConfigs(display, screen, &context->numConfigs);
-    if(context->configs == NULL) {
-        printf_errf("Failed retrieving the fboconfigs");
-        return false;
-    }
-
-    return true;
-}
 
 const char* X11Protocols_Names[] = {
     COMPOSITE_NAME,
@@ -44,7 +29,8 @@ const char* VERSION_NAMES[] = {
     "0.2+",
 };
 
-int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* context) {
+// @CLEANUP Reduce to one argument. No reason to take in the caps separately
+static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* context) {
     // Fetch if the extension is available
     for(size_t i = 0; i < PROTO_COUNT; i++) {
         if(!XQueryExtension(context->display, X11Protocols_Names[i],
@@ -117,6 +103,29 @@ int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* co
     }
 
     return 0;
+}
+
+
+bool xorgContext_init(struct X11Context* context, Display* display, int screen) {
+    assert(context != NULL);
+    assert(display != NULL);
+
+    context->display = display;
+    context->screen = screen;
+    context->root = RootWindow(display, screen);
+
+    context->configs = glXGetFBConfigs(display, screen, &context->numConfigs);
+    if(context->configs == NULL) {
+        printf_errf("Failed retrieving the fboconfigs");
+        return false;
+    }
+
+    xorgContext_capabilities(&context->capabilities, context);
+
+    context->active = NULL;
+    context->readCursor = 0;
+    context->writeCursor = 0;
+    return true;
 }
 
 int xorgContext_ensure_capabilities(const struct X11Capabilities* caps) {
@@ -210,3 +219,145 @@ void xorgContext_delete(struct X11Context* context) {
     free(context->configs);
 }
 
+static void pushEvent(struct X11Context* xctx, const struct Event event) {
+    assert(xctx->writeCursor < XORG_EVENTBUF_MAX);
+    if(xctx->writeCursor >= XORG_EVENTBUF_MAX) {
+        printf_errf("Too many events buffered");
+    }
+    xctx->buffer[xctx->writeCursor++] = event;
+}
+
+static void createAddWin(struct X11Context* xctx, Window xid) {
+    struct Event event;
+    // Default to no event.
+    event.type = ET_NONE;
+    event.add.xid = xid;
+    XWindowAttributes attribs;
+
+    if (!XGetWindowAttributes(xctx->display, xid, &attribs) || IsUnviewable == attribs.map_state) {
+        // Failed to get window attributes probably means the window is gone
+        // already. IsUnviewable means the window is already reparented
+        // elsewhere.
+        return;
+    }
+
+    // Only InputOutput windows have anything to composite (InputOnly doesn't
+    // render anything). Since an InputOnly can't have InputOutput children we
+    // can just completely disregard that window class
+    if (InputOutput != attribs.class) {
+        return;
+    }
+
+    event.add.xdamage = XDamageCreate(xctx->display, event.add.xid, XDamageReportNonEmpty);
+
+    event.add.mapped = attribs.map_state == IsViewable;
+    event.add.pos = (Vector2){{attribs.x, attribs.y}};
+    event.add.size = (Vector2){{
+      attribs.width + attribs.border_width * 2,
+      attribs.height + attribs.border_width * 2,
+    }};
+    event.add.border_size = attribs.border_width;
+
+    if (xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
+        // Subscribe to events when the window shape changes
+        XShapeSelectInput(xctx->display, xid, ShapeNotifyMask);
+    }
+
+    Word_t rc;
+    J1S(rc, xctx->active, xid);
+    if(rc == 0) {
+        printf_dbg("Window was already active");
+    }
+
+    event.type = ET_ADD;
+    pushEvent(xctx, event);
+}
+
+static void createDestroyWin(struct X11Context* xctx, Window xid) {
+    struct Event event;
+    // Default to no event.
+    event.type = ET_NONE;
+    event.des.xid = xid;
+
+    Word_t rc;
+    J1U(rc, xctx->active, xid);
+    if(rc == 0) {
+        // The window wasn't active, so we swallow the destroy
+        return;
+    }
+
+    event.type = ET_DESTROY;
+    pushEvent(xctx, event);
+}
+
+static void createGetsClient(struct X11Context* xctx, Window xid, Window client_xid) {
+    // @CLEANUP @HACK: We are still emitting a raw event for
+    // reparenting. Ideally, the compositor shouldn't even have to
+    // care about this parent nonsense. 
+    struct Event event;
+    event.type = ET_NONE;
+    // Default to no event.
+    event.cli.xid = xid;
+    event.cli.client_xid = client_xid;
+
+    Word_t rc;
+    J1T(rc, xctx->active, xid);
+    if(rc == 0) {
+        // The window wasn't active, so we swallow the destroy
+        return;
+    }
+
+    event.type = ET_CLIENT;
+    pushEvent(xctx, event);
+}
+
+static void fillBuffer(struct X11Context* xctx) {
+    XEvent raw = {};
+    XNextEvent(xctx->display, &raw);
+
+    switch (raw.type) {
+        case CreateNotify: {
+            XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
+            createAddWin(xctx, ev->window);
+            break;
+        }
+        case DestroyNotify: {
+            XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
+            createDestroyWin(xctx, ev->window);
+            break;
+        }
+        case ReparentNotify: {
+            XReparentEvent* ev = (XReparentEvent *)&raw;
+            // Since we only composite top level windows, reparenting to the
+            // root looks like an new window to us.
+            if (ev->parent == xctx->root) {
+                createAddWin(xctx, ev->window);
+            } else {
+                createDestroyWin(xctx, ev->window);
+                createGetsClient(xctx, ev->parent, ev->window);
+            }
+            break;
+        }
+        default: {
+            struct Event event;
+            event.type = ET_RAW;
+            memcpy(&event.raw, &raw, sizeof(XEvent));
+            pushEvent(xctx, event);
+        }
+    }
+}
+
+void xorg_nextEvent(struct X11Context* xctx, struct Event* event) {
+    if(xctx->readCursor >= xctx->writeCursor) {
+        xctx->readCursor = 0;
+        xctx->writeCursor = 0;
+        fillBuffer(xctx);
+    }
+
+    if(xctx->readCursor >= xctx->writeCursor) {
+        event->type = ET_NONE;
+        return;
+    }
+
+    *event = xctx->buffer[xctx->readCursor++];
+}

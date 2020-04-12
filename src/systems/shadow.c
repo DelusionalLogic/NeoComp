@@ -157,6 +157,7 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
 
     glDisable(GL_BLEND);
 
+    glStencilMask(0xFF);
     glClearColor(0.0, 0.0, 0.0, 0.0);
     glClearStencil(0);
 
@@ -173,7 +174,6 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
         framebuffer_rebind(&framebuffer);
 
         glViewport(0, 0, shadow->texture.size.x, shadow->texture.size.y);
-        glClearStencil(0);
 
         glClear(GL_STENCIL_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     }
@@ -222,7 +222,6 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
     }
 
     glEnable(GL_STENCIL_TEST);
-    glStencilMask(0xFF);
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);

@@ -124,7 +124,7 @@ static struct timeval ms_to_tv(int timeout) {
 }
 
 static bool isdamagenotify(session_t *ps, const XEvent *ev) {
-    return xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify;
+    return xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify;
 }
 
 static XTextProperty * make_text_prop(session_t *ps, char *str) {
@@ -772,7 +772,7 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   /* win_on_factor_change(ps, w); */
 }
 
-static bool add_win(session_t *ps, Window id) {
+static bool add_win(session_t *ps, struct AddWin* ev) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
@@ -786,14 +786,14 @@ static bool add_win(session_t *ps, Window id) {
     .class_general = NULL,
     .role = NULL,
 
-    .fade = false,
-    .shadow = false,
-    .dim = false,
+    .fade = true,
+    .shadow = true,
+    .dim = true,
     .invert_color = false,
   };
 
   // We don't add the overlay window
-  if (id == ps->overlay) {
+  if (ev->xid == ps->overlay) {
     return false;
   }
 
@@ -802,81 +802,60 @@ static bool add_win(session_t *ps, Window id) {
   win* new = swiss_addComponent(&ps->win_list, COMPONENT_MUD, slot);
 
   if (!new) {
-    printf_errf("(%#010lx): Failed to allocate memory for the new window.", id);
+    printf_errf("(%#010lx): Failed to allocate memory for the new window.", ev->xid);
     return false;
   }
 
-  XWindowAttributes attribs;
+  {
+      swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, slot);
+      struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, slot);
+      map->position = ev->pos;
+      map->size = ev->size;
 
-  // Fill structure
-  if (!XGetWindowAttributes(ps->dpy, id, &attribs) || IsUnviewable == attribs.map_state) {
-      // Failed to get window attributes probably means the window is gone
-      // already. IsUnviewable means the window is already reparented
-      // elsewhere.
-      swiss_remove(&ps->win_list, slot);
-    return false;
+      // Remove pending unmaps
+      if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, slot)) {
+          swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, slot);
+      }
   }
 
   {
       struct StatefulComponent* stateful = swiss_addComponent(&ps->win_list, COMPONENT_STATEFUL, slot);
       stateful->state = STATE_INVISIBLE;
   }
-
   {
       struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_OPACITY, slot);
       fade_init(&fo->fade, 0.0);
   }
-
   {
       struct FadesOpacityComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_BGOPACITY, slot);
       fade_init(&fo->fade, 0.0);
   }
-
   {
       struct FadesDimComponent* fo = swiss_addComponent(&ps->win_list, COMPONENT_FADES_DIM, slot);
       fade_init(&fo->fade, 0.0);
       swiss_addComponent(&ps->win_list, COMPONENT_DIM, slot);
   }
-
   {
       struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
-      window->id = id;
+      window->id = ev->xid;
   }
-
   {
       struct ShapedComponent* shaped = swiss_addComponent(&ps->win_list, COMPONENT_SHAPED, slot);
       shaped->face = NULL;
   }
   swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
-
   swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
 
-#ifdef DEBUG_EVENTS
-  printf_dbgf("(%#010lx): %p\n", id, new);
-#endif
+  new->border_size = ev->border_size;
+  new->override_redirect = ev->override_redirect;
 
-  new->border_size = attribs.border_width;
-  new->override_redirect = attribs.override_redirect;
-
-  // Notify compton when the shape of a window changes
-  if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
-      // It will stop when the window is destroyed
-      XShapeSelectInput(ps->dpy, id, ShapeNotifyMask);
-  }
-
-  if (InputOutput == attribs.class) {
-      // Create Damage for window
-      new->damage = XDamageCreate(ps->dpy, id, XDamageReportNonEmpty);
-  }
+  new->damage = ev->xdamage;
 
   struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
-  physical->position = (Vector2){{attribs.x, attribs.y}};
-  physical->size = (Vector2){{
-      attribs.width + new->border_size * 2,
-      attribs.height + new->border_size * 2,
-  }};
+  physical->position = ev->pos;
+  physical->size = ev->size;
 
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
   z->z = 0;
@@ -884,7 +863,7 @@ static bool add_win(session_t *ps, Window id) {
   vector_putBack(&ps->order, &slot);
 
   // Already mapped
-  if (IsViewable == attribs.map_state) {
+  if (ev->mapped) {
       map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, new));
   }
 
@@ -1056,7 +1035,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
     int o = 0;
     const char *name = "Unknown";
 
-    if (xorgContext_convertOpcode(&ps->capabilities, ev->request_code) == PROTO_COMPOSITE
+    if (xorgContext_convertOpcode(&ps->xcontext.capabilities, ev->request_code) == PROTO_COMPOSITE
             && ev->minor_code == X_CompositeRedirectSubwindows) {
         fprintf(stderr, "Another composite manager is already running\n");
         exit(1);
@@ -1064,17 +1043,17 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
 
 #define CASESTRRET2(s)   case s: name = #s; break
 
-    o = xorgContext_convertError(&ps->capabilities, PROTO_FIXES, ev->error_code);
+    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_FIXES, ev->error_code);
     switch (o) {
         CASESTRRET2(BadRegion);
     }
 
-    o = xorgContext_convertError(&ps->capabilities, PROTO_DAMAGE, ev->error_code);
+    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_DAMAGE, ev->error_code);
     switch (o) {
         CASESTRRET2(BadDamage);
     }
 
-    o = xorgContext_convertError(&ps->capabilities, PROTO_RENDER, ev->error_code);
+    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_RENDER, ev->error_code);
     switch (o) {
         CASESTRRET2(BadPictFormat);
         CASESTRRET2(BadPicture);
@@ -1083,7 +1062,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
         CASESTRRET2(BadGlyph);
     }
 
-    o = xorgContext_convertError(&ps->capabilities, PROTO_GLX, ev->error_code);
+    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_GLX, ev->error_code);
     switch (o) {
         CASESTRRET2(GLX_BAD_SCREEN);
         CASESTRRET2(GLX_BAD_ATTRIBUTE);
@@ -1094,7 +1073,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
         CASESTRRET2(GLX_BAD_ENUM);
     }
 
-    o = xorgContext_convertError(&ps->capabilities, PROTO_SYNC, ev->error_code);
+    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_SYNC, ev->error_code);
     switch (o) {
         CASESTRRET2(XSyncBadCounter);
         CASESTRRET2(XSyncBadAlarm);
@@ -1315,16 +1294,16 @@ ev_name(session_t *ps, XEvent *ev) {
     CASESTRRET(ClientMessage);
   }
 
-  if (xorgContext_version(&ps->capabilities, PROTO_DAMAGE) >= XVERSION_YES
-          && xorgContext_convertEvent(&ps->capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
+  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_DAMAGE) >= XVERSION_YES
+          && xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
     return "Damage";
 
-  if (xorgContext_version(&ps->capabilities, PROTO_SHAPE) >= XVERSION_YES
-          && xorgContext_convertEvent(&ps->capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
+  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SHAPE) >= XVERSION_YES
+          && xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
     return "ShapeNotify";
 
-  if (xorgContext_version(&ps->capabilities, PROTO_SYNC)  >= XVERSION_YES) {
-      o = xorgContext_convertEvent(&ps->capabilities, PROTO_SYNC, ev->error_code);
+  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SYNC)  >= XVERSION_YES) {
+      o = xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_SYNC, ev->error_code);
       int o = ev->type - ps->xsync_event;
       switch (o) {
           CASESTRRET(XSyncCounterNotify);
@@ -1376,12 +1355,6 @@ ev_focus_report(XFocusChangeEvent* ev) {
 // === Events ===
 
 static void
-ev_create_notify(session_t *ps, XCreateWindowEvent *ev) {
-  assert(ev->parent == ps->root);
-  add_win(ps, ev->window);
-}
-
-static void
 ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
 #ifdef DEBUG_EVENTS
   printf("  { send_event: %d, "
@@ -1392,8 +1365,8 @@ ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
   configure_win(ps, ev);
 }
 
-static void ev_destroy_notify(session_t *ps, XDestroyWindowEvent *ev) {
-    win *w = find_win(ps, ev->window);
+static void ev_destroy_notify(session_t *ps, Window window) {
+    win *w = find_win(ps, window);
     if(w == NULL)
         return;
 
@@ -1416,31 +1389,19 @@ static void ev_unmap_notify(session_t *ps, XUnmapEvent *ev) {
     unmap_win(ps, w);
 }
 
-static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
-
-    // If a window is reparented to the root then we only have to add it.
-    if (ev->parent == ps->root) {
-        add_win(ps, ev->window);
-        return;
-    }
-
-    // If reparented anywhere else, we remove it. (We don't care about subwindows)
-    win *w = find_win(ps, ev->window);
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    destroy_win(ps, wid);
-
+static void getsclient(session_t* ps, struct GetsClient* event) {
     // Reset event mask in case something wrong happens
-    XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
+    XSelectInput(ps->dpy, event->client_xid, determine_evmask(ps, event->client_xid, WIN_EVMODE_UNKNOWN));
 
     // We just destroyed the window, so it shouldn't be found
-    assert(find_toplevel(ps, ev->window) != -1);
+    assert(find_toplevel(ps, event->client_xid) != -1);
 
     // Find our new frame
-    win *w_frame = find_toplevel2(ps, ev->parent);
+    win *w_frame = find_toplevel2(ps, event->xid);
 
     assert(w_frame != NULL);
     if(w_frame == NULL) {
-        printf_errf("New parent for %lu doesn't have a parent frame", ev->window);
+        printf_errf("New parent for %lu doesn't have a parent frame", event->client_xid);
         return;
     }
 
@@ -1458,18 +1419,18 @@ static void ev_reparent_notify(session_t *ps, XReparentEvent *ev) {
     }
 
     // If it has WM_STATE, mark it the client window
-    if (wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
+    if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
         w_frame->wmwin = false;
 
         if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame))
             win_unmark_client(ps, w_frame);
 
-        win_mark_client(ps, w_frame, ev->window);
+        win_mark_client(ps, w_frame, event->client_xid);
     } else { // Otherwise, watch for WM_STATE on it
         XSelectInput(
             ps->dpy,
-            ev->window,
-            determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN) | PropertyChangeMask
+            event->client_xid,
+            determine_evmask(ps, event->client_xid, WIN_EVMODE_UNKNOWN) | PropertyChangeMask
         );
     }
 }
@@ -1631,6 +1592,11 @@ ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
 
 static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     win *w = find_win(ps, ev->window);
+    if(w == NULL) {
+        // @CLEANUP @HACK: For now we just ignore events from windows we don't
+        // know. This shouldn't really happen at this layer, but whatever.
+        return;
+    }
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
@@ -1686,22 +1652,20 @@ register_cm(session_t *ps) {
     printf_errf("(): Failed to set COMPTON_VERSION.");
   }
 
-  // Acquire X Selection _NET_WM_CM_S?
-  if (!ps->o.no_x_selection) {
-    unsigned len = strlen(REGISTER_PROP) + 2;
-    int s = ps->scr;
+  // Acquire X Selection _NET_WM_CM_S
+  unsigned len = strlen(REGISTER_PROP) + 2;
+  int s = ps->scr;
 
-    while (s >= 10) {
-      ++len;
-      s /= 10;
-    }
-
-    char *buf = malloc(len);
-    snprintf(buf, len, REGISTER_PROP "%d", ps->scr);
-    buf[len - 1] = '\0';
-    XSetSelectionOwner(ps->dpy, get_atom(&ps->xcontext, buf), ps->reg_win, 0);
-    free(buf);
+  while (s >= 10) {
+	  ++len;
+	  s /= 10;
   }
+
+  char *buf = malloc(len);
+  snprintf(buf, len, REGISTER_PROP "%d", ps->scr);
+  buf[len - 1] = '\0';
+  XSetSelectionOwner(ps->dpy, get_atom(&ps->xcontext, buf), ps->reg_win, 0);
+  free(buf);
 
   return true;
 }
@@ -1902,7 +1866,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "opacity-rule", required_argument, NULL, 304 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "version", no_argument, NULL, 318 },
-    { "no-x-selection", no_argument, NULL, 319 },
     { "reredir-on-root-change", no_argument, NULL, 731 },
     // Must terminate with a NULL entry
     { NULL, 0, NULL, 0 },
@@ -2043,7 +2006,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         ps->o.benchmark_wid = strtol(optarg, NULL, 0);
         break;
       P_CASELONG(301, blur_level);
-      P_CASEBOOL(319, no_x_selection);
       P_CASEBOOL(731, reredir_on_root_change);
       default:
         usage(1);
@@ -2351,28 +2313,19 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
     discard_ignore(ps, ev->xany.serial);
   }
   switch (ev->type) {
-    case CreateNotify:
-      ev_create_notify(ps, (XCreateWindowEvent *)ev);
-      break;
-    case ConfigureNotify:
-      ev_configure_notify(ps, (XConfigureEvent *)ev);
-      break;
-    case DestroyNotify:
-      ev_destroy_notify(ps, (XDestroyWindowEvent *)ev);
-      break;
     case MapNotify:
       ev_map_notify(ps, (XMapEvent *)ev);
       break;
     case UnmapNotify:
       ev_unmap_notify(ps, (XUnmapEvent *)ev);
       break;
-    case ReparentNotify:
-      ev_reparent_notify(ps, (XReparentEvent *)ev);
-      break;
     case CirculateNotify:
       ev_circulate_notify(ps, (XCirculateEvent *)ev);
       break;
     case Expose:
+      break;
+    case ConfigureNotify:
+      ev_configure_notify(ps, (XConfigureEvent*)ev);
       break;
     case PropertyNotify:
       ev_property_notify(ps, (XPropertyEvent *)ev);
@@ -2405,10 +2358,27 @@ mainloop(session_t *ps) {
     // causing XNextEvent() to block, I have no idea what's wrong, so we
     // check for the number of events here.
     while(XEventsQueued(ps->dpy, QueuedAfterReading)) {
-        XEvent ev = { };
+        struct Event event;
 
-        XNextEvent(ps->dpy, &ev);
-        ev_handle(ps, &ps->capabilities, &ev);
+        xorg_nextEvent(&ps->xcontext, &event);
+        switch(event.type) {
+            case ET_ADD:
+                add_win(ps, &event.add);
+                break;
+            case ET_DESTROY:
+                ev_destroy_notify(ps, event.des.xid);
+                break;
+            case ET_RAW:
+                ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
+                break;
+            case ET_CLIENT:
+                getsclient(ps, &event.cli);
+                break;
+            case ET_NONE:
+                break;
+            default:
+                printf_errf("Unknown event type, ignoring");
+        }
 
         ps->skip_poll = true;
 
@@ -2691,12 +2661,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   if (!glx_init(ps, true))
     exit(1);
 
-  if(xorgContext_capabilities(&ps->capabilities, &ps->xcontext) != 0) {
-      printf_errf("Failed getting xorg capabilities");
-      exit(1);
-  }
-
-  if(xorgContext_ensure_capabilities(&ps->capabilities)) {
+  if(xorgContext_ensure_capabilities(&ps->xcontext.capabilities)) {
       printf_errf("One of the required X extensions were missing");
       exit(1);
   }
@@ -2741,7 +2706,29 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-      add_win(ps, children[i]);
+      XWindowAttributes attribs;
+      if (!XGetWindowAttributes(ps->dpy, children[i], &attribs) || IsUnviewable == attribs.map_state) {
+        continue;
+      }
+
+      struct AddWin event = {
+        .xid = children[i],
+        .xdamage = XDamageCreate(ps->dpy, children[i], XDamageReportNonEmpty),
+      };
+      event.mapped = attribs.map_state == IsViewable;
+      event.pos = (Vector2){{attribs.x, attribs.y}};
+      event.size = (Vector2){{
+        attribs.width + attribs.border_width * 2,
+        attribs.height + attribs.border_width * 2,
+      }};
+      event.border_size = attribs.border_width;
+
+      if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SHAPE) >= XVERSION_YES) {
+          // Subscribe to events when the window shape changes
+          XShapeSelectInput(ps->dpy, children[i], ShapeNotifyMask);
+      }
+
+      add_win(ps, &event);
     }
 
     cxfree(children);

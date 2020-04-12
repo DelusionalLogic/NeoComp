@@ -108,8 +108,6 @@ typedef struct _options_t {
   Window benchmark_wid;
   /// Whether to show all X errors.
   bool show_all_xerrors;
-  /// Whether to avoid acquiring X Selection.
-  bool no_x_selection;
 
   // === Shadow ===
   /// Enable/disable shadow for specific window types.
@@ -284,8 +282,6 @@ typedef struct _session_t {
     /// case the WM does something extraordinary, but caching the pointer
     /// means another layer of complexity.
     struct _win *active_win;
-
-    struct X11Capabilities capabilities;
 
     XserverRegion root_region;
 
