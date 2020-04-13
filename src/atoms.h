@@ -35,6 +35,9 @@ struct Atoms {
   // Array of atoms of all possible window types.
   Atom atoms_wintypes[NUM_WINTYPES];
 
+  Atom atom_xrootmapid;
+  Atom atom_xsetrootid;
+
   Vector extra;
 };
 

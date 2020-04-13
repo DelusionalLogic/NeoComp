@@ -382,6 +382,73 @@ static void createFocus(struct X11Context* xctx) {
     pushEvent(xctx, event);
 }
 
+static void createNewRoot(struct X11Context* xctx) {
+    xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
+
+    Atom atoms[2] = {
+        xctx->atoms->atom_xrootmapid,
+        xctx->atoms->atom_xsetrootid,
+    };
+
+    xcb_get_property_cookie_t cookies[2];
+    for(int i = 0; i < 2; i++) {
+        cookies[i] = xcb_get_property(xcb, false, xctx->root, atoms[i], XA_PIXMAP, 0, 1);
+    }
+
+    xcb_get_property_reply_t *replies[2];
+    for(int i = 0; i < 2; i++) {
+        xcb_generic_error_t *error;
+        replies[i] = xcb_get_property_reply(xcb, cookies[i], &error);
+        if(replies[i] == NULL) {
+            printf_errf("Failed fetching root pixmap property: code %d", error->error_code);
+            free(error);
+        }
+    }
+
+    bool found = false;
+    Window xid = 0;
+    for(int i = 0; i < 2; i++) {
+        if(replies[i] == NULL)
+            continue;
+
+        xcb_get_property_reply_t *reply = replies[i];
+
+        if(reply->type == None) {
+            // The property was not found, so just move on
+            free(reply);
+            continue;
+        }
+
+        if(reply->type != XA_PIXMAP) {
+            printf_errf("The root window pixmap property was not a pixmap");
+            free(reply);
+            continue;
+        }
+        if(reply->format != 32) {
+            printf_errf("The root window pixmap property format was not a 32bit int");
+            free(reply);
+            continue;
+        }
+        if(xcb_get_property_value_length(reply) == 0) {
+            printf_errf("The root window pixmap property was 0 size");
+            free(reply);
+            continue;
+        }
+
+        xid = *(uint32_t*)xcb_get_property_value(reply);
+        found = true;
+        free(reply);
+    }
+
+    if(found) {
+        struct Event event = {
+            .type = ET_NEWROOT,
+            .newRoot.pixmap = xid,
+        };
+        pushEvent(xctx, event);
+    }
+}
+
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
     XNextEvent(xctx->display, &raw);
@@ -419,6 +486,10 @@ static void fillBuffer(struct X11Context* xctx) {
             if(ev->window == xctx->root) {
                 if (xctx->atoms->atom_ewmh_active_win == ev->atom) {
                     createFocus(xctx);
+                    break;
+                } else if (xctx->atoms->atom_xrootmapid == ev->atom
+                        || xctx->atoms->atom_xsetrootid == ev->atom) {
+                    createNewRoot(xctx);
                     break;
                 }
             }
@@ -464,4 +535,5 @@ void xorg_beginEvents(struct X11Context* xctx) {
     XFree(children);
 
     createFocus(xctx);
+    createNewRoot(xctx);
 }

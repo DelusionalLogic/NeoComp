@@ -62,6 +62,7 @@ enum EventType {
     ET_MANDR,
     ET_RESTACK,
     ET_FOCUS,
+    ET_NEWROOT,
     ET_RAW,
 };
 
@@ -100,6 +101,10 @@ struct Focus {
     Window xid;
 };
 
+struct NewRoot {
+    Pixmap pixmap;
+};
+
 struct Event {
     enum EventType type;
     union {
@@ -109,6 +114,7 @@ struct Event {
         struct MandR mandr;
         struct Restack restack;
         struct Focus focus;
+        struct NewRoot newRoot;
         XEvent raw;
     };
 };

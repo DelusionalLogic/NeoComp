@@ -209,8 +209,6 @@ bool xtexture_unbind(struct XTexture* tex) {
     glXReleaseTexImageEXT(tex->context->display, tex->pixmap,
             GLX_FRONT_LEFT_EXT);
 
-    glXDestroyPixmap(tex->context->display, tex->glxPixmap);
-    XFreePixmap(tex->context->display, tex->pixmap);
     tex->pixmap = 0;
 
     tex->bound = false;

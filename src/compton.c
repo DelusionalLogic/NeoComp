@@ -499,71 +499,11 @@ static win * find_toplevel2(session_t *ps, Window wid) {
     return w;
 }
 
-static bool get_root_tile(session_t *ps) {
-    Pixmap pixmap = None;
-
-    // Get the values of background attributes
-    for (int p = 0; background_props_str[p]; p++) {
-        Atom prop_atom = get_atom(&ps->xcontext, background_props_str[p]);
-        winprop_t prop = wid_get_prop(&ps->xcontext, ps->root, prop_atom, 1L, XA_PIXMAP, 32);
-        if (prop.nitems) {
-            pixmap = *prop.data.p32;
-            free_winprop(&prop);
-            break;
-        }
-        free_winprop(&prop);
-    }
-
-    // Make sure the pixmap we got is valid
-    if (pixmap && !validate_pixmap(ps, pixmap))
-        pixmap = None;
-
-    // Create a pixmap if there isn't any
-    if (!pixmap) {
-        pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
-
-        //Fill pixmap with default color
-        Picture root_picture;
-        XRenderPictureAttributes pa = {
-            .repeat = True,
-        };
-        root_picture = XRenderCreatePicture(
-                ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
-                CPRepeat, &pa);
-        XRenderColor  c;
-
-        c.red = c.green = c.blue = 0x8080;
-        c.alpha = 0xffff;
-        XRenderFillRectangle(ps->dpy, PictOpSrc, root_picture, &c, 0, 0, 1, 1);
-        XRenderFreePicture(ps->dpy, root_picture);
-    }
-
-    XWindowAttributes attribs;
-    XGetWindowAttributes(ps->xcontext.display, ps->root, &attribs);
-    GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->xcontext, XVisualIDFromVisual(attribs.visual));
-
-    struct XTextureInformation texinfo;
-    xtexinfo_init(&texinfo, &ps->xcontext, fbconfig);
-
-    struct XTexture* texptr = &ps->root_texture;
-    struct XTextureInformation* texinfoptr = &texinfo;
-    if(!xtexture_bind(&texptr, &texinfoptr, &pixmap, 1)) {
-        printf_errf("Failed binding the root texture to gl");
-        return false;
-    }
-
-    return true;
-}
-
 /**
  * Paint root window content.
  */
 static void paint_root(session_t *ps) {
-    // @CLEANUP: This doesn't belong here, but rather when we get notified of
-    // a new root texture
     assert(ps->root_texture.bound);
-    /* glClearColor(0.0, 0.0, 1.0, 1.0); */
-    /* glClear(GL_COLOR_BUFFER_BIT); */
 
     glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
@@ -978,11 +918,49 @@ static void destroy_win(session_t *ps, win_id wid) {
 }
 
 static void
-root_damaged(session_t *ps) {
+root_damaged(session_t *ps, struct NewRoot* ev) {
   if (ps->root_texture.bound) {
     xtexture_unbind(&ps->root_texture);
   }
-  get_root_tile(ps);
+
+  Pixmap pixmap = ev->pixmap;
+
+  // Make sure the pixmap we got is valid
+  if (pixmap && !validate_pixmap(ps, pixmap))
+      pixmap = None;
+
+  // Create a pixmap if there isn't any
+  if (!pixmap) {
+      pixmap = XCreatePixmap(ps->dpy, ps->root, 1, 1, ps->depth);
+
+      //Fill pixmap with default color
+      Picture root_picture;
+      XRenderPictureAttributes pa = {
+          .repeat = True,
+      };
+      root_picture = XRenderCreatePicture(
+              ps->dpy, pixmap, XRenderFindVisualFormat(ps->dpy, ps->vis),
+              CPRepeat, &pa);
+      XRenderColor  c;
+
+      c.red = c.green = c.blue = 0x8080;
+      c.alpha = 0xffff;
+      XRenderFillRectangle(ps->dpy, PictOpSrc, root_picture, &c, 0, 0, 1, 1);
+      XRenderFreePicture(ps->dpy, root_picture);
+  }
+
+  XWindowAttributes attribs;
+  XGetWindowAttributes(ps->xcontext.display, ps->root, &attribs);
+  GLXFBConfig* fbconfig = xorgContext_selectConfig(&ps->xcontext, XVisualIDFromVisual(attribs.visual));
+
+  struct XTextureInformation texinfo;
+  xtexinfo_init(&texinfo, &ps->xcontext, fbconfig);
+
+  struct XTexture* texptr = &ps->root_texture;
+  struct XTextureInformation* texinfoptr = &texinfo;
+  if(!xtexture_bind(&texptr, &texinfoptr, &pixmap, 1)) {
+      printf_errf("Failed binding the root texture to gl");
+  }
 }
 
 static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
@@ -1447,14 +1425,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #endif
 
     if (ps->root == ev->window) {
-        // Destroy the root "image" if the wallpaper probably changed
-        for (int p = 0; background_props_str[p]; p++) {
-            if (ev->atom == get_atom(&ps->xcontext, background_props_str[p])) {
-                root_damaged(ps);
-                break;
-            }
-        }
-
         // Unconcerned about any other proprties on root window
         return;
     }
@@ -2341,6 +2311,10 @@ mainloop(session_t *ps) {
             case ET_FOCUS:
                 set_active_window(ps, &event.focus);
                 break;
+            case ET_NEWROOT:
+                // @CLEANUP: Use the pixmap from the event
+                root_damaged(ps, &event.newRoot);
+                break;
             case ET_RAW:
                 ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
                 break;
@@ -2662,7 +2636,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   XGrabServer(ps->dpy);
 
   xtexture_init(&ps->root_texture, &ps->xcontext);
-  get_root_tile(ps);
 
   redir_start(ps);
 

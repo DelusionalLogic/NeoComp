@@ -344,7 +344,6 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
 
     xcb_connection_t* xcb = XGetXCBConnection(drawables[0]->context->display);
 
-    // These pixmaps are handed over to the xtextures, so they are never freed here.
     xcb_pixmap_t *pixmaps = malloc(sizeof(xcb_pixmap_t) * cnt);
     zone_enter(&ZONE_name_pixmap);
     for(size_t i = 0; i < cnt; i++) {
@@ -374,6 +373,11 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
     zone_enter(&ZONE_bind_pixmap);
     success = xtexture_bind(texs, texinfos, pixmaps, cnt);
     zone_leave(&ZONE_bind_pixmap);
+
+    // We can free the pixmaps since the xtexture doesn't need it.
+    for(size_t i = 0; i < cnt; i++) {
+        xcb_free_pixmap(xcb, pixmaps[i]);
+    }
 
     free(pixmaps);
     free(texs);

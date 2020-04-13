@@ -49,6 +49,11 @@ void atoms_init(struct Atoms* atoms, Display* display) {
     atoms->atoms_wintypes[WINTYPE_DND] = get_atom_internal(display,
                   "_NET_WM_WINDOW_TYPE_DND");
 
+    atoms->atom_xrootmapid = get_atom_internal(display,
+                  "_XROOTPMAP_ID");
+    atoms->atom_xsetrootid = get_atom_internal(display,
+                  "_XSETROOT_ID");
+
     vector_init(&atoms->extra, sizeof(Atom), 4);
 }
 
