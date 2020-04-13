@@ -235,8 +235,6 @@ static void win_set_focused(session_t *ps, win *w);
 
 static void win_mark_client(session_t *ps, win *w, Window client);
 
-static void configure_win(session_t *ps, XConfigureEvent *ce);
-
 static bool wid_get_name(session_t *ps, Window w, char **name);
 
 static bool wid_get_role(session_t *ps, Window w, char **role);
@@ -563,9 +561,6 @@ static bool get_root_tile(session_t *ps) {
 static void paint_root(session_t *ps) {
     // @CLEANUP: This doesn't belong here, but rather when we get notified of
     // a new root texture
-    if (!ps->root_texture.bound)
-        get_root_tile(ps);
-
     assert(ps->root_texture.bound);
     /* glClearColor(0.0, 0.0, 1.0, 1.0); */
     /* glClear(GL_COLOR_BUFFER_BIT); */
@@ -871,10 +866,13 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 }
 
 static void
-restack_win(session_t *ps, win *w, Window new_above) {
+restack_win(session_t *ps, struct Restack* ev) {
+    win *w = find_win(ps, ev->xid);
+    if(w == NULL)
+        return;
     win_id w_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    struct _win* w_above = find_win(ps, new_above);
+    struct _win* w_above = find_win(ps, ev->above);
 
     // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
     // ConfigureNotify above value for a window that doesn't even exist
@@ -912,14 +910,11 @@ restack_win(session_t *ps, win *w, Window new_above) {
 }
 
 static void
-configure_win(session_t *ps, XConfigureEvent *ce) {
+configure_win(session_t *ps, struct MandR* ev) {
   // On root window changes
-  if (ce->window == ps->root) {
+  if (ev->xid == ps->root) {
 
-    ps->root_size = (Vector2) {{
-        ce->width, ce->height
-    }};
-
+    ps->root_size = ev->size;
     // Re-redirect screen if required
     if (ps->o.reredir_on_root_change) {
       redir_stop(ps);
@@ -933,26 +928,15 @@ configure_win(session_t *ps, XConfigureEvent *ce) {
   }
 
   // Other window changes
-  win *w = find_win(ps, ce->window);
+  win *w = find_win(ps, ev->xid);
 
   if(w == NULL)
     return;
 
   win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-  restack_win(ps, w, ce->above);
-
-  Vector2 position = {{ce->x, ce->y}};
-  w->border_size = ce->border_width;
-  Vector2 size = {{
-      ce->width + w->border_size * 2,
-      ce->height + w->border_size * 2,
-  }};
-  physics_move_window(&ps->win_list, wid, &position, &size);
-
-  // override_redirect flag cannot be changed after window creation, as far
-  // as I know, so there's no point to re-match windows here.
-  w->override_redirect = ce->override_redirect;
+  w->border_size = ev->border_size;
+  physics_move_window(&ps->win_list, wid, &ev->pos, &ev->size);
 }
 
 static void
@@ -1354,17 +1338,6 @@ ev_focus_report(XFocusChangeEvent* ev) {
 
 // === Events ===
 
-static void
-ev_configure_notify(session_t *ps, XConfigureEvent *ev) {
-#ifdef DEBUG_EVENTS
-  printf("  { send_event: %d, "
-         " above: %#010lx, "
-         " override_redirect: %d }\n",
-         ev->send_event, ev->above, ev->override_redirect);
-#endif
-  configure_win(ps, ev);
-}
-
 static void ev_destroy_notify(session_t *ps, Window window) {
     win *w = find_win(ps, window);
     if(w == NULL)
@@ -1446,24 +1419,20 @@ ev_circulate_notify(session_t *ps, XCirculateEvent *ev) {
  * Does not change anything if we fail to get the attribute or the window
  * returned could not be found.
  */
-static void update_ewmh_active_win(session_t *ps) {
-    // Search for the window
-    Window wid = wid_get_prop_window(ps, ps->root, ps->atoms.atom_ewmh_active_win);
 
-    if(wid == NULL) {
-        // No window focused
-        return;
-    }
-
-    win *w = find_win_all(ps, wid);
+static void set_active_window(session_t* ps, struct Focus* ev) {
+    win *w = find_win_all(ps, ev->xid);
 
     if(w == NULL) {
-        printf_errf("Window with the id %zu was not found", wid);
+        printf_errf("Window with the id %zu was not found", ev->xid);
         return;
     }
 
     // Mark the window focused. No need to unfocus the previous one.
     win_set_focused(ps, w);
+}
+
+static void update_ewmh_active_win(session_t *ps) {
 }
 
 static void
@@ -1478,11 +1447,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #endif
 
     if (ps->root == ev->window) {
-        if (ps->o.track_focus && ps->atoms.atom_ewmh_active_win == ev->atom) {
-            update_ewmh_active_win(ps);
-            return;
-        }
-
         // Destroy the root "image" if the wallpaper probably changed
         for (int p = 0; background_props_str[p]; p++) {
             if (ev->atom == get_atom(&ps->xcontext, background_props_str[p])) {
@@ -2324,9 +2288,6 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
       break;
     case Expose:
       break;
-    case ConfigureNotify:
-      ev_configure_notify(ps, (XConfigureEvent*)ev);
-      break;
     case PropertyNotify:
       ev_property_notify(ps, (XPropertyEvent *)ev);
       break;
@@ -2368,11 +2329,20 @@ mainloop(session_t *ps) {
             case ET_DESTROY:
                 ev_destroy_notify(ps, event.des.xid);
                 break;
-            case ET_RAW:
-                ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
-                break;
             case ET_CLIENT:
                 getsclient(ps, &event.cli);
+                break;
+            case ET_MANDR:
+                configure_win(ps, &event.mandr);
+                break;
+            case ET_RESTACK:
+                restack_win(ps, &event.restack);
+                break;
+            case ET_FOCUS:
+                set_active_window(ps, &event.focus);
+                break;
+            case ET_RAW:
+                ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
                 break;
             case ET_NONE:
                 break;
@@ -2619,12 +2589,11 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   ps->o.display_repr = getDisplayName(ps->dpy);
 
-  if(!xorgContext_init(&ps->xcontext, ps->dpy, ps->scr)) {
+  // Also initializes the atoms
+  if(!xorgContext_init(&ps->xcontext, ps->dpy, ps->scr, &ps->atoms)) {
     printf_errf("Failed initializing the xorg context");
     exit(1);
   }
-
-  atoms_init(&ps->atoms, &ps->xcontext);
 
   // Second pass
   get_cfg(ps, argc, argv, false);
@@ -2697,46 +2666,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   redir_start(ps);
 
-  {
-    Window root_return, parent_return;
-    Window *children;
-    unsigned int nchildren;
-
-    XQueryTree(ps->dpy, ps->root, &root_return,
-      &parent_return, &children, &nchildren);
-
-    for (unsigned i = 0; i < nchildren; i++) {
-      XWindowAttributes attribs;
-      if (!XGetWindowAttributes(ps->dpy, children[i], &attribs) || IsUnviewable == attribs.map_state) {
-        continue;
-      }
-
-      struct AddWin event = {
-        .xid = children[i],
-        .xdamage = XDamageCreate(ps->dpy, children[i], XDamageReportNonEmpty),
-      };
-      event.mapped = attribs.map_state == IsViewable;
-      event.pos = (Vector2){{attribs.x, attribs.y}};
-      event.size = (Vector2){{
-        attribs.width + attribs.border_width * 2,
-        attribs.height + attribs.border_width * 2,
-      }};
-      event.border_size = attribs.border_width;
-
-      if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SHAPE) >= XVERSION_YES) {
-          // Subscribe to events when the window shape changes
-          XShapeSelectInput(ps->dpy, children[i], ShapeNotifyMask);
-      }
-
-      add_win(ps, &event);
-    }
-
-    cxfree(children);
-  }
-
-  if (ps->o.track_focus) {
-      update_ewmh_active_win(ps);
-  }
+  xorg_beginEvents(&ps->xcontext);
 
   XUngrabServer(ps->dpy);
   // ALWAYS flush after XUngrabServer()!

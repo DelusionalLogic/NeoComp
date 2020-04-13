@@ -1,6 +1,9 @@
 #pragma once
 
+#include "atoms.h"
+
 #include "vmath.h"
+#include "vector.h"
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
@@ -19,8 +22,6 @@
 #include <X11/extensions/sync.h>
 
 #include <Judy.h>
-
-#define XORG_EVENTBUF_MAX 2
 
 struct _session_t;
 
@@ -58,6 +59,9 @@ enum EventType {
     ET_ADD,
     ET_DESTROY,
     ET_CLIENT,
+    ET_MANDR,
+    ET_RESTACK,
+    ET_FOCUS,
     ET_RAW,
 };
 
@@ -80,12 +84,31 @@ struct GetsClient {
     Window client_xid;
 };
 
+struct MandR {
+    Window xid;
+    Vector2 pos;
+    Vector2 size;
+    float border_size;
+};
+
+struct Restack {
+    Window xid;
+    Window above;
+};
+
+struct Focus {
+    Window xid;
+};
+
 struct Event {
     enum EventType type;
     union {
         struct AddWin add;
         struct DestroyWin des;
         struct GetsClient cli;
+        struct MandR mandr;
+        struct Restack restack;
+        struct Focus focus;
         XEvent raw;
     };
 };
@@ -100,13 +123,16 @@ struct X11Context {
     GLXFBConfig* configs;
     int numConfigs;
 
+    // @CLEANUP: This should be internal but currently it lives in the session
+    struct Atoms* atoms;
+
     void* active;
-    struct Event buffer[XORG_EVENTBUF_MAX] ;
+    Vector eventBuf;
     size_t readCursor;
-    size_t writeCursor;
 };
 
-bool xorgContext_init(struct X11Context* context, Display* display, int screen);
+Atom get_atom(struct X11Context* context, const char* atom_name);
+bool xorgContext_init(struct X11Context* context, Display* display, int screen, struct Atoms* atoms);
 
 // @CLEANUP: Take the context instead of the capabilities
 int xorgContext_ensure_capabilities(const struct X11Capabilities* caps);
@@ -123,3 +149,4 @@ void xorgContext_delete(struct X11Context* context);
 void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEvent *ev);
 
 void xorg_nextEvent(struct X11Context* xcontext, struct Event* event);
+void xorg_beginEvents(struct X11Context* xcontext);

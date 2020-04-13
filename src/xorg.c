@@ -29,6 +29,10 @@ const char* VERSION_NAMES[] = {
     "0.2+",
 };
 
+Atom get_atom(struct X11Context* context, const char* atom_name) {
+  return get_atom_internal(context->display, atom_name);
+}
+
 // @CLEANUP Reduce to one argument. No reason to take in the caps separately
 static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* context) {
     // Fetch if the extension is available
@@ -106,7 +110,7 @@ static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Cont
 }
 
 
-bool xorgContext_init(struct X11Context* context, Display* display, int screen) {
+bool xorgContext_init(struct X11Context* context, Display* display, int screen, struct Atoms* atoms) {
     assert(context != NULL);
     assert(display != NULL);
 
@@ -123,8 +127,11 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen) 
     xorgContext_capabilities(&context->capabilities, context);
 
     context->active = NULL;
+    vector_init(&context->eventBuf, sizeof(struct Event), 64);
     context->readCursor = 0;
-    context->writeCursor = 0;
+
+    context->atoms = atoms;
+    atoms_init(atoms, context->display);
     return true;
 }
 
@@ -220,11 +227,7 @@ void xorgContext_delete(struct X11Context* context) {
 }
 
 static void pushEvent(struct X11Context* xctx, const struct Event event) {
-    assert(xctx->writeCursor < XORG_EVENTBUF_MAX);
-    if(xctx->writeCursor >= XORG_EVENTBUF_MAX) {
-        printf_errf("Too many events buffered");
-    }
-    xctx->buffer[xctx->writeCursor++] = event;
+    vector_putBack(&xctx->eventBuf, &event);
 }
 
 static void createAddWin(struct X11Context* xctx, Window xid) {
@@ -311,6 +314,74 @@ static void createGetsClient(struct X11Context* xctx, Window xid, Window client_
     pushEvent(xctx, event);
 }
 
+static void createMandr(struct X11Context* xctx, Window xid, float x, float y, float border, float width, float height, Window above) {
+    Word_t rc;
+    J1T(rc, xctx->active, xid);
+    if(rc == 0) {
+        // The window wasn't active, so we swallow the destroy
+        return;
+    }
+
+    struct Event event = {
+        .type = ET_MANDR,
+        .mandr.xid = xid,
+        .mandr.pos = (Vector2){{x, y}},
+        .mandr.size = (Vector2){{
+          width + border * 2,
+          height + border * 2,
+        }},
+        .mandr.border_size = border,
+    };
+    pushEvent(xctx, event);
+    struct Event restack = {
+        .type = ET_RESTACK,
+        .restack.xid = xid,
+        .restack.above = above,
+    };
+    pushEvent(xctx, restack);
+}
+
+static void createFocus(struct X11Context* xctx) {
+    Atom actual_type;
+    int actual_format;
+    unsigned long items;
+    unsigned long left;
+    unsigned char* data;
+    // What a mess
+    if(XGetWindowProperty(xctx->display, xctx->root,
+        xctx->atoms->atom_ewmh_active_win, 0, 1, false, XA_WINDOW,
+        &actual_type, &actual_format, &items, &left, &data) != Success) {
+        printf_errf("Call to get the ewmh active window failed");
+        return;
+    }
+    if(actual_type != XA_WINDOW) {
+        XFree(data);
+        printf_errf("The root windows ewmh focus property is not the correct type");
+        return;
+    }
+    if(actual_format != 32) {
+        XFree(data);
+        printf_errf("The root windows ewmh focus property is not the correct format");
+        return;
+    }
+    if(items == 0) {
+        // No property value
+        XFree(data);
+        return;
+    }
+
+    // Read out the window id
+    Window xid = *(long*)data;
+
+    XFree(data);
+
+    struct Event event = {
+        .type = ET_FOCUS,
+        .focus.xid = xid,
+    };
+    pushEvent(xctx, event);
+}
+
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
     XNextEvent(xctx->display, &raw);
@@ -338,6 +409,21 @@ static void fillBuffer(struct X11Context* xctx) {
             }
             break;
         }
+        case ConfigureNotify: {
+            XConfigureEvent* ev = (XConfigureEvent *)&raw;
+            createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height, ev->above);
+            break;
+        }
+        case PropertyNotify: {
+            XPropertyEvent* ev = (XPropertyEvent *)&raw;
+            if(ev->window == xctx->root) {
+                if (xctx->atoms->atom_ewmh_active_win == ev->atom) {
+                    createFocus(xctx);
+                    break;
+                }
+            }
+            // Fallthrough
+        }
         default: {
             struct Event event;
             event.type = ET_RAW;
@@ -348,16 +434,34 @@ static void fillBuffer(struct X11Context* xctx) {
 }
 
 void xorg_nextEvent(struct X11Context* xctx, struct Event* event) {
-    if(xctx->readCursor >= xctx->writeCursor) {
+    if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
         xctx->readCursor = 0;
-        xctx->writeCursor = 0;
+        vector_clear(&xctx->eventBuf);
         fillBuffer(xctx);
     }
 
-    if(xctx->readCursor >= xctx->writeCursor) {
+    if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
         event->type = ET_NONE;
         return;
     }
 
-    *event = xctx->buffer[xctx->readCursor++];
+    *event = *(struct Event*)vector_get(&xctx->eventBuf, xctx->readCursor++);
+}
+
+// Synthesize events for the initial state
+void xorg_beginEvents(struct X11Context* xctx) {
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+
+    XQueryTree(xctx->display, xctx->root, &root_return,
+            &parent_return, &children, &nchildren);
+
+    for (unsigned i = 0; i < nchildren; i++) {
+        createAddWin(xctx, children[i]);
+    }
+
+    XFree(children);
+
+    createFocus(xctx);
 }

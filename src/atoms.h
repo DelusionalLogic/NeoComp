@@ -2,7 +2,6 @@
 
 #include "vector.h"
 #include "wintypes.h"
-#include "xorg.h"
 
 #include <X11/Xlib-xcb.h>
 #include <X11/Xutil.h>
@@ -39,6 +38,6 @@ struct Atoms {
   Vector extra;
 };
 
-Atom get_atom(struct X11Context* context, const char* atom_name);
-void atoms_init(struct Atoms* atoms, struct X11Context* context);
+Atom get_atom_internal(Display* display, const char* atom_name);
+void atoms_init(struct Atoms* atoms, Display* display);
 void atoms_kill(struct Atoms* atoms);
