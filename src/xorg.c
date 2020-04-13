@@ -294,9 +294,8 @@ static void createDestroyWin(struct X11Context* xctx, Window xid) {
 }
 
 static void createGetsClient(struct X11Context* xctx, Window xid, Window client_xid) {
-    // @CLEANUP @HACK: We are still emitting a raw event for
-    // reparenting. Ideally, the compositor shouldn't even have to
-    // care about this parent nonsense. 
+    // @CLEANUP @HACK: We are still emitting an event for reparenting. Ideally,
+    // the compositor shouldn't even have to care about this parent nonsense. 
     struct Event event;
     event.type = ET_NONE;
     // Default to no event.

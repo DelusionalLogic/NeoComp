@@ -223,9 +223,9 @@ static win * find_win_all(session_t *ps, const Window wid) {
 
     win *w = find_win(ps, wid);
     if (!w) {
-        win_id wid = find_toplevel(ps, wid);
+        win_id fid = find_toplevel(ps, wid);
         if(wid != -1)
-            w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+            w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, fid);
     }
     if (!w) w = find_toplevel2(ps, wid);
     return w;
@@ -317,14 +317,6 @@ const char* const StateNames[] = {
     "Inactive",
     "Destroying",
     "Destroyed",
-};
-
-/// Names of root window properties that could point to a pixmap of
-/// background.
-const static char *background_props_str[] = {
-  "_XROOTPMAP_ID",
-  "_XSETROOT_ID",
-  0,
 };
 
 // === Global variables ===
@@ -1410,9 +1402,6 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
     win_set_focused(ps, w);
 }
 
-static void update_ewmh_active_win(session_t *ps) {
-}
-
 static void
 ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #ifdef DEBUG_EVENTS
@@ -2312,7 +2301,6 @@ mainloop(session_t *ps) {
                 set_active_window(ps, &event.focus);
                 break;
             case ET_NEWROOT:
-                // @CLEANUP: Use the pixmap from the event
                 root_damaged(ps, &event.newRoot);
                 break;
             case ET_RAW:
