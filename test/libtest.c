@@ -151,6 +151,74 @@ struct TestResult assertEqString_internal(char* name, bool inverse, const char* 
     return result;
 }
 
+struct TestResult assertEvents_internal(Vector* events, struct Event matchers[], size_t numMatch) {
+    bool success = true;
+
+    if(numMatch != vector_size(events)) {
+        return  (struct TestResult){
+            .type = TEST_EQ,
+            .success = false,
+            .eq = {
+                .name = "number of events",
+                .inverse = false,
+                .actual = vector_size(events),
+                .expected = numMatch,
+            }
+        };
+    }
+    for(size_t i = 0; i < numMatch; i++) {
+        struct Event* ev = vector_get(events, i);
+        if(ev->type != matchers[i].type) {
+            return  (struct TestResult){
+                .type = TEST_EQ,
+                .success = false,
+                .eq = {
+                    .name = "event type",
+                    .inverse = false,
+                    .actual = ev->type,
+                    .expected = matchers[i].type,
+                }
+            };
+        }
+
+        switch(ev->type) {
+            case ET_CLIENT:
+                if(ev->cli.client_xid != matchers[i].cli.client_xid) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ,
+                        .success = false,
+                        .eq = {
+                            .name = "client winfow",
+                            .inverse = false,
+                            .actual = ev->cli.client_xid,
+                            .expected = matchers[i].cli.client_xid,
+                        }
+                    };
+                }
+                if(ev->cli.xid != matchers[i].cli.xid) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ,
+                        .success = false,
+                        .eq = {
+                            .name = "client winfow",
+                            .inverse = false,
+                            .actual = ev->cli.xid,
+                            .expected = matchers[i].cli.xid,
+                        }
+                    };
+                }
+                break;
+        }
+    }
+
+    struct TestResult result = {
+        .type = TEST_STATIC,
+        .success = success,
+    };
+
+    return result;
+}
+
 void test_parseName(char* name, struct TestName* res) {
     char* thing_start = name;
     char* thing_end = strstr(thing_start, "__");

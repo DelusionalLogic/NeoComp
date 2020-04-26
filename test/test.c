@@ -1189,8 +1189,795 @@ struct TestResult fetch_sorted_windows__reorder_windows__windows_have_inverted_z
     assertEqArray(vector_detach(&v), wids, 2);
 }
 
+size_t qCursor = 0;
+Vector eventQ;
+void* windowAttrs;
+
+Window RootWindowHook(Display* dpy, Screen scr) {
+    return 0;
+}
+
+void XNextEventHook(Display* dpy, XEvent* ev) {
+    *ev = *(XEvent*)vector_get(&eventQ, qCursor);
+    qCursor++;
+}
+
+bool XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs) {
+    XWindowAttributes** value;
+    JLG(value, windowAttrs, window);
+    if(value != NULL) {
+        *attrs = **value;
+        return true;
+    }
+
+    return XGetWindowAttributes(dpy, window, attrs);
+}
+
+void setWindowAttr(Window window, XWindowAttributes* attrs) {
+    XWindowAttributes** value;
+    JLI(value, windowAttrs, window);
+    *value = attrs;
+}
+
+void readAllEventsInto(struct X11Context* xctx, Vector* events) {
+    struct Event ev;
+    while(vector_size(&eventQ) > qCursor || vector_size(&xctx->eventBuf) > xctx->readCursor) {
+        xorg_nextEvent(xctx, &ev);
+        if(events != NULL && ev.type != ET_NONE)
+            vector_putBack(events, &ev);
+    }
+}
+
+Vector* readAllEvents(struct X11Context* xctx) {
+    Vector* events = malloc(sizeof(Vector));
+    vector_init(events, sizeof(struct Event), 1);
+    readAllEventsInto(xctx, events);
+    return events;
+}
+
+struct TestResult xorg__emit_add_win_event__new_window_is_created() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .window = 1,
+    });
+
+    struct Event ev;
+    xorg_nextEvent(&ctx, &ev);
+
+    assertEq((uint64_t)ev.type, (uint64_t)ET_ADD);
+}
+
+struct TestResult xorg__emit_no_event__new_window_is_child_of_other() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 10,
+        .window = 2,
+    });
+
+    struct Event ev;
+    xorg_nextEvent(&ctx, &ev);
+
+    assertEq((uint64_t)ev.type, (uint64_t)ET_NONE);
+}
+
+struct TestResult xorg__emit_destroy_event__closed_window_was_created_as_active() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 0,
+        .window = 2,
+    });
+    vector_putBack(&eventQ, &(XDestroyWindowEvent){
+        .type = DestroyNotify,
+        .serial = 1,
+        .window = 2,
+    });
+
+    struct Event ev;
+    xorg_nextEvent(&ctx, &ev);
+    xorg_nextEvent(&ctx, &ev);
+
+    assertEq((uint64_t)ev.type, (uint64_t)ET_DESTROY);
+}
+
+struct TestResult xorg__emit_no_event__closed_window_was_not_created_as_active() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 10,
+        .window = 2,
+    });
+    vector_putBack(&eventQ, &(XDestroyWindowEvent){
+        .type = DestroyNotify,
+        .serial = 1,
+        .window = 2,
+    });
+
+    struct Event ev;
+    xorg_nextEvent(&ctx, &ev);
+    xorg_nextEvent(&ctx, &ev);
+
+    assertEq((uint64_t)ev.type, (uint64_t)ET_NONE);
+}
+
+struct TestResult xorg__emit_add_win_event__inactive_window_gets_reparented_to_root() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 10,
+        .window = 2,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .serial = 2,
+        .parent = 0,
+        .window = 2,
+    });
+
+    Vector* events = readAllEvents(&ctx);
+    assertEvents(events,
+        (struct Event){.type = ET_ADD},
+    );
+}
+
+struct TestResult xorg__emit_destroy_win_event__active_window_gets_reparented_to_other_window() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .window = 2,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .serial = 2,
+        .parent = 1,
+        .window = 2,
+    });
+
+    Vector* events = readAllEvents(&ctx);
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+    );
+}
+
+struct TestResult xorg__emit_nothing__subwindow_gets_reparented_to_other_window() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 0,
+        .window = 2,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 0,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .parent = 1,
+        .window = 3,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .serial = 2,
+        .parent = 2,
+        .window = 3,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
+struct TestResult xorg__not_emit_get_client__frame_window_gets_client_atom() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .window = 1,
+        .parent = 0,
+    });
+    readAllEvents(&ctx);
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .serial = 2,
+        .window = 1,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
+struct TestResult xorg__emit_get_client__child_window_gets_client_atom() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 2}
+    );
+}
+
+struct TestResult xorg__emit_get_client__client_window_becomes_child_of_frame() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 2}
+    );
+}
+
+struct TestResult xorg__emit_get_client__subsubwindow_becomes_client() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 3}
+    );
+}
+
+struct TestResult xorg__emit_get_client__client_reparents_to_subwindow() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 3}
+    );
+}
+
+struct TestResult xorg__emit_get_client__parent_of_client_gets_reparented_to_frame() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 3}
+    );
+}
+
+struct TestResult xorg__not_emit_get_client__window_becomes_client_under_frame_with_closer_client() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    setWindowAttr(4, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 4,
+        .parent = 3,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 4,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
+struct TestResult xorg__not_emit_get_client__client_reparents_under_frame_with_closer_client() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    setWindowAttr(4, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 4,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 4,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .window = 4,
+        .parent = 3,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+    );
+}
+
+struct TestResult xorg__emit_get_client__client_reparents_to_other_frame() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .window = 3,
+        .parent = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        // @TODO: Add expected remove client here
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 3}
+    );
+}
+
+struct TestResult xorg__emit_get_client__current_client_loses_atom() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyDelete,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 3}
+    );
+}
+
+struct TestResult xorg__not_emit_get_client__distant_client_loses_atom() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = XOpenDisplay(NULL);
+    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+
+    XWindowAttributes attr = {
+        .map_state = IsViewable,
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setWindowAttr(3, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 3,
+        .parent = 2,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 3,
+        .atom = atoms.atom_client,
+        .state = PropertyDelete,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 int main(int argc, char** argv) {
     vector_init(&results, sizeof(struct Test), 128);
+
+    vector_init(&eventQ, sizeof(XEvent), 8);
 
     TEST(vector__be_empty__initialized);
     TEST(vector__grow__storing_elements);
@@ -1294,6 +2081,28 @@ int main(int argc, char** argv) {
     TEST(fetch_sorted_windows__fetch_2_windows_in_insert_order__increasing_z_order);
     TEST(fetch_sorted_windows__exclude_window__one_window_without_component);
     TEST(fetch_sorted_windows__reorder_windows__windows_have_inverted_z_order);
+
+    TEST(xorg__emit_add_win_event__new_window_is_created);
+    TEST(xorg__emit_no_event__new_window_is_child_of_other);
+    TEST(xorg__emit_destroy_event__closed_window_was_created_as_active);
+    TEST(xorg__emit_no_event__closed_window_was_not_created_as_active);
+
+    TEST(xorg__emit_add_win_event__inactive_window_gets_reparented_to_root);
+    TEST(xorg__emit_destroy_win_event__active_window_gets_reparented_to_other_window);
+    TEST(xorg__not_emit_get_client__frame_window_gets_client_atom);
+    TEST(xorg__emit_get_client__child_window_gets_client_atom);
+    TEST(xorg__emit_get_client__client_window_becomes_child_of_frame);
+
+    TEST(xorg__emit_nothing__subwindow_gets_reparented_to_other_window);
+    TEST(xorg__emit_get_client__client_reparents_to_subwindow);
+    TEST(xorg__emit_get_client__subsubwindow_becomes_client);
+    TEST(xorg__emit_get_client__parent_of_client_gets_reparented_to_frame);
+    TEST(xorg__not_emit_get_client__window_becomes_client_under_frame_with_closer_client);
+    TEST(xorg__not_emit_get_client__client_reparents_under_frame_with_closer_client);
+    TEST(xorg__emit_get_client__client_reparents_to_other_frame);
+
+    TEST(xorg__emit_get_client__current_client_loses_atom);
+    TEST(xorg__not_emit_get_client__distant_client_loses_atom);
 
     return test_end();
 }

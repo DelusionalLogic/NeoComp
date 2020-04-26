@@ -132,6 +132,9 @@ struct X11Context {
     // @CLEANUP: This should be internal but currently it lives in the session
     struct Atoms* atoms;
 
+    void* winParent;
+    void* client;
+
     void* active;
     Vector eventBuf;
     size_t readCursor;

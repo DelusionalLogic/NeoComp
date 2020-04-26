@@ -164,6 +164,7 @@ clean:
 version:
 	@echo "$(COMPTON_VERSION)"
 
+test/test: CFLAGS += -DINTERCEPT
 test/test: gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C)) $(LIBS)
 

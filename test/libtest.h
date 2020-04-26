@@ -1,5 +1,6 @@
 #pragma once
 
+#include "xorg.h"
 #include "vector.h"
 
 #include <stdint.h>
@@ -99,6 +100,8 @@ struct TestResult assertEqFloat_internal(char* name, bool inverse, double value,
 struct TestResult assertEqArray_internal(char* name, bool inverse, const void* var, const void* value, size_t size);
 struct TestResult assertEqString_internal(char* name, bool inverse, const char* var, const char* value, size_t size);
 
+struct TestResult assertEvents_internal(Vector* events, struct Event match[], size_t numMatch);
+
 #define GET_ASSERT_FUNCTION(var)            \
     _Generic((var),                         \
             void*: assertEqPtr_internal,    \
@@ -127,6 +130,10 @@ struct TestResult assertEqString_internal(char* name, bool inverse, const char* 
 
 #define assertYes() \
     return assertStatic_internal(true)
+
+#define NUMARGS(...)  (sizeof((int[]){__VA_ARGS__})/sizeof(int))
+#define assertEvents(events, ...) \
+    return assertEvents_internal(events, (struct Event[]){__VA_ARGS__}, sizeof((struct Event[]){__VA_ARGS__})/sizeof(struct Event))
 
 typedef struct TestResult (*test_func)();
 

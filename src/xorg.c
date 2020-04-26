@@ -8,6 +8,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef INTERCEPT
+#define RootWindow(dpy, scr) RootWindowHook(dpy, scr)
+#define XNextEvent(dpy, ev) XNextEventHook(dpy, ev)
+bool XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs);
+#define XGetWindowAttributes(dpy, w, a) XGetWindowAttributesHook(dpy, w, a)
+#endif
+
 DECLARE_ZONE(select_config);
 
 const char* X11Protocols_Names[] = {
@@ -126,6 +133,8 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
 
     xorgContext_capabilities(&context->capabilities, context);
 
+    context->winParent = NULL;
+    context->client = NULL;
     context->active = NULL;
     vector_init(&context->eventBuf, sizeof(struct Event), 64);
     context->readCursor = 0;
@@ -226,6 +235,44 @@ void xorgContext_delete(struct X11Context* context) {
     free(context->configs);
 }
 
+static bool detachSubtree(struct X11Context* xctx, Window xid) {
+    int rc_int;
+    JLD(rc_int, xctx->winParent, xid);
+    if(rc_int == JERR) {
+        printf_errf("Malloc error");
+        return false;
+    }
+
+    return rc_int == 1;
+}
+
+static void attachSubtree(struct X11Context* xctx, Window xid, Window client_xid) {
+    // Add the client->frame association
+    Window* value;
+    JLI(value, xctx->winParent, client_xid);
+    if(value == PJERR){
+        printf_errf("Malloc failed");
+        return;
+    } else if(*value != 0) {
+        printf_errf("Client already had a frame?");
+        return;
+    }
+
+    *value = xid;
+}
+
+static Window findRoot(struct X11Context* xctx, Window xid) {
+    // Add the client->frame association
+    Window* next = &xid;
+    Window last;
+    do {
+        last = *next;
+        JLG(next, xctx->winParent, last);
+    } while(next != NULL);
+
+    return last;
+}
+
 static void pushEvent(struct X11Context* xctx, const struct Event event) {
     vector_putBack(&xctx->eventBuf, &event);
 }
@@ -277,10 +324,15 @@ static void createAddWin(struct X11Context* xctx, Window xid) {
 }
 
 static void createDestroyWin(struct X11Context* xctx, Window xid) {
-    struct Event event;
-    // Default to no event.
-    event.type = ET_NONE;
-    event.des.xid = xid;
+    int rc_int;
+    JLD(rc_int, xctx->winParent, xid);
+    if(rc_int == JERR) {
+        printf_errf("Malloc error");
+        return;
+    } else if(rc_int == 1) {
+        // Window was framed which means it won't be active
+        return;
+    }
 
     Word_t rc;
     J1U(rc, xctx->active, xid);
@@ -289,27 +341,29 @@ static void createDestroyWin(struct X11Context* xctx, Window xid) {
         return;
     }
 
-    event.type = ET_DESTROY;
+    // Framed window destroy causes all the subwindows to be destroyed which
+    // should cause the client to be removed from clientMap
+
+    struct Event event = {
+        .type = ET_DESTROY,
+        .des.xid = xid,
+    };
     pushEvent(xctx, event);
 }
 
 static void createGetsClient(struct X11Context* xctx, Window xid, Window client_xid) {
     // @CLEANUP @HACK: We are still emitting an event for reparenting. Ideally,
     // the compositor shouldn't even have to care about this parent nonsense. 
-    struct Event event;
-    event.type = ET_NONE;
-    // Default to no event.
-    event.cli.xid = xid;
-    event.cli.client_xid = client_xid;
 
     Word_t rc;
     J1T(rc, xctx->active, xid);
-    if(rc == 0) {
-        // The window wasn't active, so we swallow the destroy
-        return;
-    }
+    assert(rc != 0);
 
-    event.type = ET_CLIENT;
+    struct Event event = {
+        .type = ET_CLIENT,
+        .cli.xid = xid,
+        .cli.client_xid = client_xid,
+    };
     pushEvent(xctx, event);
 }
 
@@ -448,6 +502,54 @@ static void createNewRoot(struct X11Context* xctx) {
     }
 }
 
+static bool findClosestClient(struct X11Context* xctx, Window top, Window* client) {
+    Word_t rc;
+
+    void* next = NULL;
+    void* current = NULL;
+    J1S(rc, current, top);
+    Word_t count = 1;
+
+    while(count > 0) {
+        Word_t index = 0;
+        Window* value;
+        JLF(value, xctx->winParent, index);
+        while(value != NULL) {
+            J1T(rc, current, *value);
+            if(rc == 0) {
+                // This window is not a child of the
+                // current frontier
+                JLN(value, xctx->winParent, index);
+                continue;
+            }
+
+            J1T(rc, xctx->client, index);
+            if(rc == 0) {
+                // The window is not a client, so we have
+                // to continue the search
+                J1S(rc, next, index);
+                JLN(value, xctx->winParent, index);
+                continue;
+            }
+
+            // The window was a client and our search is done
+
+            J1FA(rc, next);
+            J1FA(rc, current);
+            *client = index;
+            return true;
+        }
+
+        void* tmp = next;
+        next = current;
+        current = tmp;
+        J1FA(rc, next);
+        J1C(count, current, 0, -1);
+    }
+
+    return false;
+}
+
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
     XNextEvent(xctx->display, &raw);
@@ -455,12 +557,17 @@ static void fillBuffer(struct X11Context* xctx) {
     switch (raw.type) {
         case CreateNotify: {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
-            createAddWin(xctx, ev->window);
+            if(ev->parent == xctx->root) {
+                createAddWin(xctx, ev->window);
+            } else {
+                attachSubtree(xctx, ev->parent, ev->window);
+            }
             break;
         }
         case DestroyNotify: {
             XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
             createDestroyWin(xctx, ev->window);
+            detachSubtree(xctx, ev->window);
             break;
         }
         case ReparentNotify: {
@@ -469,9 +576,22 @@ static void fillBuffer(struct X11Context* xctx) {
             // root looks like an new window to us.
             if (ev->parent == xctx->root) {
                 createAddWin(xctx, ev->window);
+                detachSubtree(xctx, ev->window);
             } else {
                 createDestroyWin(xctx, ev->window);
-                createGetsClient(xctx, ev->parent, ev->window);
+                Window frame = findRoot(xctx, ev->parent);
+
+                Window oldClient;
+                bool hasOldClient = findClosestClient(xctx, frame, &oldClient);
+
+                attachSubtree(xctx, ev->parent, ev->window);
+
+                Window client;
+                if(findClosestClient(xctx, frame, &client)) {
+                    if(!hasOldClient || client != oldClient){
+                        createGetsClient(xctx, frame, client);
+                    }
+                }
             }
             break;
         }
@@ -489,6 +609,63 @@ static void fillBuffer(struct X11Context* xctx) {
                 } else if (xctx->atoms->atom_xrootmapid == ev->atom
                         || xctx->atoms->atom_xsetrootid == ev->atom) {
                     createNewRoot(xctx);
+                    break;
+                }
+            } else {
+                if(ev->atom == xctx->atoms->atom_client) {
+                    if(ev->state == PropertyNewValue) {
+                        Window frame = findRoot(xctx, ev->window);
+                        //Save the old client
+                        Window oldClient;
+                        bool hasOldClient = findClosestClient(xctx, frame, &oldClient);
+
+                        Word_t rc;
+                        J1S(rc, xctx->client, ev->window);
+                        if(rc != 1) { // The window was already a client
+                            break;
+                        }
+
+                        J1T(rc, xctx->active, ev->window);
+                        if(rc == 1) {
+                            // The window is a frame, which means we don't need
+                            // to process the client (frames can't be clients).
+                            // We still track client status if this get's
+                            // parented down
+                            return;
+                        }
+
+                        Window client;
+                        if(findClosestClient(xctx, frame, &client)) {
+                            if(!hasOldClient || client != oldClient){
+                                createGetsClient(xctx, frame, client);
+                            }
+                        }
+                    } else if(ev->state == PropertyDelete) {
+                        Window frame = findRoot(xctx, ev->window);
+                        //Save the old client
+                        Window oldClient;
+                        bool hasOldClient = findClosestClient(xctx, frame, &oldClient);
+
+                        Word_t rc;
+                        J1U(rc, xctx->client, ev->window);
+                        assert(rc == 1); // The window is not a client
+
+                        J1T(rc, xctx->active, ev->window);
+                        if(rc == 1) {
+                            // The window is a frame, which means we don't need
+                            // to process the client (frames can't be clients).
+                            // We still track client status if this get's
+                            // parented down
+                            return;
+                        }
+
+                        Window client;
+                        if(findClosestClient(xctx, frame, &client)) {
+                            if(!hasOldClient || client != oldClient){
+                                createGetsClient(xctx, frame, client);
+                            }
+                        }
+                    }
                     break;
                 }
             }

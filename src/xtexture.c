@@ -210,6 +210,7 @@ bool xtexture_unbind(struct XTexture* tex) {
             GLX_FRONT_LEFT_EXT);
 
     tex->pixmap = 0;
+    glXDestroyPixmap(tex->context->display, tex->glxPixmap);
 
     tex->bound = false;
     return true;

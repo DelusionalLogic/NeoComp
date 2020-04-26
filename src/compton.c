@@ -1414,7 +1414,6 @@ ev_property_notify(session_t *ps, XPropertyEvent *ev) {
 #endif
 
     if (ps->root == ev->window) {
-        // Unconcerned about any other proprties on root window
         return;
     }
 
