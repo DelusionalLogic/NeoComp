@@ -8,8 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-extern Vector results;
-
 struct TestResultEq {
     char* name;
     bool inverse;
@@ -137,6 +135,7 @@ struct TestResult assertEvents_internal(Vector* events, struct Event match[], si
 
 typedef struct TestResult (*test_func)();
 
+void test_select(int argc, char** argv);
 void test_run(char* name, test_func func);
 
 #define TEST(f)                          \

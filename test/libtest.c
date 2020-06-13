@@ -3,8 +3,11 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
+#include <fnmatch.h>
 
 Vector results;
+char** selected;
+size_t selected_num;
 
 // Per test data
 int test_fd;
@@ -343,7 +346,24 @@ void test_shouldAssert() {
     test_sentAssertSignal = true;
 }
 
+bool matchTestName(char* name) {
+    if(selected_num == 0)
+        return true;
+
+    for(int i = 0; i < selected_num; i++) {
+        char* it = selected[i];
+        // If there's an error we fall back to just having a match
+        if(fnmatch(it, name, 0) != FNM_NOMATCH) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void test_run(char* name, test_func func) {
+    if(!matchTestName(name))
+        return;
+
     int fds[2];
 
     //0 is read, 1 is write
@@ -393,6 +413,14 @@ void test_run(char* name, test_func func) {
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_WHITE   "\x1b[90m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
+
+void test_select(int argc, char** argv) {
+    vector_init(&results, sizeof(struct Test), 128);
+
+    // First argument is the executable name, skip that.
+    selected = argv + 1;
+    selected_num = argc - 1;
+}
 
 uint32_t test_end() {
     uint32_t failed = 0;

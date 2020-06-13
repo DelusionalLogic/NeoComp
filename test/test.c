@@ -2407,7 +2407,7 @@ struct TestResult xorg__emit_damage__unmapped_window_is_damaged() {
 }
 
 int main(int argc, char** argv) {
-    vector_init(&results, sizeof(struct Test), 128);
+    test_select(argc, argv);
 
     vector_init(&eventQ, sizeof(XEvent), 8);
 
