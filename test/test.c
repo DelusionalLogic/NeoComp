@@ -1,5 +1,7 @@
 #include "libtest.h"
 
+#include "intercept/xorg.h"
+
 #include "vector.h"
 #include "compton.h"
 #include "assets/face.h"
@@ -1193,16 +1195,16 @@ size_t qCursor = 0;
 Vector eventQ;
 void* windowAttrs;
 
-Window RootWindowHook(Display* dpy, Screen scr) {
+Window RootWindowH(Display* dpy, int scr) {
     return 0;
 }
 
-void XNextEventHook(Display* dpy, XEvent* ev) {
+int XNextEventH(Display* dpy, XEvent* ev) {
     *ev = *(XEvent*)vector_get(&eventQ, qCursor);
     qCursor++;
 }
 
-Status XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs) {
+Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs) {
     XWindowAttributes** value;
     JLG(value, windowAttrs, window);
     if(value != NULL) {

@@ -1,4 +1,5 @@
 #include "xorg.h"
+#include "intercept/xorg.h"
 
 #include "assert.h"
 #include "logging.h"
@@ -7,13 +8,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef INTERCEPT
-#define RootWindow(dpy, scr) RootWindowHook(dpy, scr)
-#define XNextEvent(dpy, ev) XNextEventHook(dpy, ev)
-bool XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs);
-#define XGetWindowAttributes(dpy, w, a) XGetWindowAttributesHook(dpy, w, a)
-#endif
 
 DECLARE_ZONE(select_config);
 
@@ -123,7 +117,7 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
 
     context->display = display;
     context->screen = screen;
-    context->root = RootWindow(display, screen);
+    context->root = RootWindowH(display, screen);
 
     context->configs = glXGetFBConfigs(display, screen, &context->numConfigs);
     if(context->configs == NULL) {
@@ -566,7 +560,7 @@ static bool findClosestClient(struct X11Context* xctx, Window top, Window* clien
 
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
-    XNextEvent(xctx->display, &raw);
+    XNextEventH(xctx->display, &raw);
 
     switch (raw.type) {
         case CreateNotify: {
@@ -594,7 +588,7 @@ static void fillBuffer(struct X11Context* xctx) {
             // root looks like an new window to us.
             if (ev->parent == xctx->root) {
                 XWindowAttributes attribs;
-                if(!XGetWindowAttributes(xctx->display, ev->window, &attribs)) {
+                if(!XGetWindowAttributesH(xctx->display, ev->window, &attribs)) {
                     printf_dbgf("Could not get window attribs");
                     break;
                 }
@@ -889,7 +883,7 @@ void xorg_beginEvents(struct X11Context* xctx) {
 
     for (unsigned i = 0; i < nchildren; i++) {
         XWindowAttributes attribs;
-        if (!XGetWindowAttributes(xctx->display, children[i], &attribs)) {
+        if (!XGetWindowAttributesH(xctx->display, children[i], &attribs)) {
             // Failed to get window attributes probably means the window is gone
             // already.
             continue;

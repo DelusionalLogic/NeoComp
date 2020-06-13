@@ -15,7 +15,7 @@ GENDIR ?= gen
 
 
 LIBS = -lGL -lm -lrt -lJudy
-INCS = -Isrc/ -Igen/
+INCS = -Isrc/ -Igen/ -I.
 
 CFG = -std=gnu11 -fms-extensions -flto
 
@@ -24,6 +24,7 @@ PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x1
 PACKAGES += freetype2
 
 SOURCES = $(shell find $(SRCDIR) -name "*.c")
+INTERCEPT_SOURCES = $(shell find intercept -name "*.c")
 
 TEST_SOURCES = $(wildcard test/*.c)
 
@@ -31,7 +32,6 @@ SHADEGEN_SOURCES = $(wildcard shadegen/*.c)
 SHADERTYPE_SOURCES = $(wildcard shadertypes/*.type)
 
 print-%  : ; @echo $* = $($*)
-
 
 # === Configuration flags ===
 
@@ -100,12 +100,14 @@ CFLAGS += -Wall -Wno-microsoft-anon-tag
 
 
 OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
+INTERCEPT_OBJS_C = $(INTERCEPT_SOURCES:%.c=$(OBJDIR)/%.o)
 TEST_OBJS_C = $(TEST_SOURCES:%.c=$(OBJDIR)/%.o)
 SHADEGEN_OBJS_C = $(SHADEGEN_SOURCES:%.c=$(OBJDIR)/%.o)
 # Generated shadertype source
 OBJS_C += $(OBJDIR)/gen/shaders/include.o
 
 DEPS_C = $(OBJS_C:%.o=%.d)
+INTERCEPT_DEPS_C = $(INTERCEPT_OBJS_C:%.o=%.d)
 TEST_DEPS_C = $(TEST_OBJS_C:%.o=%.d)
 SHADEGEN_DEPS_C = $(SHDEGEN_OBJS_C:%.o=%.d)
 
@@ -119,10 +121,10 @@ MANPAGES_HTML = $(addsuffix .html,$(MANPAGES))
 src/.clang_complete: Makefile
 	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
 
-neocomp: gen/shaders/include.h $(OBJS_C)
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(LIBS)
+neocomp: gen/shaders/include.h $(INTERCEPT_OBJS_C) $(OBJS_C)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(INTERCEPT_OBJS_C) $(LIBS)
 
--include $(DEPS_C)
+-include $(DEPS_C) $(INTERCEPT_DEPS_C) $(TEST_DEPS_C) $(SHADEGEN_DEPS_C)
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -164,7 +166,6 @@ clean:
 version:
 	@echo "$(COMPTON_VERSION)"
 
-test/test: CFLAGS += -DINTERCEPT
 test/test: gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C)) $(LIBS)
 
