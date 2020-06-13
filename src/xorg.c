@@ -594,7 +594,7 @@ static void fillBuffer(struct X11Context* xctx) {
             // root looks like an new window to us.
             if (ev->parent == xctx->root) {
                 XWindowAttributes attribs;
-                if(XGetWindowAttributes(xctx->display, ev->window, &attribs)) {
+                if(!XGetWindowAttributes(xctx->display, ev->window, &attribs)) {
                     printf_dbgf("Could not get window attribs");
                     break;
                 }

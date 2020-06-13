@@ -1202,12 +1202,12 @@ void XNextEventHook(Display* dpy, XEvent* ev) {
     qCursor++;
 }
 
-bool XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs) {
+Status XGetWindowAttributesHook(Display* dpy, Window window, XWindowAttributes* attrs) {
     XWindowAttributes** value;
     JLG(value, windowAttrs, window);
     if(value != NULL) {
         *attrs = **value;
-        return true;
+        return 1;
     }
 
     return XGetWindowAttributes(dpy, window, attrs);
