@@ -27,15 +27,6 @@ void physics_move_window(Swiss* em, win_id wid, Vector2* pos, Vector2* size) {
 
 void physics_tick(Swiss* em) {
     for_components(it, em,
-            COMPONENT_MAP, COMPONENT_PHYSICAL, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
-        struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-
-        physical->position = map->position;
-        physical->size = map->size;
-    }
-
-    for_components(it, em,
             COMPONENT_MOVE, COMPONENT_PHYSICAL, CQ_END) {
         struct MoveComponent* move = swiss_getComponent(em, COMPONENT_MOVE, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);

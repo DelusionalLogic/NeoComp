@@ -188,7 +188,7 @@ struct TestResult assertEvents_internal(Vector* events, struct Event matchers[],
                         .type = TEST_EQ,
                         .success = false,
                         .eq = {
-                            .name = "client winfow",
+                            .name = "client window",
                             .inverse = false,
                             .actual = ev->cli.client_xid,
                             .expected = matchers[i].cli.client_xid,
@@ -200,10 +200,36 @@ struct TestResult assertEvents_internal(Vector* events, struct Event matchers[],
                         .type = TEST_EQ,
                         .success = false,
                         .eq = {
-                            .name = "client winfow",
+                            .name = "parent window",
                             .inverse = false,
                             .actual = ev->cli.xid,
                             .expected = matchers[i].cli.xid,
+                        }
+                    };
+                }
+                break;
+            case ET_RESTACK:
+                if(ev->restack.xid != matchers[i].restack.xid) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ,
+                        .success = false,
+                        .eq = {
+                            .name = "window",
+                            .inverse = false,
+                            .actual = ev->restack.xid,
+                            .expected = matchers[i].restack.xid,
+                        }
+                    };
+                }
+                if(ev->restack.loc != matchers[i].restack.loc) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ,
+                        .success = false,
+                        .eq = {
+                            .name = "restack location",
+                            .inverse = false,
+                            .actual = ev->restack.loc,
+                            .expected = matchers[i].restack.loc,
                         }
                     };
                 }

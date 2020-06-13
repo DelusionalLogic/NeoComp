@@ -51,7 +51,6 @@
 #include "profiler/render.h"
 #include "profiler/dump_events.h"
 
-
 // === Global constants ===
 
 DECLARE_ZONE(global);
@@ -566,8 +565,12 @@ static void assign_depth(Swiss* em, Vector* order) {
     }
 }
 
-static void map_win(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+static void map_win(session_t *ps, struct MapWin* ev) {
+    win *w = find_win(ps, ev->xid);
+	if(w == NULL) {
+        return;
+    }
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     assert(w != NULL);
 
@@ -591,51 +594,10 @@ static void map_win(session_t *ps, win_id wid) {
     // Make sure the XSelectInput() requests are sent
     XFlush(ps->dpy);
 
-    //Detect client window
-    {
-        // Initialize wmwin to false
-        w->wmwin = false;
-
-        struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
-
-        // Look for the client window
-
-        // Always recursively look for a window with WM_STATE, as Fluxbox
-        // sets override-redirect flags on all frame windows.
-        Window cw = find_client_win(ps, window->id);
-#ifdef DEBUG_CLIENTWIN
-        if (cw)
-            printf_dbgf("(%#010lx): client %#010lx\n", w->id, cw);
-#endif
-        // Set a window's client window to itself if we couldn't find a
-        // client window
-        if (!cw) {
-            cw = window->id;
-            w->wmwin = !w->override_redirect;
-#ifdef DEBUG_CLIENTWIN
-            printf_dbgf("(%#010lx): client self (%s)\n", w->id,
-                    (w->wmwin ? "wmwin": "override-redirected"));
-#endif
-        }
-
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid)) {
-            win_unmark_client(ps, w);
-        }
-
-        // Mark the new one
-        win_mark_client(ps, w, cw);
-    }
-
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
     // Add a map event
     swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
-    struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, wid);
-    map->position = (Vector2){{attribs.x, attribs.y}};
-    map->size = (Vector2){{
-        attribs.width + w->border_size * 2,
-        attribs.height + w->border_size * 2,
-    }};
 
     if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
@@ -703,7 +665,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   const static win win_def = {
     .border_size = 0,
     .override_redirect = false,
-    .damage = None,
 
     .window_type = WINTYPE_UNKNOWN,
     .wmwin = false,
@@ -733,18 +694,12 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
     return false;
   }
 
+
   {
-      swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, slot);
-      struct MapComponent* map = swiss_getComponent(&ps->win_list, COMPONENT_MAP, slot);
-      map->position = ev->pos;
-      map->size = ev->size;
-
-      // Remove pending unmaps
-      if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, slot)) {
-          swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, slot);
-      }
+      struct PhysicalComponent* phy = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
+      phy->position = ev->pos;
+      phy->size = ev->size;
   }
-
   {
       struct StatefulComponent* stateful = swiss_addComponent(&ps->win_list, COMPONENT_STATEFUL, slot);
       stateful->state = STATE_INVISIBLE;
@@ -770,6 +725,11 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
       struct ShapedComponent* shaped = swiss_addComponent(&ps->win_list, COMPONENT_SHAPED, slot);
       shaped->face = NULL;
   }
+  {
+      // Windows frame themselves until they get a client
+      struct HasClientComponent* cli = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, slot);
+      cli->id = ev->xid;
+  }
   swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
   swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
 
@@ -778,21 +738,10 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   new->border_size = ev->border_size;
   new->override_redirect = ev->override_redirect;
 
-  new->damage = ev->xdamage;
-
-  struct PhysicalComponent* physical = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
-  physical->position = ev->pos;
-  physical->size = ev->size;
-
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
   z->z = 0;
 
   vector_putBack(&ps->order, &slot);
-
-  // Already mapped
-  if (ev->mapped) {
-      map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, new));
-  }
 
   return true;
 }
@@ -804,41 +753,54 @@ restack_win(session_t *ps, struct Restack* ev) {
         return;
     win_id w_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    struct _win* w_above = find_win(ps, ev->above);
+    size_t w_loc;
+    size_t new_loc;
+    if(ev->loc == LOC_BELOW) {
+        struct _win* w_above = find_win(ps, ev->above);
 
-    // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
-    // ConfigureNotify above value for a window that doesn't even exist
-    // (badwindow from X11). For now we will just not restack anything then,
-    // but it seems like a hack
-    if(w_above == NULL)
-        return;
+        // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
+        // ConfigureNotify above value for a window that doesn't even exist
+        // (badwindow from X11). For now we will just not restack anything then,
+        // but it seems like a hack
+        if(w_above == NULL)
+            return;
 
-    win_id above_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_above);
+        win_id above_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_above);
 
-    size_t w_loc = 0;
-    size_t above_loc = 0;
+        size_t above_loc = 0;
 
-    size_t index;
-    win_id* t = vector_getFirst(&ps->order, &index);
-    while(t != NULL) {
-        if(*t == w_id)
-            w_loc = index;
+        size_t index;
+        win_id* t = vector_getFirst(&ps->order, &index);
+        while(t != NULL) {
+            if(*t == w_id)
+                w_loc = index;
 
-        if(*t == above_id)
-            above_loc = index;
-        t = vector_getNext(&ps->order, &index);
+            if(*t == above_id)
+                above_loc = index;
+            t = vector_getNext(&ps->order, &index);
+        }
+
+        // Circulate moves the windows between the src and target, so we
+        // have to move one after the target when we are moving backwards
+        if(above_loc < w_loc) {
+            new_loc = above_loc + 1;
+        } else {
+            new_loc = above_loc;
+        }
+    } else {
+        w_loc = vector_find_uint64(&ps->order, w_id);
+
+        if (ev->loc == LOC_HIGHEST) {
+            new_loc = vector_size(&ps->order) - 1;
+        } else {
+            new_loc = 0;
+        }
     }
 
-    // Circulate moves the windows between the src and target, so we
-    // have to move one after the target when we are moving backwards
-    if(above_loc < w_loc) {
-        above_loc++;
-    }
-
-    if(w_loc == above_loc)
+    if(w_loc == new_loc)
         return;
 
-    vector_circulate(&ps->order, w_loc, above_loc);
+    vector_circulate(&ps->order, w_loc, new_loc);
 }
 
 static void
@@ -869,26 +831,6 @@ configure_win(session_t *ps, struct MandR* ev) {
 
   w->border_size = ev->border_size;
   physics_move_window(&ps->win_list, wid, &ev->pos, &ev->size);
-}
-
-static void
-circulate_win(session_t *ps, XCirculateEvent *ce) {
-    win *w = find_win(ps, ce->window);
-
-    if (!w) return;
-
-    size_t w_loc = vector_find_uint64(&ps->order, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
-    size_t new_loc;
-    if (ce->place == PlaceOnTop) {
-        new_loc = vector_size(&ps->order) - 1;
-    } else {
-        new_loc = 0;
-    }
-
-    if(w_loc == new_loc)
-        return;
-
-    vector_circulate(&ps->order, w_loc, new_loc);
 }
 
 static void finish_destroy_win(session_t *ps, win_id wid) {
@@ -950,28 +892,23 @@ root_damaged(session_t *ps, struct NewRoot* ev) {
 
   struct XTexture* texptr = &ps->root_texture;
   struct XTextureInformation* texinfoptr = &texinfo;
-  if(!xtexture_bind(&texptr, &texinfoptr, &pixmap, 1)) {
+  if(!xtexture_bind(&ps->xcontext, &texptr, &texinfoptr, &pixmap, 1)) {
       printf_errf("Failed binding the root texture to gl");
   }
 }
 
-static void damage_win(session_t *ps, XDamageNotifyEvent *de) {
+static void damage_win(session_t *ps, struct Damage *ev) {
     // @PERFORMANCE: We are getting a DamageNotify while moving windows, which
     // means we are damaging the contents (and therefore rebinding the window)
     // for every move. In most cases, that's completely unnecessary. I don'r
     // know how to detect if a damage is caused by a move at this time.
     // - Delusional 16/11-2018
 
-    win *w = find_win(ps, de->drawable);
+    win *w = find_win(ps, ev->xid);
 
     if (!w) {
         return;
     }
-
-    // We need to subtract the damage, even if we aren't mapped. If we don't
-    // subtract the damage, we won't be notified of any new damage in the
-    // future.
-    XDamageSubtract(ps->dpy, w->damage, None, None);
 
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     if (!win_mapped(&ps->win_list, wid))
@@ -1060,9 +997,9 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
     {
         char buf[BUF_LEN] = "";
         XGetErrorText(ps->dpy, ev->error_code, buf, BUF_LEN);
-        printf("error %4d %-12s request %4d minor %4d serial %6lu: \"%s\"\n",
+        printf("error %4d %-12s request %4d minor %4d serial %6lu resource %4lu: \"%s\"\n",
                 ev->error_code, name, ev->request_code,
-                ev->minor_code, ev->serial, buf);
+                ev->minor_code, ev->serial, ev->resourceid, buf);
     }
 
     /* print_backtrace(); */
@@ -1318,15 +1255,8 @@ static void ev_destroy_notify(session_t *ps, Window window) {
     destroy_win(ps, wid);
 }
 
-static void ev_map_notify(session_t *ps, XMapEvent *ev) {
-    win *w = find_win(ps, ev->window);
-    if(w != NULL) {
-        map_win(ps, swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w));
-    }
-}
-
-static void ev_unmap_notify(session_t *ps, XUnmapEvent *ev) {
-  win *w = find_win(ps, ev->window);
+static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
+  win *w = find_win(ps, ev->xid);
 
   if (w)
     unmap_win(ps, w);
@@ -1378,11 +1308,6 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
     }
 }
 
-static void
-ev_circulate_notify(session_t *ps, XCirculateEvent *ev) {
-  circulate_win(ps, ev);
-}
-
 /**
  * Update current active window based on EWMH _NET_ACTIVE_WIN.
  *
@@ -1400,116 +1325,6 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
 
     // Mark the window focused. No need to unfocus the previous one.
     win_set_focused(ps, w);
-}
-
-static void
-ev_property_notify(session_t *ps, XPropertyEvent *ev) {
-#ifdef DEBUG_EVENTS
-    {
-        // Print out changed atom
-        char *name = XGetAtomName(ps->dpy, ev->atom);
-        printf_dbg("  { atom = %s }\n", name);
-        cxfree(name);
-    }
-#endif
-
-    if (ps->root == ev->window) {
-        return;
-    }
-
-    // WM_STATE
-    if (ev->atom == ps->atoms.atom_client) {
-        // We don't care about WM_STATE changes if this is already a client
-        // window
-        if (find_toplevel(ps, ev->window) == -1) {
-
-            // Reset event
-            XSelectInput(ps->dpy, ev->window, determine_evmask(ps, ev->window, WIN_EVMODE_UNKNOWN));
-
-            win *w_frame = find_toplevel2(ps, ev->window);
-            assert(w_frame != NULL);
-
-            win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
-            struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
-
-            // wid_has_prop(ps, ev->window, ps->atoms.atom_client)) {
-            if(ev->state == PropertyNewValue) {
-                if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
-                    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
-                    if(client->id != window_frame->id) {
-                        w_frame->wmwin = false;
-                        win_unmark_client(ps, w_frame);
-                        win_mark_client(ps, w_frame, ev->window);
-                    }
-                } else {
-                    w_frame->wmwin = false;
-                    win_mark_client(ps, w_frame, ev->window);
-                }
-            }
-        }
-    }
-
-    // If _NET_WM_WINDOW_TYPE changes... God knows why this would happen, but
-    // there are always some stupid applications. (#144)
-    if (ev->atom == ps->atoms.atom_win_type) {
-        win_id wid = find_toplevel(ps, ev->window);
-        if (wid != -1) {
-            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-        }
-    }
-
-    // If name changes
-    if (ps->o.track_wdata
-            && (ps->atoms.atom_name == ev->atom || ps->atoms.atom_name_ewmh == ev->atom)) {
-        win_id wid = find_toplevel(ps, ev->window);
-        if (wid != -1 && 1 == wii_get_name(ps, wid)) {
-            /* win_on_factor_change(ps, w); */
-            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-        }
-    }
-
-    // If class changes
-    if (ps->o.track_wdata && ps->atoms.atom_class == ev->atom) {
-        win_id wid = find_toplevel(ps, ev->window);
-        if (wid != -1) {
-            /* win_on_factor_change(ps, w); */
-            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-            swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, wid);
-        }
-    }
-
-    // If role changes
-    if (ps->o.track_wdata && ps->atoms.atom_role == ev->atom) {
-        win_id wid = find_toplevel(ps, ev->window);
-        if (wid != -1 && 1 == wii_get_role(ps, wid)) {
-            /* win_on_factor_change(ps, w); */
-            swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-        }
-    }
-
-    // Check for other atoms we are tracking
-    {
-        size_t index = 0;
-        Atom* atom = vector_getFirst(&ps->atoms.extra, &index);
-        while(atom != NULL) {
-            if (*atom == ev->atom) {
-                win_id wid = find_toplevel(ps, ev->window);
-                if (wid == -1)
-                    wid = find_toplevel(ps, ev->window);
-                else {
-                    /* win_on_factor_change(ps, w); */
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-                }
-            }
-            atom = vector_getNext(&ps->atoms.extra, &index);
-        }
-    }
-}
-
-static void
-ev_damage_notify(session_t *ps, XDamageNotifyEvent *ev) {
-  damage_win(ps, ev);
-  ps->skip_poll = true;
 }
 
 static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
@@ -2235,28 +2050,10 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
     discard_ignore(ps, ev->xany.serial);
   }
   switch (ev->type) {
-    case MapNotify:
-      ev_map_notify(ps, (XMapEvent *)ev);
-      break;
-    case UnmapNotify:
-      ev_unmap_notify(ps, (XUnmapEvent *)ev);
-      break;
-    case CirculateNotify:
-      ev_circulate_notify(ps, (XCirculateEvent *)ev);
-      break;
-    case Expose:
-      break;
-    case PropertyNotify:
-      ev_property_notify(ps, (XPropertyEvent *)ev);
-      break;
     default:
       if (xorgContext_version(capabilities, PROTO_SHAPE) >= XVERSION_YES
               && xorgContext_convertEvent(capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
         ev_shape_notify(ps, (XShapeEvent *) ev);
-        break;
-      }
-      if (isdamagenotify(ps, ev)) {
-        ev_damage_notify(ps, (XDamageNotifyEvent *) ev);
         break;
       }
   }
@@ -2287,6 +2084,12 @@ mainloop(session_t *ps) {
             case ET_DESTROY:
                 ev_destroy_notify(ps, event.des.xid);
                 break;
+            case ET_MAP:
+                map_win(ps, &event.map);
+                break;
+            case ET_UNMAP:
+                ev_unmap_notify(ps, &event.unmap);
+                break;
             case ET_CLIENT:
                 getsclient(ps, &event.cli);
                 break;
@@ -2301,6 +2104,15 @@ mainloop(session_t *ps) {
                 break;
             case ET_NEWROOT:
                 root_damaged(ps, &event.newRoot);
+                break;
+            case ET_WINTYPE:
+                swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_toplevel(ps, event.wintype.xid));
+                break;
+            case ET_WINCLASS:
+                swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_toplevel(ps, event.winclass.xid));
+                break;
+            case ET_DAMAGE:
+                damage_win(ps, &event.damage);
                 break;
             case ET_RAW:
                 ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
@@ -2890,7 +2702,7 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     }
 
     zone_enter(&ZONE_x_communication);
-    if(!wd_bind(drawables, drawable_count)) {
+    if(!wd_bind(xcontext, drawables, drawable_count)) {
         // If we fail to bind we just assume that the window must have been
         // closed and keep the old texture
         printf_err("Failed binding some drawable");
@@ -2950,8 +2762,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         view = old_view;
 
         wd_unbind(&bindsTexture->drawable);
-
-        swiss_getNext(em, &it);
     }
 
     zone_enter(&ZONE_x_communication);
@@ -3239,10 +3049,10 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
             wd_delete(&b->drawable);
         }
         swiss_removeComponentWhere(
-                em,
-                COMPONENT_BINDS_TEXTURE,
-                (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
-                );
+            em,
+            COMPONENT_BINDS_TEXTURE,
+            (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
+        );
     }
 
     for_components(it, em,

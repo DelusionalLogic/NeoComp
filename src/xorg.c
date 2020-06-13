@@ -135,6 +135,8 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
 
     context->winParent = NULL;
     context->client = NULL;
+    context->damage = NULL;
+    context->mapped = NULL;
     context->active = NULL;
     vector_init(&context->eventBuf, sizeof(struct Event), 64);
     context->readCursor = 0;
@@ -277,36 +279,15 @@ static void pushEvent(struct X11Context* xctx, const struct Event event) {
     vector_putBack(&xctx->eventBuf, &event);
 }
 
-static void createAddWin(struct X11Context* xctx, Window xid) {
-    struct Event event;
-    // Default to no event.
-    event.type = ET_NONE;
-    event.add.xid = xid;
-    XWindowAttributes attribs;
-
-    if (!XGetWindowAttributes(xctx->display, xid, &attribs) || IsUnviewable == attribs.map_state) {
-        // Failed to get window attributes probably means the window is gone
-        // already. IsUnviewable means the window is already reparented
-        // elsewhere.
+static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int border, int width, int height) {
+    Damage damage = XDamageCreate(xctx->display, xid, XDamageReportNonEmpty);
+    uint64_t* pValue;
+    JLI(pValue, xctx->damage, xid);
+    if(pValue == PJERR) {
+        printf_errf("Allocation error");
         return;
     }
-
-    // Only InputOutput windows have anything to composite (InputOnly doesn't
-    // render anything). Since an InputOnly can't have InputOutput children we
-    // can just completely disregard that window class
-    if (InputOutput != attribs.class) {
-        return;
-    }
-
-    event.add.xdamage = XDamageCreate(xctx->display, event.add.xid, XDamageReportNonEmpty);
-
-    event.add.mapped = attribs.map_state == IsViewable;
-    event.add.pos = (Vector2){{attribs.x, attribs.y}};
-    event.add.size = (Vector2){{
-      attribs.width + attribs.border_width * 2,
-      attribs.height + attribs.border_width * 2,
-    }};
-    event.add.border_size = attribs.border_width;
+    *pValue = damage;
 
     if (xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
         // Subscribe to events when the window shape changes
@@ -319,9 +300,33 @@ static void createAddWin(struct X11Context* xctx, Window xid) {
         printf_dbg("Window was already active");
     }
 
-    event.type = ET_ADD;
+    struct Event event = {
+        .type = ET_ADD,
+        .add.xid = xid,
+        .add.xdamage = damage,
+        .add.mapped = false,
+        .add.pos = (Vector2){{x, y}},
+        .add.size = (Vector2){{
+          width + border * 2,
+          height + border * 2,
+        }},
+        .add.border_size = border,
+    };
     pushEvent(xctx, event);
 }
+
+static void windowMap(struct X11Context* xctx, Window xid) {
+    Word_t rc;
+    J1S(rc, xctx->mapped, xid);
+    assert(rc == 1);
+
+    struct Event map = {
+        .type = ET_MAP,
+        .map.xid = xid,
+    };
+    pushEvent(xctx, map);
+}
+
 
 static void createDestroyWin(struct X11Context* xctx, Window xid) {
     int rc_int;
@@ -339,6 +344,14 @@ static void createDestroyWin(struct X11Context* xctx, Window xid) {
     if(rc == 0) {
         // The window wasn't active, so we swallow the destroy
         return;
+    }
+
+    JLD(rc_int, xctx->damage, xid);
+    if(rc_int == JERR) {
+        printf_errf("Alloc error");
+        return;
+    } else if(rc_int == 0) {
+        printf_errf("WARN Window didn't have damage");
     }
 
     // Framed window destroy causes all the subwindows to be destroyed which
@@ -389,6 +402,7 @@ static void createMandr(struct X11Context* xctx, Window xid, float x, float y, f
     struct Event restack = {
         .type = ET_RESTACK,
         .restack.xid = xid,
+        .restack.loc = LOC_BELOW,
         .restack.above = above,
     };
     pushEvent(xctx, restack);
@@ -558,7 +572,7 @@ static void fillBuffer(struct X11Context* xctx) {
         case CreateNotify: {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
             if(ev->parent == xctx->root) {
-                createAddWin(xctx, ev->window);
+                windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
             } else {
                 attachSubtree(xctx, ev->parent, ev->window);
             }
@@ -566,6 +580,10 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case DestroyNotify: {
             XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
+
+            Word_t rc;
+            J1U(rc, xctx->mapped, ev->window);
+
             createDestroyWin(xctx, ev->window);
             detachSubtree(xctx, ev->window);
             break;
@@ -575,7 +593,23 @@ static void fillBuffer(struct X11Context* xctx) {
             // Since we only composite top level windows, reparenting to the
             // root looks like an new window to us.
             if (ev->parent == xctx->root) {
-                createAddWin(xctx, ev->window);
+                XWindowAttributes attribs;
+                if(XGetWindowAttributes(xctx->display, ev->window, &attribs)) {
+                    printf_dbgf("Could not get window attribs");
+                    break;
+                }
+                windowCreate(xctx, ev->window, attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
+
+                Word_t rc;
+                J1T(rc, xctx->mapped, ev->window);
+                if(rc == 1) {
+                    struct Event map = {
+                        .type = ET_MAP,
+                        .map.xid = ev->window,
+                    };
+                    pushEvent(xctx, map);
+                }
+
                 detachSubtree(xctx, ev->window);
             } else {
                 createDestroyWin(xctx, ev->window);
@@ -598,6 +632,45 @@ static void fillBuffer(struct X11Context* xctx) {
         case ConfigureNotify: {
             XConfigureEvent* ev = (XConfigureEvent *)&raw;
             createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height, ev->above);
+            break;
+        }
+        case CirculateNotify: {
+            XCirculateEvent* ev = (XCirculateEvent*)&raw;
+            Word_t rc;
+            J1T(rc, xctx->active, ev->window);
+            if(rc == 0) {
+                break;
+            }
+            struct Event restack = {
+                .type = ET_RESTACK,
+                .restack.xid = ev->window,
+                .restack.loc = ev->place == PlaceOnTop ? LOC_HIGHEST : LOC_LOWEST,
+            };
+            pushEvent(xctx, restack);
+            break;
+        }
+        case MapNotify: {
+            XMapEvent* ev = (XMapEvent*)&raw;
+            windowMap(xctx, ev->window);
+            break;
+        }
+        case UnmapNotify: {
+            XUnmapEvent* ev = (XUnmapEvent*)&raw;
+            // Some applications (firefox) send their own unmap events. I don't
+            // care if they say the window is unmapped, if it's actually
+            // unmapped Xorg will tell us.
+            if(ev->send_event == true)
+                break;
+
+            Word_t rc;
+            J1U(rc, xctx->mapped, ev->window);
+            assert(rc == 1);
+
+            struct Event unmap = {
+                .type = ET_UNMAP,
+                .unmap.xid = ev->window,
+            };
+            pushEvent(xctx, unmap);
             break;
         }
         case PropertyNotify: {
@@ -631,7 +704,7 @@ static void fillBuffer(struct X11Context* xctx) {
                             // to process the client (frames can't be clients).
                             // We still track client status if this get's
                             // parented down
-                            return;
+                            break;
                         }
 
                         Window client;
@@ -666,16 +739,126 @@ static void fillBuffer(struct X11Context* xctx) {
                             }
                         }
                     }
-                    break;
+                } else if(ev->atom == xctx->atoms->atom_win_type
+                    || ev->atom == xctx->atoms->atom_name_ewmh
+                    || ev->atom == xctx->atoms->atom_role
+                    || ev->atom == xctx->atoms->atom_name) {
+                    Word_t rc;
+
+                    Window frame = findRoot(xctx, ev->window);
+                    // If the frame isn't active dont emit
+                    J1T(rc, xctx->active, frame);
+                    if(rc == 0) {
+                        break;
+                    }
+
+                    // If we are the toplevel, emit. If not, we have to
+                    // check if we are the current client
+                    if(frame == ev->window) {
+                        struct Event event = {
+                            .type = ET_WINTYPE,
+                            .wintype.xid = ev->window,
+                        };
+                        pushEvent(xctx, event);
+                        break;
+                    }
+
+                    // If the window isn't a client it can't affect the
+                    // frame
+                    J1T(rc, xctx->client, ev->window);
+                    if(rc == 0) {
+                        break;
+                    }
+
+                    Window client;
+                    /* always true */ findClosestClient(xctx, frame, &client);
+                    // If the window with this event isn't the client, we
+                    // dont care
+                    if(client != ev->window)
+                        break;
+
+                    struct Event event = {
+                        .type = ET_WINTYPE,
+                        .wintype.xid = ev->window,
+                    };
+                    pushEvent(xctx, event);
+                } else if(ev->atom == xctx->atoms->atom_class) {
+                    Word_t rc;
+
+                    Window frame = findRoot(xctx, ev->window);
+                    // If the frame isn't active dont emit
+                    J1T(rc, xctx->active, frame);
+                    if(rc == 0) {
+                        break;
+                    }
+
+                    // If we are the toplevel, emit. If not, we have to
+                    // check if we are the current client
+                    if(frame == ev->window) {
+                        struct Event event = {
+                            .type = ET_WINTYPE,
+                            .wintype.xid = ev->window,
+                        };
+                        pushEvent(xctx, event);
+                        struct Event classEvent = {
+                            .type = ET_WINCLASS,
+                            .winclass.xid = ev->window,
+                        };
+                        pushEvent(xctx, classEvent);
+                        break;
+                    }
+
+                    // If the window isn't a client it can't affect the
+                    // frame
+                    J1T(rc, xctx->client, ev->window);
+                    if(rc == 0) {
+                        break;
+                    }
+
+                    Window client;
+                    /* always true */ findClosestClient(xctx, frame, &client);
+                    // If the window with this event isn't the client, we
+                    // dont care
+                    if(client != ev->window)
+                        break;
+
+                    struct Event event = {
+                        .type = ET_WINTYPE,
+                        .wintype.xid = frame,
+                    };
+                    pushEvent(xctx, event);
+                    struct Event classEvent = {
+                        .type = ET_WINCLASS,
+                        .winclass.xid = frame,
+                    };
+                    pushEvent(xctx, classEvent);
                 }
+                break;
             }
             // Fallthrough
         }
         default: {
-            struct Event event;
-            event.type = ET_RAW;
-            memcpy(&event.raw, &raw, sizeof(XEvent));
-            pushEvent(xctx, event);
+            if(xorgContext_convertEvent(&xctx->capabilities, PROTO_DAMAGE,  raw.type) == XDamageNotify) {
+                XDamageNotifyEvent* ev = &raw;
+
+                // We need to subtract the damage, even if we aren't mapped. If we don't
+                // subtract the damage, we won't be notified of any new damage in the
+                // future.
+                Damage* damage;
+                JLG(damage, xctx->damage, ev->drawable);
+                XDamageSubtract(xctx->display, *damage, None, None);
+
+                struct Event event = {
+                    .type = ET_DAMAGE,
+                    .damage.xid = ev->drawable,
+                };
+                pushEvent(xctx, event);
+            } else {
+                struct Event event;
+                event.type = ET_RAW;
+                memcpy(&event.raw, &raw, sizeof(XEvent));
+                pushEvent(xctx, event);
+            }
         }
     }
 }
@@ -705,7 +888,18 @@ void xorg_beginEvents(struct X11Context* xctx) {
             &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-        createAddWin(xctx, children[i]);
+        XWindowAttributes attribs;
+        if (!XGetWindowAttributes(xctx->display, children[i], &attribs)) {
+            // Failed to get window attributes probably means the window is gone
+            // already.
+            continue;
+        }
+        windowCreate(xctx, children[i], attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
+        if(attribs.class != InputOnly) {
+            if(attribs.map_state == IsViewable) {
+                windowMap(xctx, children[i]);
+            }
+        }
     }
 
     XFree(children);

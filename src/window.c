@@ -339,10 +339,10 @@ bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window
     return xtexture_init(&drawable->xtexture, context);
 }
 
-bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
+bool wd_bind(struct X11Context* xctx, struct WindowDrawable* drawables[], size_t cnt) {
     assert(drawables != NULL);
 
-    xcb_connection_t* xcb = XGetXCBConnection(drawables[0]->context->display);
+    xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
 
     xcb_pixmap_t *pixmaps = malloc(sizeof(xcb_pixmap_t) * cnt);
     zone_enter(&ZONE_name_pixmap);
@@ -353,7 +353,7 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
     for(size_t i = 0; i < cnt; i++) {
         xcb_void_cookie_t cookie = xcb_composite_name_window_pixmap_checked(xcb, drawables[i]->wid, pixmaps[i]);
         if (xcb_request_check(xcb, cookie)) {
-            printf_dbgf("Can't name window pixmap. We will try to unbind the texture and just not render the window. It should be fixed if the window remaps");
+            printf_dbgf("Can't name window pixmap. We will try to unbind the texture");
             pixmaps[i] = 0;
             continue;
         }
@@ -362,21 +362,27 @@ bool wd_bind(struct WindowDrawable* drawables[], size_t cnt) {
 
     struct XTexture** texs = malloc(sizeof(struct XTexture*) * cnt);
     for(size_t i = 0; i < cnt; i++) {
-        texs[i] = &drawables[i]->xtexture;
+        if(pixmaps[i] != 0) {
+            texs[i] = &drawables[i]->xtexture;
+        }
     }
     struct XTextureInformation** texinfos = malloc(sizeof(struct XTextureInformation*) * cnt);
     for(size_t i = 0; i < cnt; i++) {
-        texinfos[i] = &drawables[i]->texinfo;
+        if(pixmaps[i] != 0) {
+            texinfos[i] = &drawables[i]->texinfo;
+        }
     }
 
     bool success = true;
     zone_enter(&ZONE_bind_pixmap);
-    success = xtexture_bind(texs, texinfos, pixmaps, cnt);
+    success = xtexture_bind(xctx, texs, texinfos, pixmaps, cnt);
     zone_leave(&ZONE_bind_pixmap);
 
     // We can free the pixmaps since the xtexture doesn't need it.
     for(size_t i = 0; i < cnt; i++) {
-        xcb_free_pixmap(xcb, pixmaps[i]);
+        if(pixmaps[i] != 0) {
+            xcb_free_pixmap(xcb, pixmaps[i]);
+        }
     }
 
     free(pixmaps);

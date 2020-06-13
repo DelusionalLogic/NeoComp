@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/Xcomposite.h>
@@ -58,10 +59,15 @@ enum EventType {
     ET_NONE,
     ET_ADD,
     ET_DESTROY,
+    ET_MAP,
+    ET_UNMAP,
     ET_CLIENT,
     ET_MANDR,
     ET_RESTACK,
     ET_FOCUS,
+    ET_WINCLASS,
+    ET_WINTYPE,
+    ET_DAMAGE,
     ET_NEWROOT,
     ET_RAW,
 };
@@ -80,6 +86,14 @@ struct DestroyWin {
     Window xid;
 };
 
+struct MapWin {
+    Window xid;
+};
+
+struct UnmapWin {
+    Window xid;
+};
+
 struct GetsClient {
     Window xid;
     Window client_xid;
@@ -92,12 +106,30 @@ struct MandR {
     float border_size;
 };
 
+enum RestackLocation {
+    LOC_BELOW,
+    LOC_LOWEST,
+    LOC_HIGHEST,
+};
 struct Restack {
     Window xid;
+    enum RestackLocation loc;
     Window above;
 };
 
 struct Focus {
+    Window xid;
+};
+
+struct Wintype {
+    Window xid;
+};
+
+struct Winclass {
+    Window xid;
+};
+
+struct Damage {
     Window xid;
 };
 
@@ -110,10 +142,15 @@ struct Event {
     union {
         struct AddWin add;
         struct DestroyWin des;
+        struct MapWin map;
+        struct UnmapWin unmap;
         struct GetsClient cli;
         struct MandR mandr;
         struct Restack restack;
         struct Focus focus;
+        struct Wintype wintype;
+        struct Winclass winclass;
+        struct Damage damage;
         struct NewRoot newRoot;
         XEvent raw;
     };
@@ -134,6 +171,8 @@ struct X11Context {
 
     void* winParent;
     void* client;
+    void* damage;
+    void* mapped;
 
     void* active;
     Vector eventBuf;

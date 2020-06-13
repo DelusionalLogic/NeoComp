@@ -130,11 +130,11 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
     }
 
     for_components(it, em,
-            COMPONENT_MAP, COMPONENT_SHADOW, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
+            COMPONENT_MAP, COMPONENT_PHYSICAL, COMPONENT_SHADOW, CQ_END) {
+        struct PhysicalComponent* phy = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
 
-        shadow_cache_resize(shadow, &map->size);
+        shadow_cache_resize(shadow, &phy->size);
         // Since the cache was resized, the shadow will have to be recalculated
         swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
     }

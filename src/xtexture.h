@@ -37,5 +37,5 @@ void xtexinfo_delete(struct XTextureInformation* texinfo);
 bool xtexture_init(struct XTexture* tex, struct X11Context* context);
 void xtexture_delete(struct XTexture* tex);
 
-bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[], xcb_pixmap_t pixmap[], size_t cnt);
+bool xtexture_bind(struct X11Context* xctx, struct XTexture* tex[], struct XTextureInformation* texinfo[], xcb_pixmap_t pixmap[], size_t cnt);
 bool xtexture_unbind(struct XTexture* tex);

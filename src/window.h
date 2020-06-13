@@ -70,8 +70,6 @@ struct ResizeComponent {
 };
 
 struct MapComponent {
-    Vector2 position;
-    Vector2 size;
 };
 
 struct TexturedComponent {
@@ -191,9 +189,6 @@ typedef struct _win {
     float border_size;
     bool override_redirect;
 
-    /// Damage of the window.
-    Damage damage;
-
     /// Whether the window is painting excluded.
     bool paint_excluded;
 
@@ -246,5 +241,5 @@ void win_update(struct _session_t* ps, win* w, double dt);
 bool wd_init(struct WindowDrawable* drawable, struct X11Context* context, Window wid);
 void wd_delete(struct WindowDrawable* drawable);
 
-bool wd_bind(struct WindowDrawable* drawable[], size_t cnt);
+bool wd_bind(struct X11Context* xctx, struct WindowDrawable* drawables[], size_t cnt);
 bool wd_unbind(struct WindowDrawable* drawable);

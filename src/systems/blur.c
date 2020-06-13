@@ -229,10 +229,10 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
 
     for_components(it, em,
             COMPONENT_MAP, COMPONENT_BLUR, CQ_END) {
-        struct MapComponent* map = swiss_getComponent(em, COMPONENT_MAP, it.id);
+        struct PhysicalComponent* phy = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
 
-        if(!blur_cache_resize(blur, &map->size)) {
+        if(!blur_cache_resize(blur, &phy->size)) {
             printf_errf("Failed resizing window blur");
         }
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);

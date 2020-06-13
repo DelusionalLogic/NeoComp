@@ -67,17 +67,22 @@ struct ImportantTexInfo {
     Vector2 size;
     int depth;
 };
+void glXBindTexImageEXT(Display *display, GLXDrawable drawable, int buffer, const int *attrib_list);
 
-bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[], xcb_pixmap_t pixmap[], size_t cnt) {
+bool xtexture_bind(struct X11Context* xctx, struct XTexture* tex[], struct XTextureInformation* texinfo[], xcb_pixmap_t pixmap[], size_t cnt) {
     assert(tex != NULL);
     assert(pixmap != NULL);
     assert(texinfo != NULL);
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         assert(!tex[i]->bound);
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         tex[i]->pixmap = pixmap[i];
     }
 
@@ -87,7 +92,12 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
         tex[i]->texture.flipped = texinfo[i]->flipped;
     }
 
-    xcb_connection_t* xcb = XGetXCBConnection(tex[0]->context->display);
+    xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
+
+    if(xcb == NULL) {
+        printf_dbgf("None of the requested textures were there");
+        return false;
+    }
 
     struct ImportantTexInfo* infos = malloc(sizeof(struct ImportantTexInfo) * cnt);
     for(size_t i = 0; i < cnt; i++) {
@@ -101,6 +111,8 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         zone_enter(&ZONE_fetch_properties);
         struct ImportantTexInfo* info = &infos[i];
         if(pixmap[i] == 0) {
@@ -123,12 +135,16 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         tex[i]->depth = infos[i].depth;
     }
 
     int* formats = malloc(sizeof(int) * cnt);
     // @CLEANUP: Maybe move this somewhere else?
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         if(tex[i]->depth == 0)
             continue;
 
@@ -159,6 +175,8 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         if(tex[i]->depth == 0)
             continue;
 
@@ -178,10 +196,14 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
     free(formats);
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         tex[i]->texture.size = infos[i].size;
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         if(tex[i]->depth == 0)
             continue;
 
@@ -189,11 +211,13 @@ bool xtexture_bind(struct XTexture* tex[], struct XTextureInformation* texinfo[]
         texture_bind(&tex[i]->texture, GL_TEXTURE0);
         zone_leave(&ZONE_bind_tex_image);
         zone_enter(&ZONE_bind_tex_image);
-        glXBindTexImageEXT(tex[i]->context->display, tex[i]->glxPixmap, GLX_FRONT_LEFT_EXT, NULL);
+        glXBindTexImageEXT(xctx->display, tex[i]->glxPixmap, GLX_FRONT_LEFT_EXT, NULL);
         zone_leave(&ZONE_bind_tex_image);
     }
 
     for(size_t i = 0; i < cnt; i++) {
+        if(pixmap[i] == 0)
+            continue;
         tex[i]->bound = tex[i]->depth != 0;
     }
 
@@ -206,7 +230,7 @@ bool xtexture_unbind(struct XTexture* tex) {
     assert(tex->bound);
 
     texture_bind(&tex->texture, GL_TEXTURE0);
-    glXReleaseTexImageEXT(tex->context->display, tex->pixmap,
+    glXReleaseTexImageEXT(tex->context->display, tex->glxPixmap,
             GLX_FRONT_LEFT_EXT);
 
     tex->pixmap = 0;
