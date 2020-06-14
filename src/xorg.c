@@ -30,15 +30,11 @@ const char* VERSION_NAMES[] = {
     "0.2+",
 };
 
-Atom get_atom(struct X11Context* context, const char* atom_name) {
-  return get_atom_internal(context->display, atom_name);
-}
-
 // @CLEANUP Reduce to one argument. No reason to take in the caps separately
 static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Context* context) {
     // Fetch if the extension is available
     for(size_t i = 0; i < PROTO_COUNT; i++) {
-        if(!XQueryExtension(context->display, X11Protocols_Names[i],
+        if(!XQueryExtensionH(context->display, X11Protocols_Names[i],
                     &caps->opcode[i], &caps->event[i], &caps->error[i])) {
             caps->version[i] = XVERSION_NO;
             continue;
@@ -52,7 +48,7 @@ static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Cont
     if(caps->version[PROTO_COMPOSITE] == XVERSION_YES) {
         int major;
         int minor;
-        XCompositeQueryVersion(context->display, &major, &minor);
+        XCompositeQueryVersionH(context->display, &major, &minor);
 
         if(major > 0 || (major == 0 && minor > 2)) {
             caps->version[PROTO_COMPOSITE] = COMPOSITE_0_2;
@@ -62,49 +58,49 @@ static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Cont
     if(caps->version[PROTO_FIXES] == XVERSION_YES) {
         int major;
         int minor;
-        XFixesQueryVersion(context->display, &major, &minor);
+        XFixesQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_DAMAGE] == XVERSION_YES) {
         int major;
         int minor;
-        XDamageQueryVersion(context->display, &major, &minor);
+        XDamageQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_RENDER] == XVERSION_YES) {
         int major;
         int minor;
-        XRenderQueryVersion(context->display, &major, &minor);
+        XRenderQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_SHAPE] == XVERSION_YES) {
         int major;
         int minor;
-        XShapeQueryVersion(context->display, &major, &minor);
+        XShapeQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_RANDR] == XVERSION_YES) {
         int major;
         int minor;
-        XRRQueryVersion(context->display, &major, &minor);
+        XRRQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_GLX] == XVERSION_YES) {
         int major;
         int minor;
-        glXQueryVersion(context->display, &major, &minor);
+        glXQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_XINERAMA] == XVERSION_YES) {
         int major;
         int minor;
-        XineramaQueryVersion(context->display, &major, &minor);
+        XineramaQueryVersionH(context->display, &major, &minor);
     }
 
     if(caps->version[PROTO_SYNC] == XVERSION_YES) {
         int major;
         int minor;
-        XSyncInitialize(context->display, &major, &minor);
+        XSyncInitializeH(context->display, &major, &minor);
     }
 
     return 0;
@@ -119,7 +115,7 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
     context->screen = screen;
     context->root = RootWindowH(display, screen);
 
-    context->configs = glXGetFBConfigs(display, screen, &context->numConfigs);
+    context->configs = glXGetFBConfigsH(display, screen, &context->numConfigs);
     if(context->configs == NULL) {
         printf_errf("Failed retrieving the fboconfigs");
         return false;
@@ -274,7 +270,7 @@ static void pushEvent(struct X11Context* xctx, const struct Event event) {
 }
 
 static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int border, int width, int height) {
-    Damage damage = XDamageCreate(xctx->display, xid, XDamageReportNonEmpty);
+    Damage damage = XDamageCreateH(xctx->display, xid, XDamageReportNonEmpty);
     uint64_t* pValue;
     JLI(pValue, xctx->damage, xid);
     if(pValue == PJERR) {
@@ -285,7 +281,7 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
 
     if (xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
         // Subscribe to events when the window shape changes
-        XShapeSelectInput(xctx->display, xid, ShapeNotifyMask);
+        XShapeSelectInputH(xctx->display, xid, ShapeNotifyMask);
     }
 
     Word_t rc;
@@ -840,7 +836,7 @@ static void fillBuffer(struct X11Context* xctx) {
                 // future.
                 Damage* damage;
                 JLG(damage, xctx->damage, ev->drawable);
-                XDamageSubtract(xctx->display, *damage, None, None);
+                XDamageSubtractH(xctx->display, *damage, None, None);
 
                 struct Event event = {
                     .type = ET_DAMAGE,

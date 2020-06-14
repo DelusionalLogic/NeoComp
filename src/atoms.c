@@ -1,9 +1,15 @@
 #include "atoms.h"
 
+#include "intercept/xorg.h"
 #include "session.h"
 
+
+Atom get_atom(struct X11Context* context, const char* atom_name) {
+  return get_atom_internal(context->display, atom_name);
+}
+
 Atom get_atom_internal(Display* display, const char* atom_name) {
-  return XInternAtom(display, atom_name, False);
+  return XInternAtomH(display, atom_name, False);
 }
 
 void atoms_init(struct Atoms* atoms, Display* display) {

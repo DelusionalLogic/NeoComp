@@ -1202,6 +1202,7 @@ Window RootWindowH(Display* dpy, int scr) {
 int XNextEventH(Display* dpy, XEvent* ev) {
     *ev = *(XEvent*)vector_get(&eventQ, qCursor);
     qCursor++;
+    return 0;
 }
 
 Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs) {
@@ -1213,6 +1214,69 @@ Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* att
     }
 
     return XGetWindowAttributes(dpy, window, attrs);
+}
+
+GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
+    GLXFBConfig* config = malloc(sizeof(GLXFBConfig));
+    num = 1;
+    return config;
+}
+Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error) {
+    *opcode = 0;
+    *event = 0;
+    *error = 0;
+    return True;
+}
+Status XCompositeQueryVersionH(Display* dpy, int* major, int* minor) {
+    *major = 0;
+    *minor = 3;
+    return 1;
+}
+Status XFixesQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XDamageQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XRenderQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XShapeQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XRRQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status glXQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XineramaQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+Status XSyncInitializeH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
+
+void* atoms;
+int nextAtom = 1;
+
+Atom XInternAtomH(Display* dpy, char* name, Bool query) {
+    Atom* value;
+    JSLI(value, atoms, name);
+    if(*value == 0) {
+        *value = nextAtom++;
+    }
+    return *value;
+}
+
+Damage XDamageCreateH(Display* dpy, Window win, int level) {
+    return 0;
+}
+
+void XDamageSubtractH(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts) {
+}
+
+void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask) {
 }
 
 void setWindowAttr(Window window, XWindowAttributes* attrs) {
@@ -1240,8 +1304,8 @@ Vector* readAllEvents(struct X11Context* xctx) {
 struct TestResult xorg__emit_add_win_event__new_window_is_created() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1262,8 +1326,8 @@ struct TestResult xorg__emit_add_win_event__new_window_is_created() {
 struct TestResult xorg__emit_no_event__new_window_is_child_of_other() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1285,8 +1349,8 @@ struct TestResult xorg__emit_no_event__new_window_is_child_of_other() {
 struct TestResult xorg__emit_destroy_event__closed_window_was_created_as_active() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1316,8 +1380,8 @@ struct TestResult xorg__emit_destroy_event__closed_window_was_created_as_active(
 struct TestResult xorg__emit_no_event__closed_window_was_not_created_as_active() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1345,8 +1409,8 @@ struct TestResult xorg__emit_no_event__closed_window_was_not_created_as_active()
 struct TestResult xorg__emit_add_win_event__inactive_window_gets_reparented_to_root() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1376,8 +1440,8 @@ struct TestResult xorg__emit_add_win_event__inactive_window_gets_reparented_to_r
 struct TestResult xorg__emit_destroy_win_event__active_window_gets_reparented_to_other_window() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1406,8 +1470,8 @@ struct TestResult xorg__emit_destroy_win_event__active_window_gets_reparented_to
 struct TestResult xorg__emit_nothing__subwindow_gets_reparented_to_other_window() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1450,8 +1514,8 @@ struct TestResult xorg__emit_nothing__subwindow_gets_reparented_to_other_window(
 struct TestResult xorg__not_emit_get_client__frame_window_gets_client_atom() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1480,8 +1544,8 @@ struct TestResult xorg__not_emit_get_client__frame_window_gets_client_atom() {
 struct TestResult xorg__emit_get_client__child_window_gets_client_atom() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1516,8 +1580,8 @@ struct TestResult xorg__emit_get_client__child_window_gets_client_atom() {
 struct TestResult xorg__emit_get_client__client_window_becomes_child_of_frame() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1558,8 +1622,8 @@ struct TestResult xorg__emit_get_client__client_window_becomes_child_of_frame() 
 struct TestResult xorg__emit_get_client__subsubwindow_becomes_client() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1600,8 +1664,8 @@ struct TestResult xorg__emit_get_client__subsubwindow_becomes_client() {
 struct TestResult xorg__emit_get_client__client_reparents_to_subwindow() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1648,8 +1712,8 @@ struct TestResult xorg__emit_get_client__client_reparents_to_subwindow() {
 struct TestResult xorg__emit_get_client__parent_of_client_gets_reparented_to_frame() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1696,8 +1760,8 @@ struct TestResult xorg__emit_get_client__parent_of_client_gets_reparented_to_fra
 struct TestResult xorg__not_emit_get_client__window_becomes_client_under_frame_with_closer_client() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1749,8 +1813,8 @@ struct TestResult xorg__not_emit_get_client__window_becomes_client_under_frame_w
 struct TestResult xorg__not_emit_get_client__client_reparents_under_frame_with_closer_client() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1808,8 +1872,8 @@ struct TestResult xorg__not_emit_get_client__client_reparents_under_frame_with_c
 struct TestResult xorg__emit_get_client__client_reparents_to_other_frame() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1856,8 +1920,8 @@ struct TestResult xorg__emit_get_client__client_reparents_to_other_frame() {
 struct TestResult xorg__emit_get_client__current_client_loses_atom() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1910,8 +1974,8 @@ struct TestResult xorg__emit_get_client__current_client_loses_atom() {
 struct TestResult xorg__not_emit_get_client__distant_client_loses_atom() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1963,8 +2027,8 @@ struct TestResult xorg__not_emit_get_client__distant_client_loses_atom() {
 struct TestResult xorg__emit_restack__window_placed_on_top() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -1992,8 +2056,8 @@ struct TestResult xorg__emit_restack__window_placed_on_top() {
 struct TestResult xorg__emit_restack__window_placed_on_bottom() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2021,8 +2085,8 @@ struct TestResult xorg__emit_restack__window_placed_on_bottom() {
 struct TestResult xorg__not_emit_restack__restacked_window_is_not_frame() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2054,8 +2118,8 @@ struct TestResult xorg__not_emit_restack__restacked_window_is_not_frame() {
 struct TestResult xorg__emit_map__frame_is_mapped() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2082,8 +2146,8 @@ struct TestResult xorg__emit_map__frame_is_mapped() {
 struct TestResult xorg__not_emit_map__subwindow_is_mapped() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2115,8 +2179,8 @@ struct TestResult xorg__not_emit_map__subwindow_is_mapped() {
 struct TestResult xorg__not_emit_unmap__subwindow_is_unmapped() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2148,8 +2212,8 @@ struct TestResult xorg__not_emit_unmap__subwindow_is_unmapped() {
 struct TestResult xorg__emit_map__mapped_subwindow_becomes_frame() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2189,8 +2253,8 @@ struct TestResult xorg__emit_map__mapped_subwindow_becomes_frame() {
 struct TestResult xorg__emit_wintype__name_atom_changes() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2219,8 +2283,8 @@ struct TestResult xorg__emit_wintype__name_atom_changes() {
 struct TestResult xorg__emit_wintype_and_winclass__class_atom_changes() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2250,8 +2314,8 @@ struct TestResult xorg__emit_wintype_and_winclass__class_atom_changes() {
 struct TestResult xorg__emit_wintype__name_atom_changes_on_client() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2292,8 +2356,8 @@ struct TestResult xorg__emit_wintype__name_atom_changes_on_client() {
 struct TestResult xorg__not_emit_wintype__name_atom_changes_on_filler() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2327,8 +2391,8 @@ struct TestResult xorg__not_emit_wintype__name_atom_changes_on_filler() {
 struct TestResult xorg__emit_damage__window_is_damaged() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2355,8 +2419,8 @@ struct TestResult xorg__emit_damage__window_is_damaged() {
 struct TestResult xorg__emit_damage__damaged_window_is_unmapped() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
@@ -2383,8 +2447,8 @@ struct TestResult xorg__emit_damage__damaged_window_is_unmapped() {
 struct TestResult xorg__emit_damage__unmapped_window_is_damaged() {
     struct X11Context ctx;
     struct Atoms atoms;
-    Display* dpy = XOpenDisplay(NULL);
-    xorgContext_init(&ctx, dpy, DefaultScreen(dpy), &atoms);
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
 
     XWindowAttributes attr = {
         .class = InputOutput,
