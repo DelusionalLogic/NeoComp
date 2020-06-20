@@ -1279,6 +1279,23 @@ void XDamageSubtractH(Display* dpy, Damage damage, XserverRegion repair, Xserver
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask) {
 }
 
+void* inputMasks;
+int XSelectInputH(Display* dpy, Window win, long mask) {
+    long* value;
+    JLI(value, inputMasks, win);
+    *value = mask;
+    return 1;
+}
+long inputMask(Window win) {
+    long* value;
+    JLG(value, inputMasks, win);
+    if(value == NULL) {
+        return -1;
+    }
+    return *value;
+    return 1;
+}
+
 void setWindowAttr(Window window, XWindowAttributes* attrs) {
     XWindowAttributes** value;
     JLI(value, windowAttrs, window);
@@ -1374,6 +1391,39 @@ struct TestResult xorg__emit_destroy_event__closed_window_was_created_as_active(
 
     assertEvents(events,
         (struct Event){.type = ET_DESTROY},
+    );
+}
+
+struct TestResult xorg__emit_add_win__window_with_id_already_existed() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .parent = 0,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XDestroyWindowEvent){
+        .type = DestroyNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .serial = 1,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_ADD},
     );
 }
 
@@ -2472,6 +2522,135 @@ struct TestResult xorg__emit_damage__unmapped_window_is_damaged() {
     );
 }
 
+struct TestResult xorg__set_event_mask__window_is_created() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    readAllEvents(&ctx);
+
+    assertEq(NoEventMask, inputMask(1));
+}
+
+struct TestResult xorg__set_event_mask__subwindow_is_created() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    readAllEvents(&ctx);
+
+    assertEq(PropertyChangeMask, inputMask(2));
+}
+
+struct TestResult xorg__set_event_mask__window_is_mapped() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    assertEq(PropertyChangeMask, inputMask(1));
+}
+
+struct TestResult xorg__blank_event_mask__window_is_unmapped() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XUnmapEvent){
+        .type = UnmapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    assertEq(NoEventMask, inputMask(1));
+}
+
+struct TestResult xorg__set_event_mask__window_is_remapped_away_from_root() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .parent = 2,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    assertEq(PropertyChangeMask, inputMask(1));
+}
+
 int main(int argc, char** argv) {
     test_select(argc, argv);
 
@@ -2583,6 +2762,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_add_win_event__new_window_is_created);
     TEST(xorg__emit_no_event__new_window_is_child_of_other);
     TEST(xorg__emit_destroy_event__closed_window_was_created_as_active);
+    TEST(xorg__emit_add_win__window_with_id_already_existed);
     TEST(xorg__emit_no_event__closed_window_was_not_created_as_active);
 
     TEST(xorg__emit_add_win_event__inactive_window_gets_reparented_to_root);
@@ -2619,5 +2799,10 @@ int main(int argc, char** argv) {
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
     TEST(xorg__emit_damage__window_is_damaged);
     TEST(xorg__emit_damage__damaged_window_is_unmapped);
+
+    TEST(xorg__set_event_mask__window_is_created);
+    TEST(xorg__set_event_mask__subwindow_is_created);
+    TEST(xorg__set_event_mask__window_is_mapped);
+    TEST(xorg__blank_event_mask__window_is_unmapped);
     return test_end();
 }

@@ -227,6 +227,12 @@ void xorgContext_delete(struct X11Context* context) {
     free(context->configs);
 }
 
+static bool isWindowActive(struct X11Context* xctx, Window w) {
+    Word_t rc;
+    J1T(rc, xctx->active, w);
+    return rc != 0;
+}
+
 static bool detachSubtree(struct X11Context* xctx, Window xid) {
     int rc_int;
     JLD(rc_int, xctx->winParent, xid);
@@ -287,7 +293,12 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
     Word_t rc;
     J1S(rc, xctx->active, xid);
     if(rc == 0) {
-        printf_dbg("Window was already active");
+        // @CLEANUP @CONSISTENCY: I really want to assert here, but during
+        // initialization someone might create a window in between our calls to
+        // subscribe to window create events and bootstrap the state
+        // assert(false);
+        // For now just do nothing
+        return;
     }
 
     struct Event event = {
@@ -316,7 +327,6 @@ static void windowMap(struct X11Context* xctx, Window xid) {
     };
     pushEvent(xctx, map);
 }
-
 
 static void createDestroyWin(struct X11Context* xctx, Window xid) {
     int rc_int;
@@ -358,9 +368,7 @@ static void createGetsClient(struct X11Context* xctx, Window xid, Window client_
     // @CLEANUP @HACK: We are still emitting an event for reparenting. Ideally,
     // the compositor shouldn't even have to care about this parent nonsense. 
 
-    Word_t rc;
-    J1T(rc, xctx->active, xid);
-    assert(rc != 0);
+    assert(isWindowActive(xctx, xid));
 
     struct Event event = {
         .type = ET_CLIENT,
@@ -371,12 +379,9 @@ static void createGetsClient(struct X11Context* xctx, Window xid, Window client_
 }
 
 static void createMandr(struct X11Context* xctx, Window xid, float x, float y, float border, float width, float height, Window above) {
-    Word_t rc;
-    J1T(rc, xctx->active, xid);
-    if(rc == 0) {
-        // The window wasn't active, so we swallow the destroy
+    // The window wasn't active, so we swallow the destroy
+    if(!isWindowActive(xctx, xid))
         return;
-    }
 
     struct Event event = {
         .type = ET_MANDR,
@@ -398,7 +403,7 @@ static void createMandr(struct X11Context* xctx, Window xid, float x, float y, f
     pushEvent(xctx, restack);
 }
 
-static void createFocus(struct X11Context* xctx) {
+static void refreshFocus(struct X11Context* xctx) {
     Atom actual_type;
     int actual_format;
     unsigned long items;
@@ -439,7 +444,7 @@ static void createFocus(struct X11Context* xctx) {
     pushEvent(xctx, event);
 }
 
-static void createNewRoot(struct X11Context* xctx) {
+static void refreshRoot(struct X11Context* xctx) {
     xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
 
     Atom atoms[2] = {
@@ -563,8 +568,11 @@ static void fillBuffer(struct X11Context* xctx) {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
             if(ev->parent == xctx->root) {
                 windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
+                XSelectInputH(xctx->display, ev->window, NoEventMask);
             } else {
                 attachSubtree(xctx, ev->parent, ev->window);
+                // Watch for possible WM_STATE
+                XSelectInputH(xctx->display, ev->window, PropertyChangeMask);
             }
             break;
         }
@@ -626,9 +634,7 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case CirculateNotify: {
             XCirculateEvent* ev = (XCirculateEvent*)&raw;
-            Word_t rc;
-            J1T(rc, xctx->active, ev->window);
-            if(rc == 0) {
+            if(!isWindowActive(xctx, ev->window)) {
                 break;
             }
             struct Event restack = {
@@ -667,11 +673,11 @@ static void fillBuffer(struct X11Context* xctx) {
             XPropertyEvent* ev = (XPropertyEvent *)&raw;
             if(ev->window == xctx->root) {
                 if (xctx->atoms->atom_ewmh_active_win == ev->atom) {
-                    createFocus(xctx);
+                    refreshFocus(xctx);
                     break;
                 } else if (xctx->atoms->atom_xrootmapid == ev->atom
                         || xctx->atoms->atom_xsetrootid == ev->atom) {
-                    createNewRoot(xctx);
+                    refreshRoot(xctx);
                     break;
                 }
             } else {
@@ -688,8 +694,7 @@ static void fillBuffer(struct X11Context* xctx) {
                             break;
                         }
 
-                        J1T(rc, xctx->active, ev->window);
-                        if(rc == 1) {
+                        if(isWindowActive(xctx, ev->window)) {
                             // The window is a frame, which means we don't need
                             // to process the client (frames can't be clients).
                             // We still track client status if this get's
@@ -713,8 +718,7 @@ static void fillBuffer(struct X11Context* xctx) {
                         J1U(rc, xctx->client, ev->window);
                         assert(rc == 1); // The window is not a client
 
-                        J1T(rc, xctx->active, ev->window);
-                        if(rc == 1) {
+                        if(isWindowActive(xctx, ev->window)) {
                             // The window is a frame, which means we don't need
                             // to process the client (frames can't be clients).
                             // We still track client status if this get's
@@ -737,8 +741,7 @@ static void fillBuffer(struct X11Context* xctx) {
 
                     Window frame = findRoot(xctx, ev->window);
                     // If the frame isn't active dont emit
-                    J1T(rc, xctx->active, frame);
-                    if(rc == 0) {
+                    if(!isWindowActive(xctx, frame)) {
                         break;
                     }
 
@@ -777,8 +780,7 @@ static void fillBuffer(struct X11Context* xctx) {
 
                     Window frame = findRoot(xctx, ev->window);
                     // If the frame isn't active dont emit
-                    J1T(rc, xctx->active, frame);
-                    if(rc == 0) {
+                    if(!isWindowActive(xctx, frame)) {
                         break;
                     }
 
@@ -829,7 +831,7 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         default: {
             if(xorgContext_convertEvent(&xctx->capabilities, PROTO_DAMAGE,  raw.type) == XDamageNotify) {
-                XDamageNotifyEvent* ev = &raw;
+                XDamageNotifyEvent* ev = (XDamageNotifyEvent*)&raw;
 
                 // We need to subtract the damage, even if we aren't mapped. If we don't
                 // subtract the damage, we won't be notified of any new damage in the
@@ -894,6 +896,6 @@ void xorg_beginEvents(struct X11Context* xctx) {
 
     XFree(children);
 
-    createFocus(xctx);
-    createNewRoot(xctx);
+    refreshFocus(xctx);
+    refreshRoot(xctx);
 }

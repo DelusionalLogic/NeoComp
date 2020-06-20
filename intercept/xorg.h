@@ -13,6 +13,7 @@
 Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs);
 int XNextEventH(Display* dpy, XEvent* ev);
 Window RootWindowH(Display* dpy, int scr);
+int XSelectInputH(Display* dpy, Window win, long mask);
 
 GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num);
 Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error);
@@ -30,6 +31,6 @@ Status XSyncInitializeH(Display* dpy, int* major, int* minor);
 Atom XInternAtomH(Display* dpy, char* name, Bool query);
 
 Damage XDamageCreateH(Display* dpy, Window win, int level);
-void XDamageSubtract(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts);
+void XDamageSubtractH(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts);
 
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask);

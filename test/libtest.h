@@ -107,6 +107,7 @@ struct TestResult assertEvents_internal(Vector* events, struct Event match[], si
             bool: assertEqBool_internal,    \
             uint64_t: assertEq_internal,    \
             char: assertEq_internal,        \
+            long: assertEq_internal,        \
             float: assertEqFloat_internal,  \
             double: assertEqFloat_internal  \
             )                               \

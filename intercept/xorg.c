@@ -12,6 +12,10 @@ Window RootWindowH(Display* dpy, int scr) {
     return RootWindow(dpy, scr);
 }
 
+int XSelectInputH(Display* dpy, Window win, long mask) {
+    return XSelectInput(dpy, win, mask);
+}
+
 GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
     return glXGetFBConfigs(dpy, scr, num);
 }
