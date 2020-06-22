@@ -321,6 +321,8 @@ static void windowMap(struct X11Context* xctx, Window xid) {
     J1S(rc, xctx->mapped, xid);
     assert(rc == 1);
 
+    XSelectInputH(xctx->display, xid, PropertyChangeMask);
+
     struct Event map = {
         .type = ET_MAP,
         .map.xid = xid,
@@ -661,6 +663,8 @@ static void fillBuffer(struct X11Context* xctx) {
             Word_t rc;
             J1U(rc, xctx->mapped, ev->window);
             assert(rc == 1);
+
+            XSelectInputH(xctx->display, ev->window, NoEventMask);
 
             struct Event unmap = {
                 .type = ET_UNMAP,

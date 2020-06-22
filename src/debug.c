@@ -7,6 +7,9 @@
 #include "assets/assets.h"
 #include "assets/shader.h"
 
+const Vector4 header_bg = {{ 0.3, 0.2, 0.2, 1.0 }};
+const Vector4 content_bg = {{ 0.2, 0.1, 0.1, 1.0 }};
+
 static Vector2 X11_rectpos_to_gl(const Vector2* rootSize, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
         xpos->x, rootSize->y - xpos->y - size->y
@@ -333,7 +336,7 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
         Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
 
         struct face* face = assets_load("window.face");
-        draw_colored_rect(face, &pos, &size, &(Vector4){{0.3, 0.2, 0.2, 1.0}});
+        draw_colored_rect(face, &pos, &size, &header_bg);
     }
 
     for_components(it, em,
@@ -399,7 +402,7 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
         Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
 
         struct face* face = assets_load("window.face");
-        draw_colored_rect(face, &pos, &size, &(Vector4){{0.2, 0.1, 0.1, 1.0}});
+        draw_colored_rect(face, &pos, &size, &content_bg);
     }
 
     for_components(it, em,
@@ -442,7 +445,7 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
 
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        draw_colored_rect(s->face, &pos, &size, &(Vector4){{0.8, 0.8, 0.8, 1.0}});
+        draw_colored_rect(s->face, &pos, &size, &content_bg);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         debug->pen.y -= size.y + 10;
     }
@@ -474,7 +477,7 @@ static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
         Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
 
         struct face* face = assets_load("window.face");
-        draw_colored_rect(face, &pos, &size, &(Vector4){{0.3, 0.2, 0.2, 1.0}});
+        draw_colored_rect(face, &pos, &size, &header_bg);
     }
 
     for_components(it, em,
