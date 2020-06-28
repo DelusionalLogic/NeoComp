@@ -1,26 +1,36 @@
 #include "xorg.h"
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(x_call);
+
 Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs) {
+    zone_scope_extra(&ZONE_x_call, "GetWinAttr");
     return XGetWindowAttributes(dpy, window, attrs);
 }
 
 int XNextEventH(Display* dpy, XEvent* ev) {
+    zone_scope_extra(&ZONE_x_call, "NextEvent");
     return XNextEvent(dpy, ev);
 }
 
 Window RootWindowH(Display* dpy, int scr) {
+    zone_scope_extra(&ZONE_x_call, "RootWindow");
     return RootWindow(dpy, scr);
 }
 
 int XSelectInputH(Display* dpy, Window win, long mask) {
+    zone_scope_extra(&ZONE_x_call, "SelectInput");
     return XSelectInput(dpy, win, mask);
 }
 
 GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
+    zone_scope_extra(&ZONE_x_call, "FBConfigs");
     return glXGetFBConfigs(dpy, scr, num);
 }
 
 Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error) {
+    zone_scope_extra(&ZONE_x_call, "QueryExtension");
     return XQueryExtension(dpy, name, opcode, event, error);
 }
 Status XCompositeQueryVersionH(Display* dpy, int* major, int* minor) {
@@ -56,13 +66,56 @@ Atom XInternAtomH(Display* dpy, char* name, Bool query) {
 }
 
 Damage XDamageCreateH(Display* dpy, Window win, int level) {
+    zone_scope_extra(&ZONE_x_call, "DamageCreate");
     return XDamageCreate(dpy, win, level);
 }
 
+void XDamageDestroyH(Display* dpy, Damage damage) {
+    zone_scope_extra(&ZONE_x_call, "DamageDestroy");
+    return XDamageDestroy(dpy, damage);
+}
+
 void XDamageSubtractH(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts) {
+    zone_scope_extra(&ZONE_x_call, "DamageSubtract");
     return XDamageSubtract(dpy, damage, repair, parts);
 }
 
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask) {
+    zone_scope_extra(&ZONE_x_call, "ShapeSelectInput");
     return XShapeSelectInput(dpy, win, mask);
+}
+
+XserverRegion XFixesCreateRegionH(Display* dpy, XRectangle* rectangles, int nrectangles) {
+    zone_scope_extra(&ZONE_x_call, "CreateRegion");
+    return XFixesCreateRegion(dpy, rectangles, nrectangles);
+}
+
+XserverRegion XFixesCreateRegionFromWindowH(Display* dpy, Window window, int kind) {
+    zone_scope_extra(&ZONE_x_call, "CreateRegionFromWin");
+    return XFixesCreateRegionFromWindow(dpy, window, kind);
+}
+
+void XFixesTranslateRegionH(Display* dpy, XserverRegion region, int dx, int dy) {
+    zone_scope_extra(&ZONE_x_call, "TranslateRegion");
+    return XFixesTranslateRegion(dpy, region, dx, dy);
+}
+
+void XFixesUnionRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2) {
+    zone_scope_extra(&ZONE_x_call, "UnionRegion");
+    return XFixesUnionRegion(dpy, dst, src1, src2);
+}
+
+void XFixesInvertRegionH(Display* dpy, XserverRegion dst, XRectangle* rect, XserverRegion src) {
+    zone_scope_extra(&ZONE_x_call, "InvertRegion");
+    return XFixesInvertRegion(dpy, dst, rect, src);
+}
+
+void XFixesDestroyRegionH(Display* dpy, XserverRegion region) {
+    zone_scope_extra(&ZONE_x_call, "DestroyRegion");
+    return XFixesDestroyRegion(dpy, region);
+}
+
+void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region) {
+    zone_scope_extra(&ZONE_x_call, "SetWindowShapeRegion");
+    return XFixesSetWindowShapeRegion(dpy, win, shape_kind, x_off, y_off, region);
 }

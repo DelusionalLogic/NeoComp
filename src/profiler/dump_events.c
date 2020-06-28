@@ -66,16 +66,51 @@ void profilerWriter_emitFrame(struct ProfilerWriterSession* session, struct Zone
             "{"
             "\"pid\": 0, "
             "\"tid\": 0, "
-            "\"ph\": \"%s\", "
+        );
+        switch(cursor->type) {
+            case ZE_ENTER:
+                fprintf(
+                    session->fd,
+                    "\"ph\": \"B\", "
+                );
+                break;
+            case ZE_LEAVE:
+                fprintf(
+                    session->fd,
+                    "\"ph\": \"E\", "
+                );
+                break;
+            case ZE_INSTA:
+                fprintf(
+                    session->fd,
+                    "\"ph\": \"I\", "
+                    "\"s\": \"g\", "
+                );
+                break;
+        }
+        fprintf(
+            session->fd,
             "\"ts\": %f, "
             "\"name\": \"%s\", "
-            "\"args\": { \"location\": \"%s\" }"
-            "}",
-            cursor->type == ZE_ENTER ? "B" : "E",
+            "\"args\": { "
+                "\"location\": \"%s\"",
             timespec_micros(&relative),
             cursor->zone->name,
             cursor->location
-       );
+        );
+
+        if(cursor->userdata[0] != '\0') {
+            fprintf(
+                session->fd,
+                ", \"userdata\": \"%s\"",
+                cursor->userdata
+            );
+        }
+        fprintf(
+            session->fd,
+            " } "
+            "}"
+        );
     }
 
     fprintf(session->fd, ",\n");

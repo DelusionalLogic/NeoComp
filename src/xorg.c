@@ -10,6 +10,7 @@
 #include <string.h>
 
 DECLARE_ZONE(select_config);
+DECLARE_ZONE(event_preprocess);
 
 const char* X11Protocols_Names[] = {
     COMPOSITE_NAME,
@@ -348,6 +349,7 @@ static void createDestroyWin(struct X11Context* xctx, Window xid) {
         return;
     }
 
+    // The damage object is already destroyed with the window
     JLD(rc_int, xctx->damage, xid);
     if(rc_int == JERR) {
         printf_errf("Alloc error");
@@ -568,6 +570,7 @@ static void fillBuffer(struct X11Context* xctx) {
     switch (raw.type) {
         case CreateNotify: {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Create");
             if(ev->parent == xctx->root) {
                 windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
                 XSelectInputH(xctx->display, ev->window, NoEventMask);
@@ -580,6 +583,7 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case DestroyNotify: {
             XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Destroy");
 
             Word_t rc;
             J1U(rc, xctx->mapped, ev->window);
@@ -590,12 +594,12 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case ReparentNotify: {
             XReparentEvent* ev = (XReparentEvent *)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "ReparentNotify");
             // Since we only composite top level windows, reparenting to the
             // root looks like an new window to us.
             if (ev->parent == xctx->root) {
                 XWindowAttributes attribs;
                 if(!XGetWindowAttributesH(xctx->display, ev->window, &attribs)) {
-                    printf_dbgf("Could not get window attribs");
                     break;
                 }
                 windowCreate(xctx, ev->window, attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
@@ -631,11 +635,13 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case ConfigureNotify: {
             XConfigureEvent* ev = (XConfigureEvent *)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Configure");
             createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height, ev->above);
             break;
         }
         case CirculateNotify: {
             XCirculateEvent* ev = (XCirculateEvent*)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Circulate");
             if(!isWindowActive(xctx, ev->window)) {
                 break;
             }
@@ -649,11 +655,13 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case MapNotify: {
             XMapEvent* ev = (XMapEvent*)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Map");
             windowMap(xctx, ev->window);
             break;
         }
         case UnmapNotify: {
             XUnmapEvent* ev = (XUnmapEvent*)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "Unmap");
             // Some applications (firefox) send their own unmap events. I don't
             // care if they say the window is unmapped, if it's actually
             // unmapped Xorg will tell us.
@@ -675,6 +683,7 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         case PropertyNotify: {
             XPropertyEvent* ev = (XPropertyEvent *)&raw;
+            zone_scope_extra(&ZONE_event_preprocess, "PropertyNotify");
             if(ev->window == xctx->root) {
                 if (xctx->atoms->atom_ewmh_active_win == ev->atom) {
                     refreshFocus(xctx);
@@ -836,6 +845,9 @@ static void fillBuffer(struct X11Context* xctx) {
         default: {
             if(xorgContext_convertEvent(&xctx->capabilities, PROTO_DAMAGE,  raw.type) == XDamageNotify) {
                 XDamageNotifyEvent* ev = (XDamageNotifyEvent*)&raw;
+                zone_scope_extra(&ZONE_event_preprocess, "Damage");
+
+                assert(isWindowActive(xctx, ev->drawable));
 
                 // We need to subtract the damage, even if we aren't mapped. If we don't
                 // subtract the damage, we won't be notified of any new damage in the

@@ -31,6 +31,25 @@ void zone_enter_raw(struct ProgramZone* zone, char* location) {
     zone_event(zone, ZE_ENTER, event);
 }
 
+void zone_insta_raw(struct ProgramZone* zone, char* location) {
+    struct ZoneEvent* event = reserve();
+    event->location = location;
+    event->userdata[0] = '\0';
+    zone_event(zone, ZE_INSTA, event);
+}
+
+void zone_insta_extra_raw(struct ProgramZone* zone, char* location, char* format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    struct ZoneEvent* event = reserve();
+    event->location = location;
+    vsnprintf(event->userdata, 64, format, args);
+    zone_event(zone, ZE_INSTA, event);
+
+    va_end(args);
+}
+
 void zone_enter_extra_raw(struct ProgramZone* zone, char* location, char* format, ...) {
     va_list args;
     va_start(args, format);
@@ -46,7 +65,19 @@ void zone_enter_extra_raw(struct ProgramZone* zone, char* location, char* format
 void zone_leave_raw(struct ProgramZone* zone, char* location) {
     struct ZoneEvent* event = reserve();
     event->location = location;
+    event->userdata[0] = '\0';
     zone_event(zone, ZE_LEAVE, event);
+}
+
+void zone_leave_extra_raw(struct ProgramZone* zone, char* location, char* format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    struct ZoneEvent* event = reserve();
+    vsnprintf(event->userdata, 64, format, args);
+    zone_event(zone, ZE_LEAVE, event);
+
+    va_end(args);
 }
 
 void zone_start(struct ProgramZone* zone) {

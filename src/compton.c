@@ -51,11 +51,14 @@
 #include "profiler/render.h"
 #include "profiler/dump_events.h"
 
+#include "intercept/xorg.h"
+
 // === Global constants ===
 
 DECLARE_ZONE(global);
 DECLARE_ZONE(input);
 DECLARE_ZONE(preprocess);
+
 
 DECLARE_ZONE(one_event);
 
@@ -68,6 +71,7 @@ DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
 
+DECLARE_ZONE(x_error);
 DECLARE_ZONE(x_communication);
 
 DECLARE_ZONE(paint);
@@ -152,20 +156,6 @@ static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *s
     return true;
 }
 
-// Stop listening for events
-// @X11
-static void win_ev_stop(session_t *ps, win *w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
-    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-    // Will get BadWindow if the window is destroyed
-    XSelectInput(ps->dpy, window->id, 0);
-
-    if (client->id) {
-        XSelectInput(ps->dpy, client->id, 0);
-    }
-}
-
 // @X11
 static bool wid_get_children(session_t *ps, Window w,
         Window **children, unsigned *nchildren) {
@@ -223,7 +213,7 @@ static win * find_win_all(session_t *ps, const Window wid) {
     win *w = find_win(ps, wid);
     if (!w) {
         win_id fid = find_toplevel(ps, wid);
-        if(wid != -1)
+        if(fid != -1)
             w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, fid);
     }
     if (!w) w = find_toplevel2(ps, wid);
@@ -544,9 +534,6 @@ static void win_unmark_client(session_t *ps, win *w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 
-    // Recheck event mask
-    XSelectInput(ps->dpy, client->id, determine_evmask(ps, client->id, WIN_EVMODE_UNKNOWN));
-
     swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
 }
 
@@ -587,10 +574,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
         return;
 
-    // Call XSelectInput() before reading properties so that no property
-    // changes are lost
-    XSelectInput(ps->dpy, window->id, determine_evmask(ps, window->id, WIN_EVMODE_FRAME));
-
     // Make sure the XSelectInput() requests are sent
     XFlush(ps->dpy);
 
@@ -625,9 +608,6 @@ static void unmap_win(session_t *ps, win *w) {
     if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
     }
-
-    // don't care about properties anymore
-    win_ev_stop(ps, w);
 }
 
 /**
@@ -648,9 +628,6 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   // called in map_win()
   if (!win_mapped(&ps->win_list, wid))
     return;
-
-  XSelectInput(ps->dpy, client,
-      determine_evmask(ps, client, WIN_EVMODE_CLIENT));
 
   // Make sure the XSelectInput() requests are sent
   XFlush(ps->dpy);
@@ -995,6 +972,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
 
     print_timestamp(ps);
     {
+        zone_insta_extra(&ZONE_x_error, "%s:%ld", name, ev->request_code);
         char buf[BUF_LEN] = "";
         XGetErrorText(ps->dpy, ev->error_code, buf, BUF_LEN);
         printf("error %4d %-12s request %4d minor %4d serial %6lu resource %4lu: \"%s\"\n",
@@ -1263,9 +1241,6 @@ static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
 }
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
-    // Reset event mask in case something wrong happens
-    XSelectInput(ps->dpy, event->client_xid, determine_evmask(ps, event->client_xid, WIN_EVMODE_UNKNOWN));
-
     // We just destroyed the window, so it shouldn't be found
     assert(find_toplevel(ps, event->client_xid) != -1);
 
@@ -1299,12 +1274,6 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
             win_unmark_client(ps, w_frame);
 
         win_mark_client(ps, w_frame, event->client_xid);
-    } else { // Otherwise, watch for WM_STATE on it
-        XSelectInput(
-            ps->dpy,
-            event->client_xid,
-            determine_evmask(ps, event->client_xid, WIN_EVMODE_UNKNOWN) | PropertyChangeMask
-        );
     }
 }
 
@@ -2485,15 +2454,6 @@ void session_destroy(session_t *ps) {
 
   // Free window linked list
   for_components(it, &ps->win_list,
-      COMPONENT_MUD, COMPONENT_STATEFUL, CQ_END) {
-      win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-      struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-      if (win_mapped(&ps->win_list, it.id) && stateful->state != STATE_DESTROYING)
-          win_ev_stop(ps, w);
-
-  }
-  for_components(it, &ps->win_list,
       COMPONENT_TEXTURED, CQ_END) {
       struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, it.id);
       texture_delete(&textured->texture);
@@ -2791,6 +2751,17 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
                 free(shaped->face);
             }
             swiss_removeComponent(em, COMPONENT_SHAPED, it.id);
+        }
+    }
+
+    for_components(it, em,
+            COMPONENT_STATEFUL, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+        struct ShapeDamagedEvent* d = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_DESTROYED) {
+            assert(d->rects.elementSize == 0);
+            swiss_removeComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
         }
     }
 
@@ -3337,7 +3308,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_make_cutout);
         {
-            XserverRegion newShape = XFixesCreateRegion(ps->dpy, NULL, 0);
+            XserverRegion newShape = XFixesCreateRegionH(ps->dpy, NULL, 0);
             for_components(it, em,
                     COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
                 struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
@@ -3345,14 +3316,14 @@ void session_run(session_t *ps) {
 
                 if(win_mapped(em, it.id)) {
                     XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->xcontext.display, tracksWindow->id, ShapeBounding);
-                    XFixesTranslateRegion(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
-                    XFixesUnionRegion(ps->xcontext.display, newShape, newShape, windowRegion);
-                    XFixesDestroyRegion(ps->xcontext.display, windowRegion);
+                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
+                    XFixesUnionRegionH(ps->xcontext.display, newShape, newShape, windowRegion);
+                    XFixesDestroyRegionH(ps->xcontext.display, windowRegion);
                 }
             }
-            XFixesInvertRegion(ps->dpy, newShape, &(XRectangle){0, 0, ps->root_size.x, ps->root_size.y}, newShape);
-            XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
-            XFixesDestroyRegion(ps->xcontext.display, newShape);
+            XFixesInvertRegionH(ps->dpy, newShape, &(XRectangle){0, 0, ps->root_size.x, ps->root_size.y}, newShape);
+            XFixesSetWindowShapeRegionH(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
+            XFixesDestroyRegionH(ps->xcontext.display, newShape);
         }
         zone_leave(&ZONE_make_cutout);
 

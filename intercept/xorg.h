@@ -31,6 +31,15 @@ Status XSyncInitializeH(Display* dpy, int* major, int* minor);
 Atom XInternAtomH(Display* dpy, char* name, Bool query);
 
 Damage XDamageCreateH(Display* dpy, Window win, int level);
+void XDamageDestroyH(Display* dpy, Damage damage);
 void XDamageSubtractH(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts);
+
+XserverRegion XFixesCreateRegionH(Display* dpy, XRectangle* rectangles, int nrectangles);
+XserverRegion XFixesCreateRegionFromWindowH(Display* dpy, Window window, int kind);
+void XFixesTranslateRegionH(Display* dpy, XserverRegion region, int dx, int dy);
+void XFixesUnionRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2);
+void XFixesInvertRegionH(Display* dpy, XserverRegion dst, XRectangle* rect, XserverRegion src);
+void XFixesDestroyRegionH(Display* dpy, XserverRegion region);
+void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region);
 
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask);

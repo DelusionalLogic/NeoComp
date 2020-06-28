@@ -24,8 +24,6 @@ struct Block {
     double millis;
     float start;
     float end;
-
-    char* userdata;
 };
 
 #define NUM_TRACKS 5
@@ -91,8 +89,6 @@ static void process(struct ZoneEventStream* stream) {
             float offset = timespec_ilerp(&stream->start, &stream->end, &cursor->time);
             block->start = offset;
             block->zone = cursor->zone;
-
-            block->userdata = cursor->userdata;
 
             depth++;
         } else if(cursor->type == ZE_LEAVE) {
@@ -229,13 +225,6 @@ static void draw(const Vector2* pos, const Vector2* size) {
 
                 text_draw(&debug_font, text, &pen, &textscale);
                 free(text);
-            }
-
-            {
-                text_size(&debug_font, block->userdata, &textscale, &scale);
-                pen.y -= scale.y;
-
-                text_draw(&debug_font, block->userdata, &pen, &textscale);
             }
         }
     }

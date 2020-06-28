@@ -13,6 +13,7 @@ struct ProgramZone {
 enum ZoneEventType {
     ZE_ENTER,
     ZE_LEAVE,
+    ZE_INSTA,
 };
 
 struct ZoneEvent {
@@ -46,20 +47,30 @@ struct ZoneEventStream {
 
 #ifdef DEBUG_PROFILE // Profiler macros {{{
 
+#define zone_insta(zone) zone_insta_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")")
+#define zone_insta_extra(zone, format, ...) zone_insta_extra_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")", format, ##__VA_ARGS__)
 #define zone_enter(zone) zone_enter_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")")
-#define zone_enter_extra(zone, format, ...) zone_enter_extra_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")", format, __VA_ARGS__)
+#define zone_enter_extra(zone, format, ...) zone_enter_extra_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")", format, ##__VA_ARGS__)
 #define zone_leave(zone) zone_leave_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")")
+#define zone_leave_extra(zone, format, ...) zone_leave_extra_raw(zone, __FILE__ "(" STRINGIFY(__LINE__) ")", format, ##__VA_ARGS__)
 
 #define zone_scope(zone) \
     zone_enter(zone); \
     defer { zone_leave(zone); }
 
+#define zone_scope_extra(zone, format, ...) \
+    zone_enter(zone); \
+    defer { zone_leave_extra(zone, format, ##__VA_ARGS__); }
+
 #else
 
+#define zone_insta(zone)
+#define zone_insta_extra(zone, format, ...)
 #define zone_enter(zone)
 #define zone_enter_extra(zone, format, ...)
 #define zone_leave(zone)
 #define zone_scope(zone)
+#define zone_scope_extra(zone, format, ...)
 
 #endif // }}}
 
@@ -73,9 +84,12 @@ struct ZoneEventStream {
 #define defer defer__(__COUNTER__)
 
 
+void zone_insta_raw(struct ProgramZone* zone, char* location);
+void zone_insta_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);
 void zone_enter_raw(struct ProgramZone* zone, char* location);
 void zone_enter_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);
 void zone_leave_raw(struct ProgramZone* zone, char* location);
+void zone_leave_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);
 
 void zone_start(struct ProgramZone* zone);
 struct ZoneEventStream* zone_package(struct ProgramZone* zone);
