@@ -574,9 +574,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
         return;
 
-    // Make sure the XSelectInput() requests are sent
-    XFlush(ps->dpy);
-
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
     // Add a map event
@@ -628,9 +625,6 @@ win_mark_client(session_t *ps, win *parent, Window client) {
   // called in map_win()
   if (!win_mapped(&ps->win_list, wid))
     return;
-
-  // Make sure the XSelectInput() requests are sent
-  XFlush(ps->dpy);
 
   swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
 

@@ -54,53 +54,41 @@ void opacity_collect_fades(Swiss* em, Vector* fadeable) {
 }
 
 void opacity_commit_fades(Swiss* em) {
+    zone_scope(&ZONE_commit_opacity);
+
     for_components(it, em,
             COMPONENT_FADES_OPACITY, CQ_END) {
-    struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-    if(fo->fade.value < 100.0) {
-            swiss_ensureComponent(em, COMPONENT_OPACITY, it.id);
-        }
-    }
-    for_components(it, em,
-            COMPONENT_OPACITY, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
 
-        opacity->opacity = fo->fade.value;
-    }
-    for_components(it, em,
-            COMPONENT_OPACITY, CQ_END) {
-        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
-        if(opacity->opacity >= 100.0) {
+        if(fo->fade.value < 100.0) {
+            swiss_ensureComponent(em, COMPONENT_OPACITY, it.id);
+        } else if(fo->fade.value >= 100.0) {
             swiss_removeComponent(em, COMPONENT_OPACITY, it.id);
+            continue;
         }
+
+        struct OpacityComponent* opacity = swiss_getComponent(em, COMPONENT_OPACITY, it.id);
+        opacity->opacity = fo->fade.value;
     }
 
     for_components(it, em,
             COMPONENT_FADES_BGOPACITY, CQ_END) {
         struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+
         if(fo->fade.value < 100.0) {
             swiss_ensureComponent(em, COMPONENT_BGOPACITY, it.id);
-        }
-    }
-    for_components(it, em,
-            COMPONENT_BGOPACITY, COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
-
-        opacity->opacity = fo->fade.value;
-    }
-    for_components(it, em,
-            COMPONENT_BGOPACITY, CQ_END) {
-        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
-        if(opacity->opacity >= 100.0) {
+        } else if(fo->fade.value >= 100.0) {
             swiss_removeComponent(em, COMPONENT_BGOPACITY, it.id);
+            continue;
         }
+
+        struct BgOpacityComponent* opacity = swiss_getComponent(em, COMPONENT_BGOPACITY, it.id);
+        opacity->opacity = fo->fade.value;
     }
 }
 
 void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
-    zone_enter(&ZONE_commit_opacity);
+    zone_scope(&ZONE_commit_opacity);
     for_components(it, em,
             COMPONENT_UNMAP, COMPONENT_FADES_OPACITY, CQ_END) {
         struct FadesOpacityComponent* fadesOpacity = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
@@ -122,6 +110,5 @@ void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
         t->time = 0;
         t->duration = fmax(fade_time, bg_fade_time);
     }
-    zone_leave(&ZONE_commit_opacity);
 }
 

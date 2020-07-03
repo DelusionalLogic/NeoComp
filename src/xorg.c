@@ -10,6 +10,8 @@
 #include <string.h>
 
 DECLARE_ZONE(select_config);
+DECLARE_ZONE(select_config_visual);
+DECLARE_ZONE(select_config_attribs);
 DECLARE_ZONE(event_preprocess);
 
 const char* X11Protocols_Names[] = {
@@ -174,27 +176,33 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
     zone_scope(&ZONE_select_config);
     assert(visualid != 0);
 
-	GLXFBConfig* selected = NULL;
+    GLXFBConfig* selected = NULL;
 
     int value;
     for(int i = 0; i < context->numConfigs; i++) {
+        zone_enter(&ZONE_select_config_visual);
         GLXFBConfig fbconfig = context->configs[i];
         XVisualInfo* visinfo = glXGetVisualFromFBConfig(context->display, fbconfig);
         if (!visinfo || visinfo->visualid != visualid) {
             XFree(visinfo);
+            zone_leave(&ZONE_select_config_visual);
             continue;
         }
         XFree(visinfo);
+        zone_leave(&ZONE_select_config_visual);
 
+        zone_enter(&ZONE_select_config_attribs);
         // We don't want to use anything multisampled
         glXGetFBConfigAttrib(context->display, fbconfig, GLX_SAMPLES, &value);
         if (value >= 2) {
+            zone_leave(&ZONE_select_config_attribs);
             continue;
         }
 
         // We need to support pixmaps
         glXGetFBConfigAttrib(context->display, fbconfig, GLX_DRAWABLE_TYPE, &value);
         if (!(value & GLX_PIXMAP_BIT)) {
+            zone_leave(&ZONE_select_config_attribs);
             continue;
         }
 
@@ -203,6 +211,7 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
                 GLX_BIND_TO_TEXTURE_TARGETS_EXT,
                 &value);
         if (!(value & GLX_TEXTURE_2D_BIT_EXT)) {
+            zone_leave(&ZONE_select_config_attribs);
             continue;
         }
 
@@ -210,10 +219,12 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
         glXGetFBConfigAttrib(context->display, fbconfig,
                 GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
         if (value == false) {
+            zone_leave(&ZONE_select_config_attribs);
             continue;
         }
 
         selected = &context->configs[i];
+        zone_leave(&ZONE_select_config_attribs);
         break;
     }
     // If we ran out of fbconfigs before we found something we like.

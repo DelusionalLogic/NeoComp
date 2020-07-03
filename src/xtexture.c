@@ -168,6 +168,7 @@ bool xtexture_bind(struct X11Context* xctx, struct XTexture* tex[], struct XText
 
             // If the depth requested matches the depth we get without
             // alpha data, then we just use RGB
+            printf_dbgf("Tex depth %d, rgb %d alpha %d", tex[i]->depth, texinfo[i]->rgbDepth, texinfo[i]->rgbAlpha);
             if(tex[i]->depth == texinfo[i]->rgbDepth - texinfo[i]->rgbAlpha) {
                 formats[i] = GLX_TEXTURE_FORMAT_RGB_EXT;
             }
