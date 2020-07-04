@@ -185,8 +185,6 @@ struct WinVis {
     VisualID id;
     bool rgb;
     bool rgba;
-    int colorDepth;
-    bool flipped;
     GLXFBConfig* raw;
 };
 

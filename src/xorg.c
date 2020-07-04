@@ -150,9 +150,6 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
             continue;
         }
 
-        glXGetFBConfigAttribH(display, fbconfig, GLX_Y_INVERTED_EXT, &value);
-        vis.flipped = value;
-
         glXGetFBConfigAttribH(context->display, fbconfig, GLX_VISUAL_ID, (int*)&vis.id);
 
         vis.raw = &context->configs[i];
