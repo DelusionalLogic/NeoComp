@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <assert.h>
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(texture_resize);
+
 static GLuint generate_texture(GLenum tex_tgt, GLint format, const Vector2* size) {
     GLuint tex = 0;
 
@@ -123,6 +127,7 @@ int texture_init_nospace(struct Texture* texture, GLenum target, const Vector2* 
 }
 
 void texture_resize(struct Texture* texture, const Vector2* size) {
+    zone_scope(&ZONE_texture_resize);
     assert(texture_initialized(texture));
 
     glBindTexture(texture->target, texture->gl_texture);

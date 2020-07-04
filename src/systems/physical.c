@@ -1,6 +1,12 @@
 #include "physical.h"
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(physics_move);
+DECLARE_ZONE(physics_tick);
+
 void physics_move_window(Swiss* em, win_id wid, Vector2* pos, Vector2* size) {
+    zone_scope(&ZONE_physics_move);
     struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, wid);
     if(swiss_hasComponent(em, COMPONENT_MOVE, wid)) {
         // If we already have a move, just override it
@@ -26,6 +32,7 @@ void physics_move_window(Swiss* em, win_id wid, Vector2* pos, Vector2* size) {
 }
 
 void physics_tick(Swiss* em) {
+    zone_scope(&ZONE_physics_tick);
     for_components(it, em,
             COMPONENT_MOVE, COMPONENT_PHYSICAL, CQ_END) {
         struct MoveComponent* move = swiss_getComponent(em, COMPONENT_MOVE, it.id);

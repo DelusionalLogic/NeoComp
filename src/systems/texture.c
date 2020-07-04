@@ -4,8 +4,12 @@
 #include "logging.h"
 #include "renderbuffer.h"
 #include "window.h"
+#include "profiler/zone.h"
+
+DECLARE_ZONE(texture_tick);
 
 void texturesystem_tick(Swiss* em) {
+    zone_scope(&ZONE_texture_tick);
     // Resize textures when mapping a window with a texture
     for_components(it, em,
             COMPONENT_MAP, COMPONENT_PHYSICAL, COMPONENT_REDIRECTED, COMPONENT_TEXTURED, CQ_END) {

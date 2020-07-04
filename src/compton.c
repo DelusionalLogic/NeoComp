@@ -74,6 +74,10 @@ DECLARE_ZONE(prop_blur_damage);
 DECLARE_ZONE(x_error);
 DECLARE_ZONE(x_communication);
 
+DECLARE_ZONE(commit_move);
+DECLARE_ZONE(commit_resize);
+DECLARE_ZONE(commit_reshape);
+
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
@@ -2911,6 +2915,7 @@ void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double d
 }
 
 static void commit_resize(Swiss* em, Vector* order) {
+    zone_scope(&ZONE_commit_resize);
     for_components(it, em,
             COMPONENT_RESIZE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
@@ -2928,6 +2933,7 @@ static void commit_resize(Swiss* em, Vector* order) {
 }
 
 static void commit_reshape(Swiss* em, struct X11Context* context) {
+    zone_scope(&ZONE_commit_reshape);
     for_components(it, em,
             COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
@@ -2949,6 +2955,7 @@ static void commit_reshape(Swiss* em, struct X11Context* context) {
 }
 
 static void commit_move(Swiss* em, Vector* order) {
+    zone_scope(&ZONE_commit_move);
     for_components(it, em,
             COMPONENT_MOVE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
