@@ -109,6 +109,11 @@ static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Cont
     return 0;
 }
 
+int winvis_compar(const void* av, const void* bv, void* userdata) {
+    const struct WinVis* a = av;
+    const struct WinVis* b = bv;
+    return a->id - b->id;
+};
 
 bool xorgContext_init(struct X11Context* context, Display* display, int screen, struct Atoms* atoms) {
     assert(context != NULL);
@@ -123,6 +128,39 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
         printf_errf("Failed retrieving the fboconfigs");
         return false;
     }
+    vector_init(&context->cfgs, sizeof(struct WinVis), context->numConfigs);
+    for(int i = 0; i < context->numConfigs; i++) {
+        int value; // Scratch value
+        struct WinVis vis;
+        GLXFBConfig fbconfig = context->configs[i];
+
+        glXGetFBConfigAttribH(display, fbconfig, GLX_BIND_TO_TEXTURE_TARGETS_EXT, &value);
+        if (!(value & GLX_TEXTURE_2D_BIT_EXT))
+            // Cant bind to 2d textures, not supported;
+            continue;
+
+        glXGetFBConfigAttribH(display, fbconfig, GLX_BIND_TO_TEXTURE_RGB_EXT, &value);
+        vis.rgb = value;
+
+        glXGetFBConfigAttribH(display, fbconfig, GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
+        vis.rgba = value;
+
+        if(!vis.rgba && !vis.rgb) {
+            // Cant bind rgb or rgba, not supported.
+            continue;
+        }
+
+        glXGetFBConfigAttribH(display, fbconfig, GLX_Y_INVERTED_EXT, &value);
+        vis.flipped = value;
+
+        glXGetFBConfigAttribH(context->display, fbconfig, GLX_VISUAL_ID, (int*)&vis.id);
+
+        vis.raw = &context->configs[i];
+
+        vector_putBack(&context->cfgs, &vis);
+    }
+
+    vector_qsort(&context->cfgs, winvis_compar, NULL);
 
     xorgContext_capabilities(&context->capabilities, context);
 
@@ -172,66 +210,25 @@ enum X11Protocol xorgContext_convertOpcode(const struct X11Capabilities* caps, i
     return PROTO_COUNT;
 }
 
+int winvis_lookup(const void* av, const void* bv, void* userdata) {
+    const VisualID* a = av;
+    const struct WinVis* b = bv;
+    return *a - b->id;
+};
+
 GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visualid) {
     zone_scope(&ZONE_select_config);
     assert(visualid != 0);
 
     GLXFBConfig* selected = NULL;
 
-    int value;
-    for(int i = 0; i < context->numConfigs; i++) {
-        zone_enter(&ZONE_select_config_visual);
-        GLXFBConfig fbconfig = context->configs[i];
-        XVisualInfo* visinfo = glXGetVisualFromFBConfig(context->display, fbconfig);
-        if (!visinfo || visinfo->visualid != visualid) {
-            XFree(visinfo);
-            zone_leave(&ZONE_select_config_visual);
-            continue;
-        }
-        XFree(visinfo);
-        zone_leave(&ZONE_select_config_visual);
-
-        zone_enter(&ZONE_select_config_attribs);
-        // We don't want to use anything multisampled
-        glXGetFBConfigAttrib(context->display, fbconfig, GLX_SAMPLES, &value);
-        if (value >= 2) {
-            zone_leave(&ZONE_select_config_attribs);
-            continue;
-        }
-
-        // We need to support pixmaps
-        glXGetFBConfigAttrib(context->display, fbconfig, GLX_DRAWABLE_TYPE, &value);
-        if (!(value & GLX_PIXMAP_BIT)) {
-            zone_leave(&ZONE_select_config_attribs);
-            continue;
-        }
-
-        // We need to be able to bind pixmaps to textures
-        glXGetFBConfigAttrib(context->display, fbconfig,
-                GLX_BIND_TO_TEXTURE_TARGETS_EXT,
-                &value);
-        if (!(value & GLX_TEXTURE_2D_BIT_EXT)) {
-            zone_leave(&ZONE_select_config_attribs);
-            continue;
-        }
-
-        // We want RGBA textures
-        glXGetFBConfigAttrib(context->display, fbconfig,
-                GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
-        if (value == false) {
-            zone_leave(&ZONE_select_config_attribs);
-            continue;
-        }
-
-        selected = &context->configs[i];
-        zone_leave(&ZONE_select_config_attribs);
-        break;
-    }
-    // If we ran out of fbconfigs before we found something we like.
-    if(selected == NULL)
+    size_t loc = vector_bisect(&context->cfgs, &visualid, winvis_lookup, NULL);
+    if(loc == -1) {
         return NULL;
+    }
 
-    return selected;
+    struct WinVis* vis = vector_get(&context->cfgs, loc);
+    return vis->raw;
 }
 
 void xorgContext_delete(struct X11Context* context) {

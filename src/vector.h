@@ -39,6 +39,8 @@ void* vector_getPrev(const Vector* vector, size_t* index);
 
 int vector_size(const Vector* vector);
 
+size_t vector_bisect(Vector* vector, const void* needle, int (*compar)(const void *, const void*, void*), void* userdata);
+
 // Only defined for vectors of uint64 elements
 size_t vector_find_uint64(Vector* vector, uint64_t value);
 

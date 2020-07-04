@@ -119,3 +119,7 @@ void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x
     zone_scope_extra(&ZONE_x_call, "SetWindowShapeRegion");
     return XFixesSetWindowShapeRegion(dpy, win, shape_kind, x_off, y_off, region);
 }
+
+int glXGetFBConfigAttribH(Display* dpy, GLXFBConfig config, int attribute, int* value) {
+    return glXGetFBConfigAttrib(dpy, config, attribute, value);
+}

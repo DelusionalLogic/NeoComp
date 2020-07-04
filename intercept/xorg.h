@@ -43,3 +43,5 @@ void XFixesDestroyRegionH(Display* dpy, XserverRegion region);
 void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region);
 
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask);
+
+int glXGetFBConfigAttribH(Display* dpy, GLXFBConfig config, int attribute, int* value);

@@ -2,6 +2,7 @@
 #include "vector.h"
 #include <assert.h>
 #include <string.h>
+#include "logging.h"
 
 static void resize(Vector* vector, size_t newElem)
 {
@@ -152,6 +153,29 @@ int vector_size(const Vector* vector)
 {
     assert(vector->elementSize != 0);
     return vector->size;
+}
+
+size_t vector_bisect(Vector* vector, const void* needle, int (*compar)(const void *, const void*, void*), void* userdata) {
+    assert(vector->elementSize != 0);
+
+    int32_t bottom = 0;
+    int32_t top = vector_size(vector) - 1;
+
+    while(true) {
+        int32_t pivot = (top - bottom) / 2 + bottom;
+        int cmp = compar(needle, vector_get(vector, pivot), userdata);
+        if(cmp == 0) {
+            return pivot;
+        } else if(cmp > 0) {
+            bottom = pivot + 1;
+        } else {
+            top = pivot - 1;
+        }
+
+        if(top < bottom) {
+            return -1;
+        }
+    }
 }
 
 size_t vector_find_uint64(Vector* vector, uint64_t value) {

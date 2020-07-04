@@ -306,6 +306,32 @@ static struct TestResult vector__keep_elements_after_new__circulating_forward() 
     assertEqString(substr, "def", 3);
 }
 
+static int char_compar(const void* av, const void* bv, void* userdata) {
+    char* a = (char*)av;
+    char* b = (char*)bv;
+    return *a - *b;
+}
+
+static struct TestResult vector__find_element__bisecting_simple_array() {
+    Vector vector;
+    vector_init(&vector, sizeof(char), 6);
+    vector_putListBack(&vector, "abcdef", 6);
+
+    size_t i = vector_bisect(&vector, "b", char_compar, NULL);
+
+    assertEq(i, 1);
+}
+
+static struct TestResult vector__not_find_element__bisecting_non_existing_value() {
+    Vector vector;
+    vector_init(&vector, sizeof(char), 6);
+    vector_putListBack(&vector, "aacdef", 6);
+
+    size_t i = vector_bisect(&vector, "b", char_compar, NULL);
+
+    assertEq(i, -1);
+}
+
 static struct TestResult swiss__be_empty__initialized() {
     Swiss swiss;
     swiss_clearComponentSizes(&swiss);
@@ -1304,6 +1330,10 @@ void XFixesDestroyRegionH(Display* dpy, XserverRegion region) {
 }
 
 void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region) {
+}
+
+int glXGetFBConfigAttribH(Display* dpy, GLXFBConfig config, int attribute, int* value) {
+    return 0;
 }
 
 void* inputMasks;
@@ -2718,6 +2748,9 @@ int main(int argc, char** argv) {
     TEST(vector__keep_elements_after_new__circulating_forward);
     TEST(vector__shift_elements_between_positions_right__circulating_backward);
     TEST(vector__keep_elements_after_old__circulating_backward);
+
+    TEST(vector__find_element__bisecting_simple_array);
+    TEST(vector__not_find_element__bisecting_non_existing_value);
 
     TEST(swiss__be_empty__initialized);
     TEST(swiss__grow__allocating);

@@ -166,6 +166,8 @@ struct X11Context {
     GLXFBConfig* configs;
     int numConfigs;
 
+    Vector cfgs;
+
     // @CLEANUP: This should be internal but currently it lives in the session
     struct Atoms* atoms;
 
@@ -177,6 +179,15 @@ struct X11Context {
     void* active;
     Vector eventBuf;
     size_t readCursor;
+};
+
+struct WinVis {
+    VisualID id;
+    bool rgb;
+    bool rgba;
+    int colorDepth;
+    bool flipped;
+    GLXFBConfig* raw;
 };
 
 Atom get_atom(struct X11Context* context, const char* atom_name);
