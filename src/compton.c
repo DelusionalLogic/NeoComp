@@ -3347,7 +3347,6 @@ void session_run(session_t *ps) {
 
             paint_root(ps);
 
-            windowlist_drawShadow(ps);
             windowlist_drawTransparent(ps, &transparent);
 
 #ifdef DEBUG_WINDOWS
