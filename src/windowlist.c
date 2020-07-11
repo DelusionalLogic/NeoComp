@@ -625,7 +625,6 @@ void windowlist_drawShadow(session_t* ps) {
 
     for_components(it, &ps->win_list,
             COMPONENT_PHYSICAL, COMPONENT_SHADOW, CQ_END) {
-        struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
         struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, it.id);

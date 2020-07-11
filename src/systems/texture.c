@@ -41,4 +41,19 @@ void texturesystem_tick(Swiss* em) {
             COMPONENT_MAP, COMPONENT_TEXTURED, COMPONENT_BINDS_TEXTURE, CQ_END) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
     }
+
+    // Resizing a window requires a new texture
+    for_components(it, em,
+            COMPONENT_RESIZE, COMPONENT_TEXTURED, CQ_END) {
+        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
+
+        texture_resize(&textured->texture, &resize->newSize);
+        renderbuffer_resize(&textured->stencil, &resize->newSize);
+    }
+
+    for_components(it, em,
+            COMPONENT_RESIZE, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
+    }
 }

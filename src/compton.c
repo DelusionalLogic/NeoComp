@@ -642,7 +642,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
     .override_redirect = false,
 
     .window_type = WINTYPE_UNKNOWN,
-    .wmwin = false,
 
     .name = NULL,
     .class_instance = NULL,
@@ -1266,8 +1265,6 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
 
     // If it has WM_STATE, mark it the client window
     if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
-        w_frame->wmwin = false;
-
         if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame))
             win_unmark_client(ps, w_frame);
 
@@ -1303,6 +1300,7 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     }
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
+    printf_dbgf("shape");
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
@@ -1542,7 +1540,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "config", required_argument, NULL, 256 },
     { "menu-opacity", required_argument, NULL, 'm' },
     { "shadow", no_argument, NULL, 'c' },
-    { "no-dock-shadow", no_argument, NULL, 'C' },
     { "fading", no_argument, NULL, 'f' },
     { "active-opacity", required_argument, NULL, 'I' },
     { "inactive-opacity", required_argument, NULL, 'i' },
@@ -1552,22 +1549,14 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "daemon", no_argument, NULL, 'b' },
     { "no-dnd-shadow", no_argument, NULL, 'G' },
     { "inactive-dim", required_argument, NULL, 261 },
-    { "mark-wmwin-focused", no_argument, NULL, 262 },
-    { "shadow-exclude", required_argument, NULL, 263 },
     { "dim-fade-time", required_argument, NULL, 264 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
-    { "respect-prop-shadow", no_argument, NULL, 277 },
-    { "focus-exclude", required_argument, NULL, 279 },
     { "blur-background", no_argument, NULL, 283 },
     { "logpath", required_argument, NULL, 287 },
     { "opengl", no_argument, NULL, 289 },
     { "benchmark", required_argument, NULL, 293 },
-    { "benchmark-wid", required_argument, NULL, 294 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
-    { "blur-background-exclude", required_argument, NULL, 296 },
-    { "fade-exclude", required_argument, NULL, 300 },
     { "blur-level", required_argument, NULL, 301 },
-    { "opacity-rule", required_argument, NULL, 304 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "version", no_argument, NULL, 318 },
     { "reredir-on-root-change", no_argument, NULL, 731 },
@@ -1607,16 +1596,12 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   }
 
   struct options_tmp cfgtmp = {
-    .no_dock_shadow = false,
-    .no_dnd_shadow = false,
     .menu_opacity = 1.0,
   };
   bool shadow_enable = false, fading_enable = false;
   char *lc_numeric_old = mstrcpy(setlocale(LC_NUMERIC, NULL));
 
   for (i = 0; i < NUM_WINTYPES; ++i) {
-    ps->o.wintype_fade[i] = false;
-    ps->o.wintype_shadow[i] = false;
     ps->o.wintype_opacity[i] = -1.0;
   }
 
@@ -1654,12 +1639,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 'c':
         shadow_enable = true;
         break;
-      case 'C':
-        cfgtmp.no_dock_shadow = true;
-        break;
-      case 'G':
-        cfgtmp.no_dnd_shadow = true;
-        break;
       case 'm':
         cfgtmp.menu_opacity = atof(optarg);
         break;
@@ -1693,22 +1672,16 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         // --inactive-dim
         ps->o.inactive_dim = atof(optarg);
         break;
-      P_CASEBOOL(262, mark_wmwin_focused);
       case 264:
         // --inactive-dim
         ps->o.dim_fade_time = atof(optarg);
         break;
-      P_CASEBOOL(277, respect_prop_shadow);
       P_CASEBOOL(283, blur_background);
       case 287:
         // --logpath
         ps->o.logpath = mstrcpy(optarg);
         break;
       P_CASELONG(293, benchmark);
-      case 294:
-        // --benchmark-wid
-        ps->o.benchmark_wid = strtol(optarg, NULL, 0);
-        break;
       P_CASELONG(301, blur_level);
       P_CASEBOOL(731, reredir_on_root_change);
       default:
@@ -1725,15 +1698,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   // Range checking and option assignments
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
   cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
-  if (shadow_enable)
-    wintype_arr_enable(ps->o.wintype_shadow);
-  ps->o.wintype_shadow[WINTYPE_DESKTOP] = false;
-  if (cfgtmp.no_dock_shadow)
-    ps->o.wintype_shadow[WINTYPE_DOCK] = false;
-  if (cfgtmp.no_dnd_shadow)
-    ps->o.wintype_shadow[WINTYPE_DND] = false;
-  if (fading_enable)
-    wintype_arr_enable(ps->o.wintype_fade);
   if (1.0 != cfgtmp.menu_opacity) {
     ps->o.wintype_opacity[WINTYPE_DROPDOWN_MENU] = cfgtmp.menu_opacity * 100;
     ps->o.wintype_opacity[WINTYPE_POPUP_MENU] = cfgtmp.menu_opacity * 100;
@@ -2095,7 +2059,7 @@ mainloop(session_t *ps) {
         return true;
     }
 
-    return false;
+    /* return false; */
 
     if (ps->reset)
         return false;
@@ -2186,17 +2150,10 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .o = {
       .config_file = NULL,
       .display = NULL,
-      .mark_wmwin_focused = false,
       .fork_after_register = false,
       .blur_level = 0,
       .benchmark = 0,
-      .benchmark_wid = None,
       .logpath = NULL,
-
-      .wintype_shadow = { false },
-      .respect_prop_shadow = false,
-
-      .wintype_fade = { false },
 
       .wintype_opacity = { -1.0 },
       .inactive_opacity = 100.0,
@@ -2841,8 +2798,6 @@ static void update_focused_state(Swiss* em, session_t* ps) {
 
         if(ps->o.wintype_focus[w->window_type]) {
             newState = STATE_ACTIVATING;
-        } else if(ps->o.mark_wmwin_focused && w->wmwin) {
-            newState = STATE_ACTIVATING;
         } else if(ps->active_win == w) {
             newState = STATE_ACTIVATING;
         }
@@ -2912,24 +2867,6 @@ void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double d
         t->time = 0;
         t->duration = fmax(dim_fade_time, fmax(fade_time, bg_fade_time));
     }
-}
-
-static void commit_resize(Swiss* em, Vector* order) {
-    zone_scope(&ZONE_commit_resize);
-    for_components(it, em,
-            COMPONENT_RESIZE, CQ_END) {
-        swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
-    }
-
-    for_components(it, em,
-            COMPONENT_RESIZE, COMPONENT_TEXTURED, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-        struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
-
-        texture_resize(&textured->texture, &resize->newSize);
-        renderbuffer_resize(&textured->stencil, &resize->newSize);
-    }
-
 }
 
 static void commit_reshape(Swiss* em, struct X11Context* context) {
@@ -3229,17 +3166,6 @@ void session_run(session_t *ps) {
 
         ps->skip_poll = false;
 
-        if (ps->o.benchmark) {
-            if (ps->o.benchmark_wid) {
-                win *w = find_win(ps, ps->o.benchmark_wid);
-                if (!w) {
-                    printf_errf("(): Couldn't find specified benchmark window.");
-                    session_destroy(ps);
-                    exit(1);
-                }
-            }
-        }
-
         // idling will be turned off later if desired.
         ps->idling = true;
 
@@ -3298,12 +3224,11 @@ void session_run(session_t *ps) {
         commit_destroy(&ps->win_list);
         xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
-        texturesystem_tick(&ps->win_list);
         commit_unmap(&ps->win_list, &ps->xcontext);
+        texturesystem_tick(&ps->win_list);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         physics_tick(&ps->win_list);
         commit_move(&ps->win_list, &ps->order);
-        commit_resize(&ps->win_list, &ps->order);
         commit_reshape(&ps->win_list, &ps->xcontext);
         zone_leave(&ZONE_input_react);
 

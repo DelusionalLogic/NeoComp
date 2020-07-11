@@ -5,7 +5,9 @@
 
 #include "profiler/zone.h"
 
+DECLARE_ZONE(texture_init);
 DECLARE_ZONE(texture_resize);
+DECLARE_ZONE(texture_bind);
 
 static GLuint generate_texture(GLenum tex_tgt, GLint format, const Vector2* size) {
     GLuint tex = 0;
@@ -58,6 +60,7 @@ int texture_init_noise(struct Texture* texture, GLenum target) {
 }
 
 int texture_init(struct Texture* texture, GLenum target, const Vector2* size) {
+    zone_scope(&ZONE_texture_init);
     texture->gl_texture = generate_texture(target, GL_RGBA8, size);
     if(texture->gl_texture == 0) {
         return 1;
@@ -200,6 +203,7 @@ void texture_bind_to_framebuffer_2(struct Texture* texture, GLenum target) {
 }
 
 void texture_bind(const struct Texture* texture, GLenum unit) {
+    zone_scope(&ZONE_texture_bind);
     assert(texture != NULL);
     assert(texture_initialized(texture));
 

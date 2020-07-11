@@ -77,8 +77,6 @@ typedef struct {
 /// Temporary structure used for communication between
 /// <code>get_cfg()</code> and <code>parse_config()</code>.
 struct options_tmp {
-  bool no_dock_shadow;
-  bool no_dnd_shadow;
   double menu_opacity;
 };
 
@@ -104,20 +102,8 @@ typedef struct _options_t {
   char *logpath;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.
   int benchmark;
-  /// Window to constantly repaint in benchmark mode. 0 for full-screen.
-  Window benchmark_wid;
   /// Whether to show all X errors.
   bool show_all_xerrors;
-
-  // === Shadow ===
-  /// Enable/disable shadow for specific window types.
-  bool wintype_shadow[NUM_WINTYPES];
-  /// Whether to respect _COMPTON_SHADOW.
-  bool respect_prop_shadow;
-
-  // === Fading ===
-  /// Enable/disable fading for specific window types.
-  bool wintype_fade[NUM_WINTYPES];
 
   // === Opacity ===
   /// Default opacity for specific window types
@@ -146,8 +132,6 @@ typedef struct _options_t {
   // === Focus related ===
   /// Consider windows of specific types to be always focused.
   bool wintype_focus[NUM_WINTYPES];
-  /// Whether to try to detect WM windows and mark them as focused.
-  bool mark_wmwin_focused;
 
   // === Calculated ===
   /// Whether compton needs to track focus changes.

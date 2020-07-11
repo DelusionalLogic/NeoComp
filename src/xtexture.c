@@ -209,8 +209,6 @@ bool xtexture_bind(struct X11Context* xctx, struct XTexture* tex[], struct XText
 
         zone_enter(&ZONE_bind_tex_image);
         texture_bind(&tex[i]->texture, GL_TEXTURE0);
-        zone_leave(&ZONE_bind_tex_image);
-        zone_enter(&ZONE_bind_tex_image);
         glXBindTexImageEXT(xctx->display, tex[i]->glxPixmap, GLX_FRONT_LEFT_EXT, NULL);
         zone_leave(&ZONE_bind_tex_image);
     }

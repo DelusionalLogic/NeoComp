@@ -198,10 +198,6 @@ typedef struct _win {
     // Client window related members
     /// Type of the window.
     wintype_t window_type;
-    /// Whether it looks like a WM window. We consider a window WM window if
-    /// it does not have a decedent with WM_STATE and it is not override-
-    /// redirected itself.
-    bool wmwin;
 
     // Blacklist related members
     /// Name of the window.

@@ -65,41 +65,13 @@ void usage(int ret) {
     "--mark-wmwin-focused\n"
     "  Try to detect WM windows and mark them as active.\n"
     "\n"
-    "--shadow-exclude condition\n"
-    "  Exclude conditions for shadows.\n"
-    "\n"
-    "--fade-exclude condition\n"
-    "  Exclude conditions for fading.\n"
-    "\n"
-    "--respect-prop-shadow\n"
-    "  Respect _COMPTON_SHADOW. This a prototype-level feature, which\n"
-    "  you must not rely on.\n"
-    "\n"
-    "--focus-exclude condition\n"
-    "  Specify a list of conditions of windows that should always be\n"
-    "  considered focused.\n"
-    "\n"
     "--blur-background\n"
 	"  Blur background of semi-transparent / ARGB windows. Bad in\n"
 	"  performance. The switch name may change without prior\n"
 	"  notifications.\n"
     "\n"
-    "--blur-background-exclude condition\n"
-    "  Exclude conditions for background blur.\n"
-    "\n"
-    "--opacity-rule opacity:condition\n"
-    "  Specify a list of opacity rules, in the format \"PERCENT:PATTERN\",\n"
-    "  like \'50:name *= \"Firefox\"'. compton-trans is recommended over\n"
-    "  this. Note we do not distinguish 100% and unset, and we don't make\n"
-    "  any guarantee about possible conflicts with other programs that set\n"
-    "  _NET_WM_WINDOW_OPACITY on frame or client windows.\n"
-    "\n"
     "--benchmark cycles\n"
     "  Benchmark mode. Repeatedly paint until reaching the specified cycles.\n"
-    "\n"
-    "--benchmark-wid window-id\n"
-    "  Specify window ID to repaint in benchmark mode. If omitted or is 0,\n"
-    "  the whole screen is repainted.\n"
     ;
   FILE *f = (ret ? stderr: stdout);
   fputs(usage_text, f);
@@ -284,25 +256,13 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     // --bg-opacity-fade-time
     if (config_lookup_float(&cfg, "bg-opacity-fade-time", &dval))
         ps->o.bg_opacity_fade_time = dval;
-    // -c (shadow_enable)
-    if (config_lookup_bool(&cfg, "shadow", &ival) && ival)
-        wintype_arr_enable(ps->o.wintype_shadow);
-    // -C (no_dock_shadow)
-    lcfg_lookup_bool(&cfg, "no-dock-shadow", &pcfgtmp->no_dock_shadow);
-    // -G (no_dnd_shadow)
-    lcfg_lookup_bool(&cfg, "no-dnd-shadow", &pcfgtmp->no_dnd_shadow);
     // -m (menu_opacity)
     config_lookup_float(&cfg, "menu-opacity", &pcfgtmp->menu_opacity);
-    // -f (fading_enable)
-    if (config_lookup_bool(&cfg, "fading", &ival) && ival)
-        wintype_arr_enable(ps->o.wintype_fade);
     // --inactive-dim
     config_lookup_float(&cfg, "inactive-dim", &ps->o.inactive_dim);
     // --dim-fade-time
     if (config_lookup_float(&cfg, "dim-fade-time", &dval))
         ps->o.dim_fade_time = dval;
-    // --mark-wmwin-focused
-    lcfg_lookup_bool(&cfg, "mark-wmwin-focused", &ps->o.mark_wmwin_focused);
     // --blur-background
     lcfg_lookup_bool(&cfg, "blur-background", &ps->o.blur_background);
     // --blur-level
@@ -316,10 +276,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
             config_setting_t *setting = config_lookup(&cfg, str);
             free(str);
             if (setting) {
-                if (config_setting_lookup_bool(setting, "shadow", &ival))
-                    ps->o.wintype_shadow[i] = (bool) ival;
-                if (config_setting_lookup_bool(setting, "fade", &ival))
-                    ps->o.wintype_fade[i] = (bool) ival;
                 if (config_setting_lookup_bool(setting, "focus", &ival))
                     ps->o.wintype_focus[i] = (bool) ival;
                 config_setting_lookup_float(setting, "opacity",
