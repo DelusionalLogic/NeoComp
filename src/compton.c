@@ -3350,7 +3350,6 @@ void session_run(session_t *ps) {
             windowlist_drawTransparent(ps, &transparent);
 
 #ifdef DEBUG_WINDOWS
-            /* windowlist_drawDebug(&ps->win_list, ps); */
             draw_component_debug(&ps->win_list, &ps->root_size);
 #endif
 
