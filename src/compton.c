@@ -1280,6 +1280,11 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
  */
 
 static void set_active_window(session_t* ps, struct Focus* ev) {
+    if(ev->xid == 0) {
+        ps->active_win = NULL;
+        return;
+    }
+
     win *w = find_win_all(ps, ev->xid);
 
     if(w == NULL) {
