@@ -238,7 +238,6 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
 
-
     zone_scope(&ZONE_update_blur);
 
     {

@@ -1300,7 +1300,6 @@ static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
     }
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-    printf_dbgf("shape");
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
@@ -2572,9 +2571,13 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     framebuffer_resetTarget(fbo);
     framebuffer_bind(fbo);
 
-    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);
+
+    glStencilMask(0xFF);
+    glStencilFunc(GL_ALWAYS, 0, 0);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
     struct shader_program* program = assets_load("stencil.shader");
     if(program->shader_type_info != &stencil_info) {
@@ -2646,8 +2649,11 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     }
     zone_leave(&ZONE_x_communication);
 
+    glClearColor(0, 0, 0, 0);
+
     for_componentsArr(it2, em, req_types) {
         zone_scope(&ZONE_update_single_texture);
+
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
@@ -2663,9 +2669,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         view = mat4_orthogonal(0, textured->texture.size.x, 0, textured->texture.size.y, -1, 1);
         glViewport(0, 0, textured->texture.size.x, textured->texture.size.y);
 
-        glClearColor(0, 0, 0, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
-
         assert(bindsTexture->drawable.bound);
         texture_bind(&bindsTexture->drawable.texture, GL_TEXTURE0);
 
@@ -2676,8 +2679,16 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
 
         view = old_view;
 
+    }
+
+    for_componentsArr(it2, em, req_types) {
+        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
+
         wd_unbind(&bindsTexture->drawable);
     }
+
+    glDisable(GL_STENCIL_TEST);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
     zone_enter(&ZONE_x_communication);
     XUngrabServer(xcontext->display);

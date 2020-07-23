@@ -12,8 +12,7 @@ DECLARE_ZONE(draw_rect);
 
 Matrix view;
 
-void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size) {
-    zone_scope(&ZONE_draw_rect);
+void set_matrix(struct shader_value* mvp, Vector3 pos, Vector2 size) {
     Matrix root = view;
     {
         Matrix op = {{
@@ -25,7 +24,12 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
         root = mat4_multiply(&root, &op);
     }
 
-    glUniformMatrix4fv(mvp->gl_uniform, 1, GL_FALSE, root.m);
+    shader_set_uniform_mat4(mvp, &root);
+}
+
+void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size) {
+    zone_scope(&ZONE_draw_rect);
+    set_matrix(mvp, pos, size);
 
     face_bind(face);
     glDrawArrays(GL_TRIANGLES, 0, face->vertex_buffer.size / 3);

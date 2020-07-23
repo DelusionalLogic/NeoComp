@@ -5,6 +5,8 @@ info bgblit_info
 struct BgBlit
 
 uniform mvp
+uniform win_tran
+uniform invert 
 uniform flip
 uniform opacity 
 uniform tex_scr

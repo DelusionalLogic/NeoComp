@@ -204,6 +204,18 @@ static int parse_type(char* def, struct shader_value* uniform) {
             }
         }
         return 0;
+    } else if(strcmp(type, "mat4") == 0) {
+        uniform->type = SHADER_VALUE_MAT4;
+
+        uniform->required = true;
+        if(matches == 2 && strcmp(value, "identity") == 0) {
+            uniform->required = false;
+            uniform->stock.mat4 = IDENTITY_MATRIX;
+        } else {
+            printf("Wrongly formatted mat4 def \"%s\", ignoring\n", value);
+            return 1;
+        }
+        return 0;
     } else if(strcmp(type, "ignored") == 0) {
         uniform->type = SHADER_VALUE_IGNORED;
         uniform->required = false;
@@ -428,6 +440,8 @@ static void set_shader_uniform(const struct shader_value* uniform, const union s
         case SHADER_VALUE_VEC3:
             glUniform3f(uniform->gl_uniform, value->vec3.x, value->vec3.y, value->vec3.z);
             break;
+        case SHADER_VALUE_MAT4:
+            shader_set_uniform_mat4(uniform, &value->mat4);
         case SHADER_VALUE_SAMPLER:
             glUniform1i(uniform->gl_uniform, value->sampler);
             break;
@@ -459,23 +473,27 @@ void shader_use(struct shader_program* shader) {
     }
 }
 
-void shader_set_uniform_bool(struct shader_value* uniform, bool value) {
+void shader_set_uniform_bool(const struct shader_value* uniform, bool value) {
     glUniform1i(uniform->gl_uniform, value);
 }
 
-void shader_set_uniform_float(struct shader_value* uniform, float value) {
+void shader_set_uniform_float(const struct shader_value* uniform, float value) {
     glUniform1f(uniform->gl_uniform, value);
 }
 
-void shader_set_uniform_vec2(struct shader_value* uniform, const Vector2* value) {
+void shader_set_uniform_vec2(const struct shader_value* uniform, const Vector2* value) {
     glUniform2f(uniform->gl_uniform, value->x, value->y);
 }
 
-void shader_set_uniform_vec3(struct shader_value* uniform, const Vector3* value) {
+void shader_set_uniform_vec3(const struct shader_value* uniform, const Vector3* value) {
     glUniform3f(uniform->gl_uniform, value->x, value->y, value->z);
 }
 
-void shader_set_uniform_sampler(struct shader_value* uniform, int value) {
+void shader_set_uniform_mat4(const struct shader_value* uniform, const Matrix* value) {
+    glUniformMatrix4fv(uniform->gl_uniform, 1, GL_FALSE, value->m);
+}
+
+void shader_set_uniform_sampler(const struct shader_value* uniform, int value) {
     glUniform1i(uniform->gl_uniform, value);
 }
 

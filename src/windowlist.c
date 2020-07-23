@@ -37,41 +37,42 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
 
+    struct shader_program* shader = assets_load("bgblit.shader");
+    if(shader->shader_type_info != &bgblit_info) {
+        printf_errf("Shader was not a bgblit shader\n");
+        return;
+    }
+    struct BgBlit* shader_type = shader->shader_type;
+
+    shader_set_future_uniform_float(shader_type->opacity, (float)1.0);
+    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+    shader_set_future_uniform_sampler(shader_type->win_tex, 1);
+
+    shader_use(shader);
+
     {
         size_t index;
         win_id* w_id = vector_getFirst(opaque, &index);
         while(w_id != NULL) {
+            if (!swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
+                w_id = vector_getNext(opaque, &index);
+                continue;
+            }
+
             struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
             struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
             struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+            struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
 
             Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+            Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
 
-            if (swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
-                struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
-                Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
+            shader_set_uniform_bool(shader_type->flip, blur->texture[0].flipped);
+            texture_bind(&blur->texture[0], GL_TEXTURE0);
+            texture_bind(&textured->texture, GL_TEXTURE1);
 
-                {
-                    struct shader_program* shader = assets_load("bgblit.shader");
-                    if(shader->shader_type_info != &bgblit_info) {
-                        printf_errf("Shader was not a bgblit shader\n");
-                        return;
-                    }
-                    struct BgBlit* shader_type = shader->shader_type;
-                    shader_set_future_uniform_bool(shader_type->flip, blur->texture[0].flipped);
-                    shader_set_future_uniform_float(shader_type->opacity, (float)1.0);
-                    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
-                    shader_set_future_uniform_sampler(shader_type->win_tex, 1);
-
-                    shader_use(shader);
-
-                    texture_bind(&blur->texture[0], GL_TEXTURE0);
-                    texture_bind(&textured->texture, GL_TEXTURE1);
-
-                    draw_rect(shaped->face, shader_type->mvp, dglPos, physical->size);
-                }
-            }
+            draw_rect(shaped->face, shader_type->mvp, dglPos, physical->size);
 
             w_id = vector_getNext(opaque, &index);
         }
@@ -93,6 +94,13 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
     struct face* face = assets_load("window.face");
 
+    struct shader_program* shader = assets_load("bgblit.shader");
+    if(shader->shader_type_info != &bgblit_info) {
+        printf_errf("Shader was not a bgblit shader\n");
+        return;
+    }
+    struct BgBlit* shader_type = shader->shader_type;
+
     size_t index;
     win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
@@ -107,23 +115,34 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
             struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
 
-            struct shader_program* program = assets_load("passthough.shader");
-            if(program->shader_type_info != &passthough_info) {
-                printf_errf("Shader was not a passthrough shader");
-                return;
-            }
-            struct Passthough* shader_type = program->shader_type;
+            // @COMPAT: There's an assumption here that everything that has
+            // a shadow also has a texture. It might be nicer to just not clip
+            // it if we don't have a texture.
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
 
+            shader_set_future_uniform_bool(shader_type->invert, true);
             shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
             shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+            shader_set_future_uniform_sampler(shader_type->win_tex, 1);
             if(opacity != NULL) {
                 shader_set_future_uniform_float(shader_type->opacity, opacity->opacity / 100.0);
             } else {
                 shader_set_future_uniform_float(shader_type->opacity, 1.0);
             }
-            shader_use(program);
+
+            shader_use(shader);
+
+            Vector2 ratio = shadow->effect.size;
+            vec2_div(&ratio, &textured->texture.size);
+
+            Matrix m = IDENTITY_MATRIX;
+            mat4_translate(&m, 0.5, 0.5, 0);
+            mat4_scale(&m, ratio.x, ratio.y, 0);
+            mat4_translate(&m, -0.5, -0.5, 0);
+            shader_set_uniform_mat4(shader_type->win_tran, &m);
 
             texture_bind(&shadow->effect, GL_TEXTURE0);
+            texture_bind(&textured->texture, GL_TEXTURE1);
 
             {
                 Vector2 rpos = {{glPos.x, glPos.y}};
@@ -135,31 +154,31 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
         }
 
+        struct OpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
+
         // Background
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
+        if(bgOpacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
             struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
-            struct shader_program* passthough_program = assets_load("passthough.shader");
-            if(passthough_program->shader_type_info != &passthough_info) {
-                printf_errf("Shader was not a passthough shader\n");
-                return;
-            }
+            // @COMPAT: There's an assumption here that everything that has
+            // a shadow also has a texture. It might be nicer to just not clip
+            // it if we don't have a texture.
+            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
 
-            struct BgOpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_BGOPACITY, *w_id);
+            shader_set_future_uniform_bool(shader_type->flip, blur->texture[0].flipped);
+            shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+            shader_set_future_uniform_sampler(shader_type->win_tex, 1);
+            shader_set_future_uniform_float(shader_type->opacity, bgOpacity->opacity/100.0);
 
-            struct Passthough* passthough_type = passthough_program->shader_type;
-            shader_set_future_uniform_bool(passthough_type->flip, blur->texture[0].flipped);
-            shader_set_future_uniform_float(passthough_type->opacity, bgOpacity != NULL ? bgOpacity->opacity/100.0 : 1.0);
-            shader_set_future_uniform_sampler(passthough_type->tex_scr, 0);
-
-            shader_use(passthough_program);
+            shader_use(shader);
 
             texture_bind(&blur->texture[0], GL_TEXTURE0);
+            texture_bind(&textured->texture, GL_TEXTURE1);
 
             /* Vector4 color = {{1.0, 1.0, 1.0, 1.0}}; */
             /* draw_colored_rect(shaped->face, &dglPos, &physical->size, &color); */
-            draw_rect(shaped->face, passthough_type->mvp, dglPos, physical->size);
+            draw_rect(shaped->face, shader_type->mvp, dglPos, physical->size);
         }
 
         struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);

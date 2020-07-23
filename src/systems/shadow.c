@@ -288,7 +288,7 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
     glStencilFunc(GL_EQUAL, 0, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-    glEnable(GL_STENCIL_TEST);
+    glDisable(GL_STENCIL_TEST);
 
     struct face* face = assets_load("window.face");
 
