@@ -137,7 +137,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             Matrix m = IDENTITY_MATRIX;
             mat4_translate(&m, 0.5, 0.5, 0);
-            mat4_scale(&m, ratio.x, ratio.y, 0);
+            mat4_scale(&m, ratio.x, ratio.y, 1);
             mat4_translate(&m, -0.5, -0.5, 0);
             shader_set_uniform_mat4(shader_type->win_tran, &m);
 

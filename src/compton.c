@@ -58,7 +58,7 @@
 DECLARE_ZONE(global);
 DECLARE_ZONE(input);
 DECLARE_ZONE(preprocess);
-
+DECLARE_ZONE(handle_event);
 
 DECLARE_ZONE(one_event);
 
@@ -565,17 +565,7 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     assert(w != NULL);
 
-    XWindowAttributes attribs;
-    if (!XGetWindowAttributes(ps->dpy, window->id, &attribs)) {
-        printf_errf("Failed getting window attributes while mapping");
-        return;
-    }
-    w->border_size = attribs.border_width;
-    w->override_redirect = attribs.override_redirect;
-
-    // Don't care about window mapping if it's an InputOnly window
-    // Try avoiding mapping a window twice
-    if (InputOnly == attribs.class || win_mapped(&ps->win_list, wid))
+    if (win_mapped(&ps->win_list, wid))
         return;
 
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
@@ -804,6 +794,7 @@ configure_win(session_t *ps, struct MandR* ev) {
   win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
   w->border_size = ev->border_size;
+  w->override_redirect = ev->override_redirect;
   physics_move_window(&ps->win_list, wid, &ev->pos, &ev->size);
 }
 
@@ -883,6 +874,7 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     if (!w) {
         return;
     }
+
 
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     if (!win_mapped(&ps->win_list, wid))
@@ -1017,8 +1009,6 @@ static void win_set_focused(session_t *ps, win *w) {
 
     if (ps->active_win) {
         assert(win_mapped(&ps->win_list, wid));
-
-        ps->active_win = NULL;
     }
 
     ps->active_win = w;
@@ -1272,13 +1262,6 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
     }
 }
 
-/**
- * Update current active window based on EWMH _NET_ACTIVE_WIN.
- *
- * Does not change anything if we fail to get the attribute or the window
- * returned could not be found.
- */
-
 static void set_active_window(session_t* ps, struct Focus* ev) {
     if(ev->xid == 0) {
         ps->active_win = NULL;
@@ -1296,13 +1279,14 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
     win_set_focused(ps, w);
 }
 
-static void ev_shape_notify(session_t *ps, XShapeEvent *ev) {
-    win *w = find_win(ps, ev->window);
-    if(w == NULL) {
-        // @CLEANUP @HACK: For now we just ignore events from windows we don't
-        // know. This shouldn't really happen at this layer, but whatever.
+static void ev_shape_notify(session_t *ps, struct Shape *ev) {
+    if(ev->xid == ps->overlay) {
         return;
     }
+
+    win *w = find_win_all(ps, ev->xid);
+    assert(w != NULL);
+
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
@@ -1979,136 +1963,139 @@ static void redir_stop(session_t *ps) {
     XSync(ps->dpy, False);
 }
 
-void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEvent *ev) {
-  zone_enter(&ZONE_one_event);
-  if ((ev->type & 0x7f) != KeymapNotify) {
-    discard_ignore(ps, ev->xany.serial);
-  }
-  switch (ev->type) {
-    default:
-      if (xorgContext_version(capabilities, PROTO_SHAPE) >= XVERSION_YES
-              && xorgContext_convertEvent(capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify) {
-        ev_shape_notify(ps, (XShapeEvent *) ev);
-        break;
-      }
-  }
-  zone_leave(&ZONE_one_event);
-}
-
-
 /**
  * Main loop.
  */
 static bool
 mainloop(session_t *ps) {
-    // Don't miss timeouts even when we have a LOT of other events!
-    timeout_run(ps);
+    while(true) {
+        // Don't miss timeouts even when we have a LOT of other events!
+        timeout_run(ps);
 
-    // Process existing events
-    // Sometimes poll() returns 1 but no events are actually read,
-    // causing XNextEvent() to block, I have no idea what's wrong, so we
-    // check for the number of events here.
-    while(XEventsQueued(ps->dpy, QueuedAfterReading)) {
-        struct Event event;
+        // Process existing events
+        // Sometimes poll() returns 1 but no events are actually read,
+        // causing XNextEvent() to block, I have no idea what's wrong, so we
+        // check for the number of events here.
+        bool done = false;
+        bool processed = false;
+        while(!done) {
+            struct Event event;
 
-        xorg_nextEvent(&ps->xcontext, &event);
-        switch(event.type) {
-            case ET_ADD:
-                add_win(ps, &event.add);
-                break;
-            case ET_DESTROY:
-                ev_destroy_notify(ps, event.des.xid);
-                break;
-            case ET_MAP:
-                map_win(ps, &event.map);
-                break;
-            case ET_UNMAP:
-                ev_unmap_notify(ps, &event.unmap);
-                break;
-            case ET_CLIENT:
-                getsclient(ps, &event.cli);
-                break;
-            case ET_MANDR:
-                configure_win(ps, &event.mandr);
-                break;
-            case ET_RESTACK:
-                restack_win(ps, &event.restack);
-                break;
-            case ET_FOCUS:
-                set_active_window(ps, &event.focus);
-                break;
-            case ET_NEWROOT:
-                root_damaged(ps, &event.newRoot);
-                break;
-            case ET_WINTYPE:
-                swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_toplevel(ps, event.wintype.xid));
-                break;
-            case ET_WINCLASS:
-                swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_toplevel(ps, event.winclass.xid));
-                break;
-            case ET_DAMAGE:
-                damage_win(ps, &event.damage);
-                break;
-            case ET_RAW:
-                ev_handle(ps, &ps->xcontext.capabilities, &event.raw);
-                break;
-            case ET_NONE:
-                break;
-            default:
-                printf_errf("Unknown event type, ignoring");
+            xorg_nextEvent(&ps->xcontext, &event);
+            switch(event.type) {
+                case ET_ADD:
+                    zone_enter_extra(&ZONE_one_event, "ADD");
+                    processed = true;
+                    add_win(ps, &event.add);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_DESTROY:
+                    zone_enter_extra(&ZONE_one_event, "DESTROY");
+                    processed = true;
+                    ev_destroy_notify(ps, event.des.xid);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_MAP:
+                    zone_enter_extra(&ZONE_one_event, "MAP");
+                    processed = true;
+                    map_win(ps, &event.map);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_UNMAP:
+                    zone_enter_extra(&ZONE_one_event, "UNMAP");
+                    processed = true;
+                    ev_unmap_notify(ps, &event.unmap);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_CLIENT:
+                    zone_enter_extra(&ZONE_one_event, "CLIENT");
+                    processed = true;
+                    getsclient(ps, &event.cli);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_MANDR:
+                    zone_enter_extra(&ZONE_one_event, "MANDR");
+                    processed = true;
+                    configure_win(ps, &event.mandr);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_RESTACK:
+                    zone_enter_extra(&ZONE_one_event, "RESTACK");
+                    processed = true;
+                    restack_win(ps, &event.restack);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_FOCUS:
+                    zone_enter_extra(&ZONE_one_event, "FOCUS");
+                    processed = true;
+                    set_active_window(ps, &event.focus);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_NEWROOT:
+                    zone_enter_extra(&ZONE_one_event, "NEWROOT");
+                    processed = true;
+                    root_damaged(ps, &event.newRoot);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_WINTYPE:
+                    zone_enter_extra(&ZONE_one_event, "WINTYPE");
+                    processed = true;
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_toplevel(ps, event.wintype.xid));
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_WINCLASS:
+                    zone_enter_extra(&ZONE_one_event, "WINCLASS");
+                    processed = true;
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_toplevel(ps, event.winclass.xid));
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_DAMAGE:
+                    zone_enter_extra(&ZONE_one_event, "DAMAGE");
+                    processed = true;
+                    damage_win(ps, &event.damage);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_SHAPE:
+                    zone_enter_extra(&ZONE_one_event, "SHAPE");
+                    processed = true;
+                    ev_shape_notify(ps, &event.shape);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_NONE:
+                    done = true;
+                    break;
+                default:
+                    printf_errf("Unknown event type, ignoring");
+            }
         }
 
-        ps->skip_poll = true;
+        if(processed) {
+            return false;
+        }
 
-        return true;
-    }
+        if (ps->reset)
+            return false;
 
-    /* return false; */
-
-    if (ps->reset)
-        return false;
-
-    // Calculate timeout
-    struct timeval *ptv = NULL;
-    {
         // Consider skip_poll firstly
         if (ps->skip_poll || ps->o.benchmark) {
-            ptv = malloc(sizeof(struct timeval));
-            ptv->tv_sec = 0L;
-            ptv->tv_usec = 0L;
-        }
-
-        // Don't continue looping for 0 timeout
-        if (ptv && timeval_isempty(ptv)) {
-            free(ptv);
             return false;
         }
 
-        // Now consider the waiting time of other timeouts
-        time_ms_t tmout_ms = timeout_get_poll_time(ps);
-        if (tmout_ms < TIME_MS_MAX) {
-            if (!ptv) {
-                ptv = malloc(sizeof(struct timeval));
-                *ptv = ms_to_tv(tmout_ms);
-            }
-            else if (timeval_ms_cmp(ptv, tmout_ms) > 0) {
-                *ptv = ms_to_tv(tmout_ms);
-            }
-        }
+        // Calculate timeout
+        struct timeval tv;
 
-        // Don't continue looping for 0 timeout
-        if (ptv && timeval_isempty(ptv)) {
-            free(ptv);
+        time_ms_t tmout_ms = min_l(timeout_get_poll_time(ps), TIME_MS_MAX);
+        tv = ms_to_tv(tmout_ms);
+
+        // If we don't have a timeout skip the poll
+        if (timeval_isempty(&tv)) {
             return false;
         }
+
+        fds_poll(ps, &tv);
     }
 
-    // Polling
-    fds_poll(ps, ptv);
-    free(ptv);
-    ptv = NULL;
-
-    return true;
+    return false;
 }
 
 char* getDisplayName(Display* display) {
@@ -2302,6 +2289,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
   init_overlay(ps);
+  // @CLEANUP @HACK This probably shouldn't be done here.
+  ps->xcontext.overlay = ps->overlay;
 
   add_shader_type(&global_info);
   add_shader_type(&downsample_info);
@@ -2358,9 +2347,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   blur_init(&ps->psglx->blur);
   glx_check_err(ps);
 
-  fds_insert(ps, ConnectionNumber(ps->dpy), POLLIN);
-
-  XGrabServer(ps->dpy);
+  XGrabServer(ps->xcontext.display);
 
   xtexture_init(&ps->root_texture, &ps->xcontext);
 
@@ -2368,7 +2355,9 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   xorg_beginEvents(&ps->xcontext);
 
-  XUngrabServer(ps->dpy);
+  fds_insert(ps, ConnectionNumber(ps->xcontext.display), POLLIN);
+
+  XUngrabServer(ps->xcontext.display);
   // ALWAYS flush after XUngrabServer()!
   XFlush(ps->dpy);
 
@@ -3160,7 +3149,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_input);
 
-        while (mainloop(ps));
+        mainloop(ps);
 
         assets_hotload();
 

@@ -68,8 +68,8 @@ enum EventType {
     ET_WINCLASS,
     ET_WINTYPE,
     ET_DAMAGE,
+    ET_SHAPE,
     ET_NEWROOT,
-    ET_RAW,
 };
 
 struct AddWin {
@@ -104,6 +104,8 @@ struct MandR {
     Vector2 pos;
     Vector2 size;
     float border_size;
+    // @CLEANUP Is there any reason for the core compositor to know about this?
+    bool override_redirect;
 };
 
 enum RestackLocation {
@@ -133,6 +135,10 @@ struct Damage {
     Window xid;
 };
 
+struct Shape {
+    Window xid;
+};
+
 struct NewRoot {
     Pixmap pixmap;
 };
@@ -151,8 +157,8 @@ struct Event {
         struct Wintype wintype;
         struct Winclass winclass;
         struct Damage damage;
+        struct Shape shape;
         struct NewRoot newRoot;
-        XEvent raw;
     };
 };
 
@@ -160,6 +166,7 @@ struct X11Context {
     Display* display;
     int screen;
     Window root;
+    Window overlay;
 
     struct X11Capabilities capabilities;
 

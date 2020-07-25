@@ -122,6 +122,7 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
     context->display = display;
     context->screen = screen;
     context->root = RootWindowH(display, screen);
+    // The overlay is set later
 
     context->configs = glXGetFBConfigsH(display, screen, &context->numConfigs);
     if(context->configs == NULL) {
@@ -387,7 +388,7 @@ static void createGetsClient(struct X11Context* xctx, Window xid, Window client_
     pushEvent(xctx, event);
 }
 
-static void createMandr(struct X11Context* xctx, Window xid, float x, float y, float border, float width, float height, Window above) {
+static void createMandr(struct X11Context* xctx, Window xid, float x, float y, float border, bool or, float width, float height, Window above) {
     // The window wasn't active, so we swallow the destroy
     if(!isWindowActive(xctx, xid))
         return;
@@ -401,6 +402,7 @@ static void createMandr(struct X11Context* xctx, Window xid, float x, float y, f
           height + border * 2,
         }},
         .mandr.border_size = border,
+        .mandr.override_redirect = or,
     };
     pushEvent(xctx, event);
     struct Event restack = {
@@ -569,12 +571,18 @@ static bool findClosestClient(struct X11Context* xctx, Window top, Window* clien
 }
 
 static void fillBuffer(struct X11Context* xctx) {
+    if(!XEventsQueued(xctx->display, QueuedAfterReading)) {
+        return;
+    }
+
     XEvent raw = {};
     XNextEventH(xctx->display, &raw);
 
     switch (raw.type) {
         case CreateNotify: {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
+            // Ignore our overlay window.
+            if(ev->window == xctx->overlay) break;
             zone_scope_extra(&ZONE_event_preprocess, "Create");
             if(ev->parent == xctx->root) {
                 windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
@@ -641,7 +649,7 @@ static void fillBuffer(struct X11Context* xctx) {
         case ConfigureNotify: {
             XConfigureEvent* ev = (XConfigureEvent *)&raw;
             zone_scope_extra(&ZONE_event_preprocess, "Configure");
-            createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height, ev->above);
+            createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->override_redirect, ev->width, ev->height, ev->above);
             break;
         }
         case CirculateNotify: {
@@ -849,6 +857,7 @@ static void fillBuffer(struct X11Context* xctx) {
         }
         default: {
             if(xorgContext_convertEvent(&xctx->capabilities, PROTO_DAMAGE,  raw.type) == XDamageNotify) {
+
                 XDamageNotifyEvent* ev = (XDamageNotifyEvent*)&raw;
                 zone_scope_extra(&ZONE_event_preprocess, "Damage");
 
@@ -866,11 +875,29 @@ static void fillBuffer(struct X11Context* xctx) {
                     .damage.xid = ev->drawable,
                 };
                 pushEvent(xctx, event);
-            } else {
-                struct Event event;
-                event.type = ET_RAW;
-                memcpy(&event.raw, &raw, sizeof(XEvent));
+                break;
+            } else if(xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES
+                    && xorgContext_convertEvent(&xctx->capabilities, PROTO_SHAPE, raw.type) == ShapeNotify) {
+                XShapeEvent* ev = (XShapeEvent*)&raw;
+                zone_scope_extra(&ZONE_event_preprocess, "Shape");
+
+                assert(isWindowActive(xctx, ev->window));
+
+                Window* parent;
+                JLG(parent, xctx->winParent, ev->window);
+                if(parent != NULL) {
+                    // If this window is not the parent, we don't care about
+                    // its shape
+                    break;
+                }
+
+                struct Event event = {
+                    .type = ET_SHAPE,
+                    .shape.xid = ev->window,
+                };
                 pushEvent(xctx, event);
+            } else {
+                // Discard unknown events
             }
         }
     }
@@ -901,6 +928,11 @@ void xorg_beginEvents(struct X11Context* xctx) {
             &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
+        if(children[i] == xctx->overlay) {
+            // Ignore our overlay window.
+            continue;
+        }
+
         XWindowAttributes attribs;
         if (!XGetWindowAttributesH(xctx->display, children[i], &attribs)) {
             // Failed to get window attributes probably means the window is gone

@@ -142,7 +142,7 @@ typedef uint64_t win_id;
 #define OPAQUE 0xffffffff
 #define REGISTER_PROP "_NET_WM_CM_S"
 
-#define TIME_MS_MAX LONG_MAX
+#define TIME_MS_MAX 1000
 #define FADE_DELTA_TOLERANCE 0.2
 #define TIMEOUT_RUN_TOLERANCE 0.05
 #define WIN_GET_LEADER_MAX_RECURSION 20
