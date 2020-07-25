@@ -193,16 +193,18 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
             struct Colored* shader_type = program->shader_type;
 
-            shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
-            shader_use(program);
-
             {
+                shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
+
                 double opac = opacity->opacity / 100.0;
-                shader_set_uniform_float(shader_type->opacity, tint->color.w * opac);
+                shader_set_future_uniform_float(shader_type->opacity, tint->color.w * opac);
+
                 Vector3 color = tint->color.rgb;
                 vec3_imul(&color, opac);
-                shader_set_uniform_vec3(shader_type->color, &color);
+                shader_set_future_uniform_vec3(shader_type->color, &color);
             }
+
+            shader_use(program);
 
             {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
@@ -419,8 +421,10 @@ void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id 
 
     win_id* wid = vector_get(windows, index);
     while(wid != NULL) {
+#ifndef NDEBUG
         struct ZComponent* oz = swiss_getComponent(win_list, COMPONENT_Z, *wid);
         assert(oz->z > z->z);
+#endif
         // @IMPROVE: windows that don't overlap can still contribute to the background
         // an example is shadow
         if(win_overlap(win_list, overlap, *wid))

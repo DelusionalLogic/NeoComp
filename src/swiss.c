@@ -97,6 +97,7 @@ static size_t findNextFree(const Swiss* vector, const enum ComponentType type, c
     return -1;
 }
 
+#ifndef NDEBUG // This is currently used for asserts
 // This takes an array of types to support query like things
 static size_t findNextUsed(const Swiss* vector, const enum ComponentType* types, const size_t start) {
 #if SWISS_FREELIST_BUCKET_SIZE != 64
@@ -129,6 +130,7 @@ static size_t findNextUsed(const Swiss* vector, const enum ComponentType* types,
     }
     return -1;
 }
+#endif
 
 static void setFreeStatus(Swiss* vector, enum ComponentType type, size_t index, bool isFree) {
     size_t bucket = index / SWISS_FREELIST_BUCKET_SIZE;
@@ -180,6 +182,8 @@ void swiss_init(Swiss* index, size_t initialsize) {
 void swiss_kill(Swiss* index) {
     assert(index->capacity != 0);
 
+#ifndef NDEBUG
+    // Safety check for debug builds. Check if we are leaking resources
     enum ComponentType type[2] = {
         CQ_END,
         CQ_END,
@@ -190,10 +194,10 @@ void swiss_kill(Swiss* index) {
             assert(findNextUsed(index, type, 0) == -1);
         }
     }
+#endif
 
     for(int i = 0; i < NUM_COMPONENT_TYPES; i++) {
-
-        // Calling free on a NULL ptr isn't a problem, so  there's no reason to
+        // Calling free on a NULL ptr isn't a problem, so there's no reason to
         // check
         free(index->data[i]);
         index->data[i] = NULL;
@@ -221,7 +225,7 @@ win_id swiss_allocate(Swiss* index) {
 
     win_id id = index->firstFree;
 
-    struct MetaComponent* component = swiss_addComponent(index, COMPONENT_META, id);
+    swiss_addComponent(index, COMPONENT_META, id);
 
     index->firstFree = findNextFree(index, COMPONENT_META, id + 1);
     index->size++;

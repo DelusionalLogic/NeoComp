@@ -17,7 +17,7 @@ Window RootWindowH(Display* dpy, int scr);
 int XSelectInputH(Display* dpy, Window win, long mask);
 
 GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num);
-Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error);
+Bool XQueryExtensionH(Display* dpy, const char* name, int* opcode, int* event, int* error);
 
 Status XCompositeQueryVersionH(Display* dpy, int* major, int* minor);
 Status XFixesQueryVersionH(Display* dpy, int* major, int* minor);

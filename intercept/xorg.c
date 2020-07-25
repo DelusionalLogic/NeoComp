@@ -34,7 +34,7 @@ GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
     return glXGetFBConfigs(dpy, scr, num);
 }
 
-Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error) {
+Bool XQueryExtensionH(Display* dpy, const char* name, int* opcode, int* event, int* error) {
     zone_scope_extra(&ZONE_x_call, "QueryExtension");
     return XQueryExtension(dpy, name, opcode, event, error);
 }

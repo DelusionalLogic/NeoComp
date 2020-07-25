@@ -218,8 +218,6 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
     zone_scope(&ZONE_select_config);
     assert(visualid != 0);
 
-    GLXFBConfig* selected = NULL;
-
     size_t loc = vector_bisect(&context->cfgs, &visualid, winvis_lookup, NULL);
     if(loc == -1) {
         return NULL;

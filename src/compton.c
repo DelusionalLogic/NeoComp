@@ -130,10 +130,6 @@ static struct timeval ms_to_tv(int timeout) {
     };
 }
 
-static bool isdamagenotify(session_t *ps, const XEvent *ev) {
-    return xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify;
-}
-
 static XTextProperty * make_text_prop(session_t *ps, char *str) {
     XTextProperty *pprop = ccalloc(1, XTextProperty);
 
@@ -236,22 +232,6 @@ static bool wid_get_role(session_t *ps, Window w, char **role);
 static int win_get_prop_str(session_t *ps, win *w, char **tgt,
         bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt));
 
-// @X11
-static int wii_get_name(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-    int ret = win_get_prop_str(ps, w, &w->name, wid_get_name);
-
-    return ret;
-}
-
-// @X11
-static int wii_get_role(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-    int ret = win_get_prop_str(ps, w, &w->role, wid_get_role);
-
-    return ret;
-}
-
 #ifdef DEBUG_EVENTS
 static int ev_serial(XEvent *ev);
 
@@ -259,8 +239,6 @@ static const char * ev_name(session_t *ps, XEvent *ev);
 
 static Window ev_window(session_t *ps, XEvent *ev);
 #endif
-
-static void update_ewmh_active_win(session_t *ps);
 
 #if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
 static bool ev_window_name(session_t *ps, Window wid, char **name);
@@ -318,23 +296,6 @@ const char* const StateNames[] = {
 /// <code>error()</code> and <code>reset_enable()</code>, which could not
 /// have a pointer to current session passed in.
 session_t *ps_g = NULL;
-
-// === Error handling ===
-
-static void discard_ignore(session_t *ps, unsigned long sequence) {
-    while (ps->ignore_head) {
-        if ((long) (sequence - ps->ignore_head->sequence) > 0) {
-            ignore_t *next = ps->ignore_head->next;
-            free(ps->ignore_head);
-            ps->ignore_head = next;
-            if (!ps->ignore_head) {
-                ps->ignore_tail = &ps->ignore_head;
-            }
-        } else {
-            break;
-        }
-    }
-}
 
 // === Windows ===
 
@@ -423,35 +384,6 @@ static void fetch_shaped_window_face(session_t* ps, win_id wid) {
 */
 
 /**
- * Determine the event mask for a window.
- */
-static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode) {
-    long evmask = NoEventMask;
-    win *w = NULL;
-
-    bool isMapped = false;
-    if((w = find_win(ps, wid))) {
-        win_id eid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-        if(win_mapped(&ps->win_list, eid))
-            isMapped = true;
-    }
-
-    // Check if it's a mapped frame window
-    if (WIN_EVMODE_FRAME == mode || isMapped) {
-        evmask |= PropertyChangeMask;
-    }
-
-    // Check if it's a mapped client window
-    // @INCOMPLETE: PropertyChangeMask should also be set if we are tracking extra atoms
-    if (WIN_EVMODE_CLIENT == mode || isMapped) {
-        if (ps->o.track_wdata /* || ps->track_atom_lst */)
-            evmask |= PropertyChangeMask;
-    }
-
-    return evmask;
-}
-
-/**
  * Find out the WM frame of a client window by querying X.
  *
  * @return struct _win object of the found window, NULL if not found
@@ -501,47 +433,6 @@ static void paint_root(session_t *ps) {
     glDisable(GL_DEPTH_TEST);
 }
 
-/**
- * Look for the client window of a particular window.
- */
-static Window find_client_win(session_t *ps, Window w) {
-    if (wid_has_prop(ps, w, ps->atoms.atom_client)) {
-        return w;
-    }
-
-    Window *children;
-    unsigned int nchildren;
-    unsigned int i;
-    Window ret = 0;
-
-    if (!wid_get_children(ps, w, &children, &nchildren)) {
-        return 0;
-    }
-
-    for (i = 0; i < nchildren; ++i) {
-        if ((ret = find_client_win(ps, children[i])))
-            break;
-    }
-
-    cxfree(children);
-
-    return ret;
-}
-
-/**
- * Unmark current client window of a window.
- *
- * @param ps current session
- * @param w struct _win of the parent window
- */
-static void win_unmark_client(session_t *ps, win *w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-
-    swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-}
-
-
 static void assign_depth(Swiss* em, Vector* order) {
     float z = 0;
     float z_step = 1.0 / em->size;
@@ -562,7 +453,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
         return;
     }
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
     assert(w != NULL);
 
     if (win_mapped(&ps->win_list, wid))
@@ -975,27 +865,6 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
 }
 
 /**
- * Get the value of a type-<code>Window</code> property of a window.
- *
- * @return the value if successful, 0 otherwise
- */
-static Window
-wid_get_prop_window(session_t *ps, Window wid, Atom aprop) {
-  // Get the attribute
-  Window p = None;
-  winprop_t prop = wid_get_prop(&ps->xcontext, wid, aprop, 1L, XA_WINDOW, 32);
-
-  // Return it
-  if (prop.nitems) {
-    p = *prop.data.p32;
-  }
-
-  free_winprop(&prop);
-
-  return p;
-}
-
-/**
  * Set real focused state of a window.
  */
 static void win_set_focused(session_t *ps, win *w) {
@@ -1255,8 +1124,9 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
 
     // If it has WM_STATE, mark it the client window
     if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame))
-            win_unmark_client(ps, w_frame);
+        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
+            swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
+        }
 
         win_mark_client(ps, w_frame, event->client_xid);
     }
@@ -1441,83 +1311,6 @@ parse_long(const char *s, long *dest) {
 }
 
 /**
- * Parse a X geometry.
- */
-static bool
-parse_geometry(session_t *ps, const char *src, geometry_t *dest) {
-  geometry_t geom = { .wid = -1, .hei = -1, .x = -1, .y = -1 };
-  long val = 0L;
-  char *endptr = NULL;
-
-#define T_STRIPSPACE() do { \
-  while (*src && isspace(*src)) ++src; \
-  if (!*src) goto parse_geometry_end; \
-} while(0)
-
-  T_STRIPSPACE();
-
-  // Parse width
-  // Must be base 10, because "0x0..." may appear
-  if (!('+' == *src || '-' == *src)) {
-    val = strtol(src, &endptr, 10);
-    if (endptr && src != endptr) {
-      geom.wid = val;
-      assert(geom.wid >= 0);
-      src = endptr;
-    }
-    T_STRIPSPACE();
-  }
-
-  // Parse height
-  if ('x' == *src) {
-    ++src;
-    val = strtol(src, &endptr, 10);
-    if (endptr && src != endptr) {
-      geom.hei = val;
-      if (geom.hei < 0) {
-        printf_errf("(\"%s\"): Invalid height.", src);
-        return false;
-      }
-      src = endptr;
-    }
-    T_STRIPSPACE();
-  }
-
-  // Parse x
-  if ('+' == *src || '-' == *src) {
-    val = strtol(src, &endptr, 10);
-    if (endptr && src != endptr) {
-      geom.x = val;
-      if ('-' == *src && geom.x <= 0)
-        geom.x -= 2;
-      src = endptr;
-    }
-    T_STRIPSPACE();
-  }
-
-  // Parse y
-  if ('+' == *src || '-' == *src) {
-    val = strtol(src, &endptr, 10);
-    if (endptr && src != endptr) {
-      geom.y = val;
-      if ('-' == *src && geom.y <= 0)
-        geom.y -= 2;
-      src = endptr;
-    }
-    T_STRIPSPACE();
-  }
-
-  if (*src) {
-    printf_errf("(\"%s\"): Trailing characters.", src);
-    return false;
-  }
-
-parse_geometry_end:
-  *dest = geom;
-  return true;
-}
-
-/**
  * Process arguments and configuration files.
  */
 static void
@@ -1586,7 +1379,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   struct options_tmp cfgtmp = {
     .menu_opacity = 1.0,
   };
-  bool shadow_enable = false, fading_enable = false;
   char *lc_numeric_old = mstrcpy(setlocale(LC_NUMERIC, NULL));
 
   for (i = 0; i < NUM_WINTYPES; ++i) {
@@ -1625,13 +1417,13 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 320:
         break;
       case 'c':
-        shadow_enable = true;
+        // Skip, shadows enabled?
         break;
       case 'm':
         cfgtmp.menu_opacity = atof(optarg);
         break;
       case 'f':
-        fading_enable = true;
+        // Skip, fading enabled?
         break;
       case 'I':
         // --active-opacity

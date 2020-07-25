@@ -1251,7 +1251,7 @@ GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
     *num = 1;
     return config;
 }
-Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error) {
+Bool XQueryExtensionH(Display* dpy, const char* name, int* opcode, int* event, int* error) {
     *opcode = 0;
     *event = 0;
     *error = 0;
