@@ -12,6 +12,7 @@
 
 Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs);
 int XNextEventH(Display* dpy, XEvent* ev);
+int XEventsQueuedH(Display* dpy, int mode);
 Window RootWindowH(Display* dpy, int scr);
 int XSelectInputH(Display* dpy, Window win, long mask);
 

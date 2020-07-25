@@ -14,6 +14,11 @@ int XNextEventH(Display* dpy, XEvent* ev) {
     return XNextEvent(dpy, ev);
 }
 
+int XEventsQueuedH(Display* dpy, int mode) {
+    zone_scope_extra(&ZONE_x_call, "EventsQueued");
+    return XEventsQueued(dpy, mode);
+}
+
 Window RootWindowH(Display* dpy, int scr) {
     zone_scope_extra(&ZONE_x_call, "RootWindow");
     return RootWindow(dpy, scr);

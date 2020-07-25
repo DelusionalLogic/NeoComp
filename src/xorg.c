@@ -571,10 +571,6 @@ static bool findClosestClient(struct X11Context* xctx, Window top, Window* clien
 }
 
 static void fillBuffer(struct X11Context* xctx) {
-    if(!XEventsQueued(xctx->display, QueuedAfterReading)) {
-        return;
-    }
-
     XEvent raw = {};
     XNextEventH(xctx->display, &raw);
 
@@ -904,18 +900,23 @@ static void fillBuffer(struct X11Context* xctx) {
 }
 
 void xorg_nextEvent(struct X11Context* xctx, struct Event* event) {
-    if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
-        xctx->readCursor = 0;
-        vector_clear(&xctx->eventBuf);
-        fillBuffer(xctx);
-    }
+    while(true) {
+        if(xctx->readCursor < vector_size(&xctx->eventBuf)) {
+            *event = *(struct Event*)vector_get(&xctx->eventBuf, xctx->readCursor++);
+            return;
+        }
 
-    if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
-        event->type = ET_NONE;
-        return;
-    }
+        if(!XEventsQueuedH(xctx->display, QueuedAfterReading)) {
+            event->type = ET_NONE;
+            return;
+        }
 
-    *event = *(struct Event*)vector_get(&xctx->eventBuf, xctx->readCursor++);
+        if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
+            xctx->readCursor = 0;
+            vector_clear(&xctx->eventBuf);
+            fillBuffer(xctx);
+        }
+    }
 }
 
 // Synthesize events for the initial state

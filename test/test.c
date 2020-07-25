@@ -1231,6 +1231,10 @@ int XNextEventH(Display* dpy, XEvent* ev) {
     return 0;
 }
 
+int XEventsQueuedH(Display* dpy, int mode) {
+    return vector_size(&eventQ) - qCursor;
+}
+
 Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* attrs) {
     XWindowAttributes** value;
     JLG(value, windowAttrs, window);
@@ -1244,7 +1248,7 @@ Status XGetWindowAttributesH(Display* dpy, Window window, XWindowAttributes* att
 
 GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
     GLXFBConfig* config = malloc(sizeof(GLXFBConfig));
-    num = 1;
+    *num = 1;
     return config;
 }
 Bool XQueryExtensionH(Display* dpy, char* name, int* opcode, int* event, int* error) {
