@@ -309,7 +309,6 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
     struct Event event = {
         .type = ET_ADD,
         .add.xid = xid,
-        .add.xdamage = damage,
         .add.mapped = false,
         .add.pos = (Vector2){{x, y}},
         .add.size = (Vector2){{
@@ -853,7 +852,7 @@ static void fillBuffer(struct X11Context* xctx) {
             if(xorgContext_convertEvent(&xctx->capabilities, PROTO_DAMAGE,  raw.type) == XDamageNotify) {
 
                 XDamageNotifyEvent* ev = (XDamageNotifyEvent*)&raw;
-                zone_scope_extra(&ZONE_event_preprocess, "Damage");
+                zone_scope_extra(&ZONE_event_preprocess, "Damage(%#010X)", ev->drawable);
 
                 assert(isWindowActive(xctx, ev->drawable));
 

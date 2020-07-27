@@ -74,7 +74,6 @@ enum EventType {
 
 struct AddWin {
     Window xid;
-    Damage xdamage;
     float border_size;
     Vector2 pos;
     Vector2 size;
