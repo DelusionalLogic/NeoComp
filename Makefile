@@ -121,8 +121,10 @@ MANPAGES_HTML = $(addsuffix .html,$(MANPAGES))
 src/.clang_complete: Makefile
 	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
 
-neocomp: gen/shaders/include.h $(INTERCEPT_OBJS_C) $(OBJS_C)
+neocomp: gen $(INTERCEPT_OBJS_C) $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(INTERCEPT_OBJS_C) $(LIBS)
+
+gen: gen/shaders/include.h
 
 -include $(DEPS_C) $(INTERCEPT_DEPS_C) $(TEST_DEPS_C) $(SHADEGEN_DEPS_C)
 
