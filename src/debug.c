@@ -190,7 +190,7 @@ static void draw_mud_component(Swiss* em, enum ComponentType ctype) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct _win* mud = swiss_getComponent(em, ctype, it.id);
 
-        snprintf(buffer, 128, "    Type: %d", mud->window_type);
+        snprintf(buffer, 128, "    Type: %s", WINTYPES[mud->window_type]);
 
         Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
@@ -375,7 +375,6 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
             COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-        struct ShapedComponent* s = swiss_getComponent(em, ctype, it.id);
 
         // @CLEANUP: For whatever reason, I've implemented these debug things
         // to draw from the bottom left instead of the top left.
@@ -504,7 +503,6 @@ static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
             COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
         struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-        struct glx_shadow_cache* s = swiss_getComponent(em, ctype, it.id);
 
         // @CLEANUP: For whatever reason, I've implemented these debug things
         // to draw from the bottom left instead of the top left.

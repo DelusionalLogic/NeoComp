@@ -2,7 +2,6 @@
 
 ![Build Status](https://github.com/delusionallogic/neocomp/workflows/CI/badge.svg)
 
-
 __NeoComp__ is a fork of __Compton__, a compositor for X11
 
 NeoComp is a (hopefully) fast and (hopefully) simple compositor for X11,

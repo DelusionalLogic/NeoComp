@@ -15,6 +15,7 @@
 #include "systems/blur.h"
 
 #include <X11/extensions/Xinerama.h>
+#include <stdbool.h>
 
 typedef long time_ms_t;
 
@@ -77,7 +78,6 @@ typedef struct {
 /// Temporary structure used for communication between
 /// <code>get_cfg()</code> and <code>parse_config()</code>.
 struct options_tmp {
-  double menu_opacity;
 };
 
 /// Structure representing all options.
@@ -104,6 +104,9 @@ typedef struct _options_t {
   int benchmark;
   /// Whether to show all X errors.
   bool show_all_xerrors;
+
+  /// Shadow setting for window types
+  bool wintype_shadow[NUM_WINTYPES];
 
   // === Opacity ===
   /// Default opacity for specific window types

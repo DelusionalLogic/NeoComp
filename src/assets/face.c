@@ -247,7 +247,7 @@ void face_upload(struct face* asset) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
 }
 
-void face_bind(struct face* face) {
+void face_bind(const struct face* face) {
     glBindVertexArray(face->vao);
 }
 

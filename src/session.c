@@ -256,8 +256,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     // --bg-opacity-fade-time
     if (config_lookup_float(&cfg, "bg-opacity-fade-time", &dval))
         ps->o.bg_opacity_fade_time = dval;
-    // -m (menu_opacity)
-    config_lookup_float(&cfg, "menu-opacity", &pcfgtmp->menu_opacity);
     // --inactive-dim
     config_lookup_float(&cfg, "inactive-dim", &ps->o.inactive_dim);
     // --dim-fade-time
@@ -280,6 +278,8 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
                     ps->o.wintype_focus[i] = (bool) ival;
                 config_setting_lookup_float(setting, "opacity",
                         &ps->o.wintype_opacity[i]);
+                if (config_setting_lookup_bool(setting, "shadow", &ival))
+                    ps->o.wintype_shadow[i] = (bool) ival;
             }
         }
     }

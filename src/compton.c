@@ -1319,7 +1319,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   const static struct option longopts[] = {
     { "help", no_argument, NULL, 'h' },
     { "config", required_argument, NULL, 256 },
-    { "menu-opacity", required_argument, NULL, 'm' },
     { "shadow", no_argument, NULL, 'c' },
     { "fading", no_argument, NULL, 'f' },
     { "active-opacity", required_argument, NULL, 'I' },
@@ -1371,13 +1370,12 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
 
     // Check for abundant positional arguments
     if (optind < argc)
-      printf_errfq(1, "(): compton doesn't accept positional arguments.");
+      printf_errfq(1, "neocomp doesn't accept positional arguments.");
 
     return;
   }
 
   struct options_tmp cfgtmp = {
-    .menu_opacity = 1.0,
   };
   char *lc_numeric_old = mstrcpy(setlocale(LC_NUMERIC, NULL));
 
@@ -1418,9 +1416,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       case 'c':
         // Skip, shadows enabled?
-        break;
-      case 'm':
-        cfgtmp.menu_opacity = atof(optarg);
         break;
       case 'f':
         // Skip, fading enabled?
@@ -1477,11 +1472,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
 
   // Range checking and option assignments
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
-  cfgtmp.menu_opacity = normalize_d(cfgtmp.menu_opacity);
-  if (1.0 != cfgtmp.menu_opacity) {
-    ps->o.wintype_opacity[WINTYPE_DROPDOWN_MENU] = cfgtmp.menu_opacity * 100;
-    ps->o.wintype_opacity[WINTYPE_POPUP_MENU] = cfgtmp.menu_opacity * 100;
-  }
 
   // Other variables determined by options
 

@@ -12,7 +12,7 @@ DECLARE_ZONE(draw_rect);
 
 Matrix view;
 
-void set_matrix(struct shader_value* mvp, Vector3 pos, Vector2 size) {
+void set_matrix(const struct shader_value* mvp, const Vector3 pos, const Vector2 size) {
     Matrix root = view;
     {
         Matrix op = {{
@@ -27,7 +27,7 @@ void set_matrix(struct shader_value* mvp, Vector3 pos, Vector2 size) {
     shader_set_uniform_mat4(mvp, &root);
 }
 
-void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2 size) {
+void draw_rect(const struct face* face, const struct shader_value* mvp, const Vector3 pos, const Vector2 size) {
     zone_scope(&ZONE_draw_rect);
     set_matrix(mvp, pos, size);
 
@@ -36,7 +36,7 @@ void draw_rect(struct face* face, struct shader_value* mvp, Vector3 pos, Vector2
     debug_mark_draw();
 }
 
-void draw_colored_rect(struct face* face, Vector3* pos, Vector2* size, Vector4* color) {
+void draw_colored_rect(const struct face* face, const Vector3* pos, const Vector2* size, const Vector4* color) {
     struct shader_program* profiler_program = assets_load("profiler.shader");
     if(profiler_program->shader_type_info != &profiler_info) {
         printf("Shader was not a profiler shader\n");
