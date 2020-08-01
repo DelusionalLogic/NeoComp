@@ -105,8 +105,6 @@ static win * find_win(session_t *ps, Window id) {
   return NULL;
 }
 
-static void discard_ignore(session_t *ps, unsigned long sequence);
-
 static void wintype_arr_enable(bool arr[]) {
     wintype_t i;
 
@@ -157,19 +155,6 @@ static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *s
 }
 
 // @X11
-static bool wid_get_children(session_t *ps, Window w,
-        Window **children, unsigned *nchildren) {
-    Window troot, tparent;
-
-    if (!XQueryTree(ps->dpy, w, &troot, &tparent, children, nchildren)) {
-        *nchildren = 0;
-        return false;
-    }
-
-    return true;
-}
-
-// @X11
 static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
     if (!pxmap) return false;
 
@@ -188,7 +173,7 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
  */
 static win_id find_toplevel(session_t *ps, Window id) {
     if (!id)
-        return NULL;
+        return -1;
 
     for_components(it, &ps->win_list,
             COMPONENT_STATEFUL, COMPONENT_HAS_CLIENT, CQ_END) {
@@ -201,8 +186,6 @@ static win_id find_toplevel(session_t *ps, Window id) {
 
     return -1;
 }
-
-static long determine_evmask(session_t *ps, Window wid, win_evmode_t mode);
 
 static win * find_toplevel2(session_t *ps, Window wid);
 
@@ -223,14 +206,6 @@ static win * find_win_all(session_t *ps, const Window wid) {
 static void win_set_focused(session_t *ps, win *w);
 
 static void win_mark_client(session_t *ps, win *w, Window client);
-
-static bool wid_get_name(session_t *ps, Window w, char **name);
-
-static bool wid_get_role(session_t *ps, Window w, char **role);
-
-// @X11
-static int win_get_prop_str(session_t *ps, win *w, char **tgt,
-        bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt));
 
 #ifdef DEBUG_EVENTS
 static int ev_serial(XEvent *ev);
@@ -747,7 +722,7 @@ root_damaged(session_t *ps, struct NewRoot* ev) {
 
   struct XTexture* texptr = &ps->root_texture;
   struct XTextureInformation* texinfoptr = &texinfo;
-  if(!xtexture_bind(&ps->xcontext, &texptr, &texinfoptr, &pixmap, 1)) {
+  if(!xtexture_bind(&ps->xcontext, &texptr, &texinfoptr, (xcb_pixmap_t*)&pixmap, 1)) {
       printf_errf("Failed binding the root texture to gl");
   }
 }
@@ -904,94 +879,6 @@ bool wid_get_text_prop(session_t *ps, Window wid, Atom prop,
 
   cxfree(text_prop.value);
   return true;
-}
-
-/**
- * Get the name of a window from window ID.
- */
-static bool
-wid_get_name(session_t *ps, Window wid, char **name) {
-  XTextProperty text_prop = { NULL, None, 0, 0 };
-  char **strlst = NULL;
-  int nstr = 0;
-
-  if (!(wid_get_text_prop(ps, wid, ps->atoms.atom_name_ewmh, &strlst, &nstr))) {
-#ifdef DEBUG_WINDATA
-    printf_dbgf("(%#010lx): _NET_WM_NAME unset, falling back to WM_NAME.\n", wid);
-#endif
-
-    if (!(XGetWMName(ps->dpy, wid, &text_prop) && text_prop.value)) {
-      return false;
-    }
-    if (Success !=
-        XmbTextPropertyToTextList(ps->dpy, &text_prop, &strlst, &nstr)
-        || !nstr || !strlst) {
-      if (strlst)
-        XFreeStringList(strlst);
-      cxfree(text_prop.value);
-      return false;
-    }
-    cxfree(text_prop.value);
-  }
-
-  *name = mstrcpy(strlst[0]);
-
-  XFreeStringList(strlst);
-
-  return true;
-}
-
-/**
- * Get the role of a window from window ID.
- */
-static bool
-wid_get_role(session_t *ps, Window wid, char **role) {
-  char **strlst = NULL;
-  int nstr = 0;
-
-  if (!wid_get_text_prop(ps, wid, ps->atoms.atom_role, &strlst, &nstr)) {
-    return false;
-  }
-
-  *role = mstrcpy(strlst[0]);
-
-  XFreeStringList(strlst);
-
-  return true;
-}
-
-/**
- * Retrieve a string property of a window and update its <code>win</code>
- * structure.
- */
-static int
-win_get_prop_str(session_t *ps, win *w, char **tgt,
-    bool (*func_wid_get_prop_str)(session_t *ps, Window wid, char **tgt)) {
-  int ret = -1;
-  char *prop_old = *tgt;
-
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-
-  if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid))
-    return false;
-
-  struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-  ret = func_wid_get_prop_str(ps, client->id, tgt);
-
-  // Return -1 if func_wid_get_prop_str() failed, 0 if the property
-  // doesn't change, 1 if it changes
-  if (!ret)
-    ret = -1;
-  else if (prop_old && !strcmp(*tgt, prop_old))
-    ret = 0;
-  else
-    ret = 1;
-
-  // Keep the old property if there's no new one
-  if (*tgt != prop_old)
-    free(prop_old);
-
-  return ret;
 }
 
 #ifdef DEBUG_EVENTS
@@ -2498,7 +2385,9 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
 
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+#ifndef NDEBUG
         struct ShapeDamagedEvent* d = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+#endif
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
         if(stateful->state == STATE_DESTROYED) {
@@ -3019,8 +2908,8 @@ void session_run(session_t *ps) {
         commit_reshape(&ps->win_list, &ps->xcontext);
         zone_leave(&ZONE_input_react);
 
-        zone_enter(&ZONE_make_cutout);
         {
+            zone_scope(&ZONE_make_cutout);
             XserverRegion newShape = XFixesCreateRegionH(ps->dpy, NULL, 0);
             for_components(it, em,
                     COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
@@ -3038,7 +2927,6 @@ void session_run(session_t *ps) {
             XFixesSetWindowShapeRegionH(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
             XFixesDestroyRegionH(ps->xcontext.display, newShape);
         }
-        zone_leave(&ZONE_make_cutout);
 
         zone_enter(&ZONE_prop_blur_damage);
         damage_blur_over_damaged(&ps->win_list, &ps->order);
@@ -3109,7 +2997,7 @@ void session_run(session_t *ps) {
         shadowsystem_updateShadow(ps, &transparent);
 
         if(ps->o.blur_background)
-            blursystem_updateBlur(&ps->psglx->blur, &ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, ps);
+            blursystem_updateBlur(&ps->psglx->blur, &ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, (struct _session*) ps);
 
         zone_leave(&ZONE_effect_textures);
 
@@ -3191,10 +3079,12 @@ void session_run(session_t *ps) {
 #endif
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
-        struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef DEBUG_PROFILE
+        struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
         /* profiler_render(event_stream); */
         profilerWriter_emitFrame(&profSess, event_stream);
+#else
+        zone_package(&ZONE_global);
 #endif
 
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));
