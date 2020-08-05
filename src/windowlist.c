@@ -162,8 +162,8 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
             // @COMPAT: There's an assumption here that everything that has
-            // a shadow also has a texture. It might be nicer to just not clip
-            // it if we don't have a texture.
+            // a blur also has a texture. It might be nicer to just not clip it
+            // if we don't have a texture.
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
 
             shader_set_future_uniform_bool(shader_type->flip, blur->texture[0].flipped);

@@ -2291,25 +2291,6 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     }
 
     free(drawables);
-
-    // @HACK @CORRECTNESS: If we fail to get a texture for the window (for
-    // whatever reason) we currently remove textured component, since it's not
-    // really textured. Arguably we shouldn't be allocating the texture before
-    // we know if we need it.
-    //
-    // @PERFORMANCE: right now we are freeing the textures and renderbuffers
-    // one by one, we can do it in one gl call
-    for_componentsArr(it2, em, req_types) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
-        if(!bindsTexture->drawable.xtexture.bound) {
-            printf_dbgf("Pixmap wasn't bound, removing component %ld", it2.id);
-
-            texture_delete(&textured->texture);
-            renderbuffer_delete(&textured->stencil);
-            swiss_removeComponent(em, COMPONENT_TEXTURED, it2.id);
-        }
-    }
     zone_leave(&ZONE_x_communication);
 
     glClearColor(0, 0, 0, 0);
@@ -2331,14 +2312,16 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         Matrix old_view = view;
         view = mat4_orthogonal(0, textured->texture.size.x, 0, textured->texture.size.y, -1, 1);
         glViewport(0, 0, textured->texture.size.x, textured->texture.size.y);
-
-        assert(bindsTexture->drawable.bound);
-        texture_bind(&bindsTexture->drawable.texture, GL_TEXTURE0);
-
-        shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
+
+        // If the texture didn't bind, we just clear the window without rendering on top.
+        if(bindsTexture->drawable.bound) {
+            texture_bind(&bindsTexture->drawable.texture, GL_TEXTURE0);
+
+            shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
+
+            draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
+        }
 
         view = old_view;
 
@@ -2347,7 +2330,10 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
     for_componentsArr(it2, em, req_types) {
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
 
-        wd_unbind(&bindsTexture->drawable);
+        // The texture might not have bound successfully
+        if(bindsTexture->drawable.bound) {
+            wd_unbind(&bindsTexture->drawable);
+        }
     }
 
     glDisable(GL_STENCIL_TEST);
