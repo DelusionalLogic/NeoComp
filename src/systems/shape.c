@@ -1,5 +1,7 @@
 #include "shape.h"
 
+#include "intercept/xorg.h"
+
 #include "logging.h"
 #include "window.h"
 #include "assert.h"
@@ -33,8 +35,8 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
         // input processor.
 
         XWindowAttributes attribs;
-        if (!XGetWindowAttributes(xcontext->display, window->id, &attribs)) {
-            printf_errf("Failed getting window attributes while mapping");
+        if (!XGetWindowAttributesH(xcontext->display, window->id, &attribs)) {
+            printf_errf("Failed getting window attributes for shape damage, keeping old shape");
             swiss_removeComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
             continue;
         }
