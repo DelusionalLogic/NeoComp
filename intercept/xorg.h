@@ -39,9 +39,11 @@ XserverRegion XFixesCreateRegionH(Display* dpy, XRectangle* rectangles, int nrec
 XserverRegion XFixesCreateRegionFromWindowH(Display* dpy, Window window, int kind);
 void XFixesTranslateRegionH(Display* dpy, XserverRegion region, int dx, int dy);
 void XFixesUnionRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2);
+void XFixesIntersectRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2);
 void XFixesInvertRegionH(Display* dpy, XserverRegion dst, XRectangle* rect, XserverRegion src);
 void XFixesDestroyRegionH(Display* dpy, XserverRegion region);
 void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region);
+XRectangle* XFixesFetchRegionH(Display* dpy, XserverRegion region, int* count_ret);
 
 void XShapeSelectInputH(Display* dpy, Window win, unsigned long mask);
 

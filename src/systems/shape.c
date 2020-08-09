@@ -48,16 +48,16 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
         // we don't have to deal with it downstream
         Vector2 offset = {{-attribs.border_width, -attribs.border_width}};
 
-        XserverRegion window_region = XFixesCreateRegionFromWindow(xcontext->display, window->id, ShapeBounding);
+        XserverRegion window_region = XFixesCreateRegionFromWindowH(xcontext->display, window->id, ShapeBounding);
 
         XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
-        XserverRegion default_clip_region = XFixesCreateRegion(xcontext->display, &default_clip, 1);
-        XFixesIntersectRegion(xcontext->display, window_region, window_region, default_clip_region);
+        XserverRegion default_clip_region = XFixesCreateRegionH(xcontext->display, &default_clip, 1);
+        XFixesIntersectRegionH(xcontext->display, window_region, window_region, default_clip_region);
 
         int rect_count;
-        XRectangle* rects = XFixesFetchRegion(xcontext->display, window_region, &rect_count);
+        XRectangle* rects = XFixesFetchRegionH(xcontext->display, window_region, &rect_count);
 
-        XFixesDestroyRegion(xcontext->display, window_region);
+        XFixesDestroyRegionH(xcontext->display, window_region);
 
         vector_init(&shapeDamaged->rects, sizeof(struct Rect), rect_count);
 

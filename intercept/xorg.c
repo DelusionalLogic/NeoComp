@@ -110,6 +110,11 @@ void XFixesUnionRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, Xse
     return XFixesUnionRegion(dpy, dst, src1, src2);
 }
 
+void XFixesIntersectRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2) {
+    zone_scope_extra(&ZONE_x_call, "IntersectRegion");
+    return XFixesIntersectRegion(dpy, dst, src1, src2);
+}
+
 void XFixesInvertRegionH(Display* dpy, XserverRegion dst, XRectangle* rect, XserverRegion src) {
     zone_scope_extra(&ZONE_x_call, "InvertRegion");
     return XFixesInvertRegion(dpy, dst, rect, src);
@@ -124,6 +129,12 @@ void XFixesSetWindowShapeRegionH(Display* dpy, Window win, int shape_kind, int x
     zone_scope_extra(&ZONE_x_call, "SetWindowShapeRegion");
     return XFixesSetWindowShapeRegion(dpy, win, shape_kind, x_off, y_off, region);
 }
+
+XRectangle* XFixesFetchRegionH(Display* dpy, XserverRegion region, int* count_ret) {
+    zone_scope_extra(&ZONE_x_call, "XFixesFetchRegion");
+    return XFixesFetchRegion(dpy, region, count_ret);
+}
+
 
 int glXGetFBConfigAttribH(Display* dpy, GLXFBConfig config, int attribute, int* value) {
     return glXGetFBConfigAttrib(dpy, config, attribute, value);
