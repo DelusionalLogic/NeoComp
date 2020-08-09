@@ -1269,6 +1269,9 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   for (i = 0; i < NUM_WINTYPES; ++i) {
     ps->o.wintype_opacity[i] = -1.0;
   }
+  for (i = 0; i < NUM_WINTYPES; ++i) {
+    ps->o.wintype_shadow[i] = true;
+  }
 
   // Enforce LC_NUMERIC locale "C" here to make sure dots are recognized
   // instead of commas in atof().
