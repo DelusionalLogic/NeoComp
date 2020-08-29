@@ -37,7 +37,7 @@ int shadow_cache_init(struct glx_shadow_cache* cache) {
     }
 
     if(texture_init_noise(&cache->noise, GL_TEXTURE_2D) != 0) {
-        printf("Couldn't create noiseatexture for shadow\n");
+        printf("Couldn't create noise texture for shadow\n");
         texture_delete(&cache->texture);
         texture_delete(&cache->effect);
         return 1;

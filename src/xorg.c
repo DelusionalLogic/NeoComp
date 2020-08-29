@@ -167,6 +167,7 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
     context->damage = NULL;
     context->mapped = NULL;
     context->active = NULL;
+    context->bypassed = NULL;
     vector_init(&context->eventBuf, sizeof(struct Event), 64);
     context->readCursor = 0;
 
@@ -232,7 +233,7 @@ void xorgContext_delete(struct X11Context* context) {
     free(context->configs);
 }
 
-static bool isWindowActive(struct X11Context* xctx, Window w) {
+static bool isWindowActive(const struct X11Context* xctx, Window w) {
     Word_t rc;
     J1T(rc, xctx->active, w);
     return rc != 0;
@@ -264,7 +265,7 @@ static void attachSubtree(struct X11Context* xctx, Window xid, Window client_xid
     *value = xid;
 }
 
-static Window findRoot(struct X11Context* xctx, Window xid) {
+static Window findRoot(const struct X11Context* xctx, Window xid) {
     // Add the client->frame association
     Window* next = &xid;
     Window last;
@@ -320,18 +321,101 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
     pushEvent(xctx, event);
 }
 
+static bool findClosestClient(const struct X11Context* xctx, const Window top, Window* client) {
+    Word_t rc;
+
+    void* next = NULL;
+    void* current = NULL;
+    J1S(rc, current, top);
+    Word_t count = 1;
+
+    while(count > 0) {
+        Word_t index = 0;
+        Window* value;
+        JLF(value, xctx->winParent, index);
+        while(value != NULL) {
+            J1T(rc, current, *value);
+            if(rc == 0) {
+                // This window is not a child of the
+                // current frontier
+                JLN(value, xctx->winParent, index);
+                continue;
+            }
+
+            J1T(rc, xctx->client, index);
+            if(rc == 0) {
+                // The window is not a client, so we have
+                // to continue the search
+                J1S(rc, next, index);
+                JLN(value, xctx->winParent, index);
+                continue;
+            }
+
+            // The window was a client and our search is done
+
+            J1FA(rc, next);
+            J1FA(rc, current);
+            *client = index;
+            return true;
+        }
+
+        void* tmp = next;
+        next = current;
+        current = tmp;
+        J1FA(rc, next);
+        J1C(count, current, 0, -1);
+    }
+
+    return false;
+}
+
+static bool isWindowBypassed(struct X11Context* xctx, Window xid) {
+    Word_t rc;
+    J1T(rc, xctx->bypassed, xid);
+    if(rc == 1) {
+        return true;
+    }
+    return false;
+}
+
+static bool isFrameBypassed(struct X11Context* xctx, Window xid) {
+
+    if(isWindowBypassed(xctx, xid)) {
+        return true;
+    }
+
+    Window client;
+    bool hasClient = findClosestClient(xctx, xid, &client);
+    if(hasClient) {
+        if(isWindowActive(xctx, client)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void windowMap(struct X11Context* xctx, Window xid) {
     Word_t rc;
     J1S(rc, xctx->mapped, xid);
     assert(rc == 1);
 
-    XSelectInputH(xctx->display, xid, PropertyChangeMask);
+    if(!isWindowActive(xctx, xid))
+        return;
 
-    struct Event map = {
-        .type = ET_MAP,
-        .map.xid = xid,
-    };
-    pushEvent(xctx, map);
+    struct Event event;
+    if(isFrameBypassed(xctx, xid)) {
+        event = (struct Event){
+            .type = ET_BYPASS,
+            .bypass.xid = xid,
+        };
+    } else {
+        event = (struct Event){
+            .type = ET_MAP,
+            .map.xid = xid,
+        };
+    }
+    pushEvent(xctx, event);
 }
 
 static void createDestroyWin(struct X11Context* xctx, Window xid) {
@@ -519,53 +603,82 @@ static void refreshRoot(struct X11Context* xctx) {
     }
 }
 
-static bool findClosestClient(struct X11Context* xctx, Window top, Window* client) {
-    Word_t rc;
+static int32_t xBypassState(const struct X11Context* xctx, const Window win) {
+    xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
 
-    void* next = NULL;
-    void* current = NULL;
-    J1S(rc, current, top);
-    Word_t count = 1;
+    xcb_get_property_cookie_t cookie = xcb_get_property(xcb, false, win, xctx->atoms->atom_bypass, XA_CARDINAL, 0, 1);
 
-    while(count > 0) {
-        Word_t index = 0;
-        Window* value;
-        JLF(value, xctx->winParent, index);
-        while(value != NULL) {
-            J1T(rc, current, *value);
-            if(rc == 0) {
-                // This window is not a child of the
-                // current frontier
-                JLN(value, xctx->winParent, index);
-                continue;
-            }
-
-            J1T(rc, xctx->client, index);
-            if(rc == 0) {
-                // The window is not a client, so we have
-                // to continue the search
-                J1S(rc, next, index);
-                JLN(value, xctx->winParent, index);
-                continue;
-            }
-
-            // The window was a client and our search is done
-
-            J1FA(rc, next);
-            J1FA(rc, current);
-            *client = index;
-            return true;
-        }
-
-        void* tmp = next;
-        next = current;
-        current = tmp;
-        J1FA(rc, next);
-        J1C(count, current, 0, -1);
+    xcb_generic_error_t *error;
+    xcb_get_property_reply_t *reply = xcb_get_property_reply(xcb, cookie, &error);
+    if(reply == NULL) {
+        printf_errf("Failed fetching bypass property: code %d", error->error_code);
+        free(error);
+        return -1;
     }
 
-    return false;
+    if(reply->type == None) {
+        // The property was not found, so just move on
+        free(reply);
+        return -1;
+    }
+
+    if(reply->type != XA_CARDINAL) {
+        printf_errf("The _NET_WM_BYPASS_COMPOSITOR property was not a cardinal");
+        free(reply);
+        return -1;
+    }
+    if(reply->format != 32) {
+        printf_errf("The _NET_WM_BYPASS_COMPOSITOR property was not 32bit int");
+        free(reply);
+        return -1;
+    }
+    if(xcb_get_property_value_length(reply) == 0) {
+        printf_errf("The _NET_WM_BYPASS_COMPOSITOR property was 0 size");
+        free(reply);
+        return -1;
+    }
+
+    int32_t bypass = *(uint32_t*)xcb_get_property_value(reply);
+    free(reply);
+
+    return bypass;
 }
+
+static bool findAffectedWindow(const struct X11Context* xctx, const Window win, Window* affected) {
+    Word_t rc;
+
+    Window frame = findRoot(xctx, win);
+    // If the frame isn't active dont emit
+    if(!isWindowActive(xctx, frame)) {
+        return false;
+    }
+
+    // If we are the toplevel, emit. If not, we have to
+    // check if we are the current client
+    if(frame == win) {
+        *affected = frame;
+        return true;
+    }
+
+    // If the window isn't a client it can't affect the
+    // frame
+    J1T(rc, xctx->client, win);
+    if(rc == 0) {
+        return false;
+    }
+
+    Window client;
+    bool found = findClosestClient(xctx, frame, &client);
+    assert(found);
+    // If the window with this event isn't the client, we
+    // dont care
+    if(client != win)
+        return false;
+
+    *affected = frame;
+    return true;
+}
+
 
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
@@ -579,7 +692,7 @@ static void fillBuffer(struct X11Context* xctx) {
             zone_scope_extra(&ZONE_event_preprocess, "Create");
             if(ev->parent == xctx->root) {
                 windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
-                XSelectInputH(xctx->display, ev->window, NoEventMask);
+                XSelectInputH(xctx->display, ev->window, PropertyChangeMask);
             } else {
                 attachSubtree(xctx, ev->parent, ev->window);
                 // Watch for possible WM_STATE
@@ -610,14 +723,26 @@ static void fillBuffer(struct X11Context* xctx) {
                 }
                 windowCreate(xctx, ev->window, attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
 
-                Word_t rc;
-                J1T(rc, xctx->mapped, ev->window);
-                if(rc == 1) {
-                    struct Event map = {
-                        .type = ET_MAP,
-                        .map.xid = ev->window,
-                    };
-                    pushEvent(xctx, map);
+                if(isFrameBypassed(xctx, ev->window)) {
+                    Word_t rc;
+                    J1T(rc, xctx->mapped, ev->window);
+                    if(rc == 1) {
+                        struct Event event = {
+                            .type = ET_BYPASS,
+                            .bypass.xid = ev->window,
+                        };
+                        pushEvent(xctx, event);
+                    }
+                } else {
+                    Word_t rc;
+                    J1T(rc, xctx->mapped, ev->window);
+                    if(rc == 1) {
+                        struct Event map = {
+                            .type = ET_MAP,
+                            .map.xid = ev->window,
+                        };
+                        pushEvent(xctx, map);
+                    }
                 }
 
                 detachSubtree(xctx, ev->window);
@@ -634,6 +759,13 @@ static void fillBuffer(struct X11Context* xctx) {
                 if(findClosestClient(xctx, frame, &client)) {
                     if(!hasOldClient || client != oldClient){
                         createGetsClient(xctx, frame, client);
+                        if(isWindowBypassed(xctx, client)) {
+                            struct Event event = {
+                                .type = ET_BYPASS,
+                                .bypass.xid = frame,
+                            };
+                            pushEvent(xctx, event);
+                        }
                     }
                 }
             }
@@ -678,7 +810,7 @@ static void fillBuffer(struct X11Context* xctx) {
             J1U(rc, xctx->mapped, ev->window);
             assert(rc == 1);
 
-            XSelectInputH(xctx->display, ev->window, NoEventMask);
+            XSelectInputH(xctx->display, ev->window, PropertyChangeMask);
 
             struct Event unmap = {
                 .type = ET_UNMAP,
@@ -756,38 +888,11 @@ static void fillBuffer(struct X11Context* xctx) {
                     || ev->atom == xctx->atoms->atom_name_ewmh
                     || ev->atom == xctx->atoms->atom_role
                     || ev->atom == xctx->atoms->atom_name) {
-                    Word_t rc;
 
-                    Window frame = findRoot(xctx, ev->window);
-                    // If the frame isn't active dont emit
-                    if(!isWindowActive(xctx, frame)) {
+                    Window affected;
+                    if(!findAffectedWindow(xctx, ev->window, &affected)) {
                         break;
                     }
-
-                    // If we are the toplevel, emit. If not, we have to
-                    // check if we are the current client
-                    if(frame == ev->window) {
-                        struct Event event = {
-                            .type = ET_WINTYPE,
-                            .wintype.xid = ev->window,
-                        };
-                        pushEvent(xctx, event);
-                        break;
-                    }
-
-                    // If the window isn't a client it can't affect the
-                    // frame
-                    J1T(rc, xctx->client, ev->window);
-                    if(rc == 0) {
-                        break;
-                    }
-
-                    Window client;
-                    /* always true */ findClosestClient(xctx, frame, &client);
-                    // If the window with this event isn't the client, we
-                    // dont care
-                    if(client != ev->window)
-                        break;
 
                     struct Event event = {
                         .type = ET_WINTYPE,
@@ -795,54 +900,62 @@ static void fillBuffer(struct X11Context* xctx) {
                     };
                     pushEvent(xctx, event);
                 } else if(ev->atom == xctx->atoms->atom_class) {
-                    Word_t rc;
 
-                    Window frame = findRoot(xctx, ev->window);
-                    // If the frame isn't active dont emit
-                    if(!isWindowActive(xctx, frame)) {
+                    Window affected;
+                    if(!findAffectedWindow(xctx, ev->window, &affected)) {
                         break;
                     }
-
-                    // If we are the toplevel, emit. If not, we have to
-                    // check if we are the current client
-                    if(frame == ev->window) {
-                        struct Event event = {
-                            .type = ET_WINTYPE,
-                            .wintype.xid = ev->window,
-                        };
-                        pushEvent(xctx, event);
-                        struct Event classEvent = {
-                            .type = ET_WINCLASS,
-                            .winclass.xid = ev->window,
-                        };
-                        pushEvent(xctx, classEvent);
-                        break;
-                    }
-
-                    // If the window isn't a client it can't affect the
-                    // frame
-                    J1T(rc, xctx->client, ev->window);
-                    if(rc == 0) {
-                        break;
-                    }
-
-                    Window client;
-                    /* always true */ findClosestClient(xctx, frame, &client);
-                    // If the window with this event isn't the client, we
-                    // dont care
-                    if(client != ev->window)
-                        break;
 
                     struct Event event = {
                         .type = ET_WINTYPE,
-                        .wintype.xid = frame,
+                        .wintype.xid = affected,
                     };
                     pushEvent(xctx, event);
                     struct Event classEvent = {
                         .type = ET_WINCLASS,
-                        .winclass.xid = frame,
+                        .winclass.xid = affected,
                     };
                     pushEvent(xctx, classEvent);
+                } else if(ev->atom == xctx->atoms->atom_bypass) {
+
+                    Window affected;
+                    if(!findAffectedWindow(xctx, ev->window, &affected)) {
+                        break;
+                    }
+
+                    if(ev->state == PropertyNewValue) {
+                        if(xBypassState(xctx, ev->window) == 1) {
+                            Word_t rc;
+                            J1S(rc, xctx->bypassed, affected);
+                            assert(rc != 0);
+
+                            struct Event event = {
+                                .type = ET_BYPASS,
+                                .bypass.xid = affected,
+                            };
+                            pushEvent(xctx, event);
+                        } else {
+                            Word_t rc;
+                            J1U(rc, xctx->bypassed, affected);
+                            if(rc == 1) {
+                                struct Event event = {
+                                    .type = ET_MAP,
+                                    .bypass.xid = affected,
+                                };
+                                pushEvent(xctx, event);
+                            }
+                        }
+                    } else if(ev->state == PropertyDelete) {
+                        Word_t rc;
+                        J1U(rc, xctx->bypassed, affected);
+                        if(rc == 1) {
+                            struct Event event = {
+                                .type = ET_MAP,
+                                .bypass.xid = affected,
+                            };
+                            pushEvent(xctx, event);
+                        }
+                    }
                 }
                 break;
             }
@@ -938,6 +1051,7 @@ void xorg_beginEvents(struct X11Context* xctx) {
             continue;
         }
         windowCreate(xctx, children[i], attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
+        XSelectInputH(xctx->display, children[i], PropertyChangeMask);
         if(attribs.class != InputOnly) {
             if(attribs.map_state == IsViewable) {
                 windowMap(xctx, children[i]);

@@ -1262,6 +1262,11 @@ Status XCompositeQueryVersionH(Display* dpy, int* major, int* minor) {
     *minor = 3;
     return 1;
 }
+void XFixesIntersectRegionH(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2) {
+}
+XRectangle* XFixesFetchRegionH(Display* dpy, XserverRegion region, int* count_ret) {
+	return NULL;
+}
 Status XFixesQueryVersionH(Display* dpy, int* major, int* minor) {
     return 1;
 }
@@ -2254,6 +2259,237 @@ struct TestResult xorg__emit_map__frame_is_mapped() {
     );
 }
 
+struct TestResult xorg__emit_unmap__frame_is_unmapped() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XUnmapEvent){
+        .type = UnmapNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_UNMAP, .unmap.xid = 1}
+    );
+}
+
+struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_BYPASS, .bypass.xid = 1}
+    );
+}
+
+struct TestResult xorg__emit_bypass__unmapped_bypassed_window_maps() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_BYPASS, .bypass.xid = 1}
+    );
+}
+
+struct TestResult xorg__emit_map__bypassed_mapped_frame_requests_compositing() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyDelete,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_MAP, .map.xid = 1}
+    );
+}
+
+struct TestResult xorg__emit_bypass__bypassed_frame_is_mapped() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_BYPASS, .bypass.xid = 1}
+    );
+}
+
+struct TestResult xorg__emit_bypass__bypassed_window_becomes_client() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 2,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XReparentEvent){
+        .type = ReparentNotify,
+        .parent = 1,
+        .window = 2,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_DESTROY},
+        (struct Event){.type = ET_CLIENT, .cli.xid = 1, .cli.client_xid = 2},
+        (struct Event){.type = ET_BYPASS, .bypass.xid = 1}
+    );
+}
+
 struct TestResult xorg__not_emit_map__subwindow_is_mapped() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -2600,7 +2836,7 @@ struct TestResult xorg__set_event_mask__window_is_created() {
     });
     readAllEvents(&ctx);
 
-    assertEq(NoEventMask, inputMask(1));
+    assertEq(PropertyChangeMask, inputMask(1));
 }
 
 struct TestResult xorg__set_event_mask__subwindow_is_created() {
@@ -2678,7 +2914,7 @@ struct TestResult xorg__blank_event_mask__window_is_unmapped() {
     });
     readAllEvents(&ctx);
 
-    assertEq(NoEventMask, inputMask(1));
+    assertEq(PropertyChangeMask, inputMask(1));
 }
 
 struct TestResult xorg__set_event_mask__window_is_remapped_away_from_root() {
@@ -2851,6 +3087,13 @@ int main(int argc, char** argv) {
     TEST(xorg__not_emit_restack__restacked_window_is_not_frame);
 
     TEST(xorg__emit_map__frame_is_mapped);
+    TEST(xorg__emit_unmap__frame_is_unmapped);
+
+    TEST(xorg__emit_bypass__mapped_frame_requests_bypass);
+    TEST(xorg__emit_bypass__unmapped_bypassed_window_maps);
+    TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);
+    TEST(xorg__emit_bypass__bypassed_frame_is_mapped);
+    TEST(xorg__emit_bypass__bypassed_window_becomes_client);
 
     // These don't work yet
     /* TEST(xorg__not_emit_map__subwindow_is_mapped); */

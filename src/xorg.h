@@ -69,6 +69,7 @@ enum EventType {
     ET_WINTYPE,
     ET_DAMAGE,
     ET_SHAPE,
+    ET_BYPASS,
     ET_NEWROOT,
 };
 
@@ -138,6 +139,10 @@ struct Shape {
     Window xid;
 };
 
+struct Bypass {
+    Window xid;
+};
+
 struct NewRoot {
     Pixmap pixmap;
 };
@@ -157,6 +162,7 @@ struct Event {
         struct Winclass winclass;
         struct Damage damage;
         struct Shape shape;
+        struct Bypass bypass;
         struct NewRoot newRoot;
     };
 };
@@ -181,6 +187,7 @@ struct X11Context {
     void* client;
     void* damage;
     void* mapped;
+    void* bypassed;
 
     void* active;
     Vector eventBuf;

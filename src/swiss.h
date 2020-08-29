@@ -57,6 +57,7 @@ enum ComponentType {
     // Messages
     COMPONENT_MAP,
     COMPONENT_UNMAP,
+    COMPONENT_BYPASS,
     COMPONENT_DESTROY,
     COMPONENT_MOVE,
     COMPONENT_RESIZE,

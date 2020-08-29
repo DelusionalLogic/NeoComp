@@ -430,9 +430,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     assert(w != NULL);
 
-    if (win_mapped(&ps->win_list, wid))
-        return;
-
     assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
 
     // Add a map event
@@ -1635,6 +1632,19 @@ static void redir_stop(session_t *ps) {
     XSync(ps->dpy, False);
 }
 
+static void ev_bypass(session_t* ps, struct Bypass* ev) {
+    win *w = find_win(ps, ev->xid);
+    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
+        swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
+    }else if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
+        swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
+    }
+
+    swiss_ensureComponent(&ps->win_list, COMPONENT_BYPASS, wid);
+}
+
 /**
  * Main loop.
  */
@@ -1677,6 +1687,12 @@ mainloop(session_t *ps) {
                     zone_enter_extra(&ZONE_one_event, "UNMAP");
                     processed = true;
                     ev_unmap_notify(ps, &event.unmap);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_BYPASS:
+                    zone_enter_extra(&ZONE_one_event, "BYPASS");
+                    processed = true;
+                    ev_bypass(ps, &event.bypass);
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_CLIENT:
@@ -2594,41 +2610,8 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
         if(stateful->state != STATE_DESTROYING)
             stateful->state = STATE_HIDING;
     }
-    for_components(it, em,
-            COMPONENT_UNMAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
-        wd_delete(&bindsTexture->drawable);
-    }
 
     // Unmapping a window causes us to stop redirecting it
-    {
-        for_components(it, em,
-                COMPONENT_UNMAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
-            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-
-            XCompositeUnredirectWindow(xcontext->display, tracksWindow->id, CompositeRedirectManual);
-        }
-        swiss_removeComponentWhere(
-            em,
-            COMPONENT_REDIRECTED,
-            (enum ComponentType[]){COMPONENT_REDIRECTED, COMPONENT_TRACKS_WINDOW, COMPONENT_UNMAP, CQ_END}
-        );
-    }
-
-    {
-        for_components(it, em,
-                COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END) {
-            struct BindsTextureComponent* b = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
-
-            wd_delete(&b->drawable);
-        }
-        swiss_removeComponentWhere(
-            em,
-            COMPONENT_BINDS_TEXTURE,
-            (enum ComponentType[]){COMPONENT_BINDS_TEXTURE, COMPONENT_UNMAP, CQ_END}
-        );
-    }
-
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
@@ -2849,11 +2832,6 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update_wintype);
 
-        // We want to fetch the wintype on a map, useful because we don't track the
-        // wintype when unmapped
-        for_components(it, em, COMPONENT_MAP, CQ_END) {
-            swiss_addComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-        }
         // Fetch all the class changes for newly mapped windows
         for_components(it, em, COMPONENT_MAP, CQ_END) {
             swiss_addComponent(em, COMPONENT_CLASS_CHANGE, it.id);
@@ -3038,6 +3016,7 @@ void session_run(session_t *ps) {
         // @CLEANUP: Should maybe be done last in the frame
         swiss_resetComponent(&ps->win_list, COMPONENT_MAP);
         swiss_resetComponent(&ps->win_list, COMPONENT_UNMAP);
+        swiss_resetComponent(&ps->win_list, COMPONENT_BYPASS);
         swiss_resetComponent(&ps->win_list, COMPONENT_MOVE);
         swiss_removeComponentWhere(
             &ps->win_list,
