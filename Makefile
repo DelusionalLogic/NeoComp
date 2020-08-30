@@ -24,12 +24,14 @@ PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x1
 PACKAGES += freetype2
 
 SOURCES = $(shell find $(SRCDIR) -name "*.c")
-INTERCEPT_SOURCES = $(shell find intercept -name "*.c")
+INTERCEPT_SOURCES = gen/intercept/xorg.c
 
 TEST_SOURCES = $(wildcard test/*.c)
 
 SHADEGEN_SOURCES = $(wildcard shadegen/*.c)
 SHADERTYPE_SOURCES = $(wildcard shadertypes/*.type)
+
+INTGEN_SOURCES = $(wildcard intgen/*.c)
 
 print-%  : ; @echo $* = $($*)
 
@@ -103,13 +105,15 @@ OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
 INTERCEPT_OBJS_C = $(INTERCEPT_SOURCES:%.c=$(OBJDIR)/%.o)
 TEST_OBJS_C = $(TEST_SOURCES:%.c=$(OBJDIR)/%.o)
 SHADEGEN_OBJS_C = $(SHADEGEN_SOURCES:%.c=$(OBJDIR)/%.o)
+INTGEN_OBJS_C = $(INTGEN_SOURCES:%.c=$(OBJDIR)/%.o)
 # Generated shadertype source
 OBJS_C += $(OBJDIR)/gen/shaders/include.o
 
 DEPS_C = $(OBJS_C:%.o=%.d)
 INTERCEPT_DEPS_C = $(INTERCEPT_OBJS_C:%.o=%.d)
 TEST_DEPS_C = $(TEST_OBJS_C:%.o=%.d)
-SHADEGEN_DEPS_C = $(SHDEGEN_OBJS_C:%.o=%.d)
+SHADEGEN_DEPS_C = $(SHADEGEN_OBJS_C:%.o=%.d)
+INTGEN_DEPS_C = $(INTGEN_OBJS_C:%.o=%.d)
 
 BINS = neocomp
 MANPAGES = man/neocomp.1
@@ -124,9 +128,9 @@ src/.clang_complete: Makefile
 neocomp: gen $(INTERCEPT_OBJS_C) $(OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(INTERCEPT_OBJS_C) $(LIBS)
 
-gen: gen/shaders/include.h
+gen: gen/shaders/include.h gen/shaders/include.c gen/intercept/xorg.h gen/intercept/xorg.c
 
--include $(DEPS_C) $(INTERCEPT_DEPS_C) $(TEST_DEPS_C) $(SHADEGEN_DEPS_C)
+-include $(DEPS_C) $(INTERCEPT_DEPS_C) $(TEST_DEPS_C) $(SHADEGEN_DEPS_C) $(INTGEN_DEPS_C)
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -164,17 +168,21 @@ clean:
 	@rm -f $(OBJDIR) neocomp $(MANPAGES) $(MANPAGES_HTML) .clang_complete
 	@rm -f test/test test/test.o
 	@rm -f shadegen/shadegen
+	@rm -f intgen/intgen
 
 version:
 	@echo "$(COMPTON_VERSION)"
 
-test/test: gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
+test/test: gen/intercept/xorg.h gen/shaders/include.h $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C))
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(TEST_OBJS_C) $(filter-out $(OBJDIR)/$(SRCDIR)/main.o, $(OBJS_C)) $(LIBS)
 
 test: test/test
 	test/test $(TESTS)
 
 $(OBJDIR)/shadegen/shadegen: $(SHADEGEN_OBJS_C)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^
+
+$(OBJDIR)/intgen/intgen: $(INTGEN_OBJS_C)
 	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^
 
 gen/shaders/include.h: $(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES)
@@ -184,5 +192,13 @@ gen/shaders/include.h: $(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES)
 gen/shaders/include.c: $(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES)
 	@mkdir -p $(dir $@)
 	$(OBJDIR)/shadegen/shadegen $(SHADERTYPE_SOURCES) -c -o $@
+
+gen/intercept/xorg.c: $(OBJDIR)/intgen/intgen intercept/xorg.int
+	@mkdir -p $(dir $@)
+	$(OBJDIR)/intgen/intgen -c intercept/xorg.int -o $@
+
+gen/intercept/xorg.h: $(OBJDIR)/intgen/intgen intercept/xorg.int
+	@mkdir -p $(dir $@)
+	$(OBJDIR)/intgen/intgen intercept/xorg.int -o $@
 
 .PHONY: test install uninstall clean docs version

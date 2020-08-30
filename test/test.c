@@ -1345,6 +1345,27 @@ int glXGetFBConfigAttribH(Display* dpy, GLXFBConfig config, int attribute, int* 
     return 0;
 }
 
+xcb_connection_t* XGetXCBConnectionH(Display *dpy) {
+    return NULL;
+}
+
+xcb_get_property_cookie_t xcb_get_propertyH(xcb_connection_t* conn, uint8_t _delete, xcb_window_t window, xcb_atom_t property, xcb_atom_t type, uint32_t long_offset, uint32_t long_length) {
+    return (xcb_get_property_cookie_t) {
+    };
+}
+
+xcb_get_property_reply_t* xcb_get_property_replyH(xcb_connection_t* conn, xcb_get_property_cookie_t cookie, xcb_generic_error_t **e) {
+    return NULL;
+}
+
+void* xcb_get_property_valueH(const xcb_get_property_request_t* reply) {
+    return NULL;
+}
+
+int xcb_get_property_value_lengthH(const xcb_get_property_reply_t* reply) {
+    return 0;
+}
+
 void* inputMasks;
 int XSelectInputH(Display* dpy, Window win, long mask) {
     long* value;
@@ -2433,6 +2454,41 @@ struct TestResult xorg__emit_bypass__bypassed_frame_is_mapped() {
     );
 }
 
+struct TestResult xorg__emit_nothing__bypassed_unmapped_window_requests_compositing() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyDelete,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 struct TestResult xorg__emit_bypass__bypassed_window_becomes_client() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -2763,7 +2819,7 @@ struct TestResult xorg__emit_damage__window_is_damaged() {
     );
 }
 
-struct TestResult xorg__emit_damage__damaged_window_is_unmapped() {
+struct TestResult xorg__emit_nothing__damaged_window_is_unmapped() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -2787,7 +2843,6 @@ struct TestResult xorg__emit_damage__damaged_window_is_unmapped() {
     Vector* events = readAllEvents(&ctx);
 
     assertEvents(events,
-        (struct Event){.type = ET_DAMAGE, .damage.xid = 1}
     );
 }
 
@@ -3094,6 +3149,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);
     TEST(xorg__emit_bypass__bypassed_frame_is_mapped);
     TEST(xorg__emit_bypass__bypassed_window_becomes_client);
+    TEST(xorg__emit_nothing__bypassed_unmapped_window_requests_compositing);
 
     // These don't work yet
     /* TEST(xorg__not_emit_map__subwindow_is_mapped); */
@@ -3105,7 +3161,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_wintype__name_atom_changes_on_client);
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
     TEST(xorg__emit_damage__window_is_damaged);
-    TEST(xorg__emit_damage__damaged_window_is_unmapped);
+    TEST(xorg__emit_nothing__damaged_window_is_unmapped);
 
     TEST(xorg__set_event_mask__window_is_created);
     TEST(xorg__set_event_mask__subwindow_is_created);

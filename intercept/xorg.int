@@ -1,0 +1,60 @@
+version 1
+
+include <GL/glx.h>
+
+include <X11/Xlib-xcb.h>
+include <X11/extensions/Xfixes.h>
+include <X11/extensions/Xcomposite.h>
+include <X11/extensions/Xdamage.h>
+include <X11/extensions/Xrender.h>
+include <X11/extensions/shape.h>
+include <X11/extensions/Xrandr.h>
+include <X11/extensions/Xdbe.h>
+include <X11/extensions/Xinerama.h>
+include <X11/extensions/sync.h>
+
+fun Status XGetWindowAttributes(Display* dpy, Window window, XWindowAttributes* attrs);
+fun int XNextEvent(Display* dpy, XEvent* ev);
+fun int XEventsQueued(Display* dpy, int mode);
+fun Window RootWindow(Display* dpy, int scr);
+fun int XSelectInput(Display* dpy, Window win, long mask);
+
+fun GLXFBConfig* glXGetFBConfigs(Display* dpy, int scr, int* num);
+fun Bool XQueryExtension(Display* dpy, const char* name, int* opcode, int* event, int* error);
+
+fun Status XCompositeQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XFixesQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XDamageQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XRenderQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XShapeQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XRRQueryVersion(Display* dpy, int* major, int* minor);
+fun Status glXQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XineramaQueryVersion(Display* dpy, int* major, int* minor);
+fun Status XSyncInitialize(Display* dpy, int* major, int* minor);
+
+ffun Atom XInternAtom(Display* dpy, char* name, Bool query);
+
+fun Damage XDamageCreate(Display* dpy, Window win, int level);
+fun void XDamageDestroy(Display* dpy, Damage damage);
+fun void XDamageSubtract(Display* dpy, Damage damage, XserverRegion repair, XserverRegion parts);
+
+fun XserverRegion XFixesCreateRegion(Display* dpy, XRectangle* rectangles, int nrectangles);
+fun XserverRegion XFixesCreateRegionFromWindow(Display* dpy, Window window, int kind);
+fun void XFixesTranslateRegion(Display* dpy, XserverRegion region, int dx, int dy);
+fun void XFixesUnionRegion(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2);
+fun void XFixesIntersectRegion(Display* dpy, XserverRegion dst, XserverRegion src1, XserverRegion src2);
+fun void XFixesInvertRegion(Display* dpy, XserverRegion dst, XRectangle* rect, XserverRegion src);
+fun void XFixesDestroyRegion(Display* dpy, XserverRegion region);
+fun void XFixesSetWindowShapeRegion(Display* dpy, Window win, int shape_kind, int x_off, int y_off, XserverRegion region);
+fun XRectangle* XFixesFetchRegion(Display* dpy, XserverRegion region, int* count_ret);
+
+fun void XShapeSelectInput(Display* dpy, Window win, unsigned long mask);
+
+fun int glXGetFBConfigAttrib(Display* dpy, GLXFBConfig config, int attribute, int* value);
+
+fun xcb_connection_t* XGetXCBConnection(Display *dpy);
+
+fun xcb_get_property_cookie_t xcb_get_property(xcb_connection_t* conn, uint8_t _delete, xcb_window_t window, xcb_atom_t property, xcb_atom_t type, uint32_t long_offset, uint32_t long_length);
+fun xcb_get_property_reply_t* xcb_get_property_reply(xcb_connection_t* conn, xcb_get_property_cookie_t cookie, xcb_generic_error_t **e);
+fun void* xcb_get_property_value(const xcb_get_property_request_t* reply);
+fun int xcb_get_property_value_length(const xcb_get_property_reply_t* reply);
