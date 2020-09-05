@@ -239,6 +239,12 @@ static bool isWindowActive(const struct X11Context* xctx, Window w) {
     return rc != 0;
 }
 
+static bool isWindowMapped(const struct X11Context* xctx, Window w) {
+    Word_t rc;
+    J1T(rc, xctx->mapped, w);
+    return rc != 0;
+}
+
 static bool detachSubtree(struct X11Context* xctx, Window xid) {
     int rc_int;
     JLD(rc_int, xctx->winParent, xid);
@@ -928,16 +934,17 @@ static void fillBuffer(struct X11Context* xctx) {
                             Word_t rc;
                             J1S(rc, xctx->bypassed, affected);
                             assert(rc != 0);
-
-                            struct Event event = {
-                                .type = ET_BYPASS,
-                                .bypass.xid = affected,
-                            };
-                            pushEvent(xctx, event);
+                            if(isWindowMapped(xctx, affected)) {
+                                struct Event event = {
+                                    .type = ET_BYPASS,
+                                    .bypass.xid = affected,
+                                };
+                                pushEvent(xctx, event);
+                            }
                         } else {
                             Word_t rc;
                             J1U(rc, xctx->bypassed, affected);
-                            if(rc == 1) {
+                            if(rc == 1 && isWindowMapped(xctx, affected)) {
                                 struct Event event = {
                                     .type = ET_MAP,
                                     .bypass.xid = affected,
@@ -948,7 +955,7 @@ static void fillBuffer(struct X11Context* xctx) {
                     } else if(ev->state == PropertyDelete) {
                         Word_t rc;
                         J1U(rc, xctx->bypassed, affected);
-                        if(rc == 1) {
+                        if(rc == 1 && isWindowMapped(xctx, affected)) {
                             struct Event event = {
                                 .type = ET_MAP,
                                 .bypass.xid = affected,
@@ -976,11 +983,15 @@ static void fillBuffer(struct X11Context* xctx) {
                 JLG(damage, xctx->damage, ev->drawable);
                 XDamageSubtractH(xctx->display, *damage, None, None);
 
-                struct Event event = {
-                    .type = ET_DAMAGE,
-                    .damage.xid = ev->drawable,
-                };
-                pushEvent(xctx, event);
+                Word_t rc;
+                J1T(rc, xctx->mapped, ev->drawable);
+                if(rc == 1) {
+                    struct Event event = {
+                        .type = ET_DAMAGE,
+                        .damage.xid = ev->drawable,
+                    };
+                    pushEvent(xctx, event);
+                }
                 break;
             } else if(xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES
                     && xorgContext_convertEvent(&xctx->capabilities, PROTO_SHAPE, raw.type) == ShapeNotify) {

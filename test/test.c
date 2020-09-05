@@ -2406,6 +2406,36 @@ struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
     );
 }
 
+struct TestResult xorg__emit_nothing__unmapped_frame_requests_bypass() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 struct TestResult xorg__emit_bypass__unmapped_bypassed_window_maps() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -2856,35 +2886,7 @@ struct TestResult xorg__not_emit_wintype__name_atom_changes_on_filler() {
     );
 }
 
-struct TestResult xorg__emit_damage__window_is_damaged() {
-    struct X11Context ctx;
-    struct Atoms atoms;
-    Display* dpy = (void*)0x01;
-    xorgContext_init(&ctx, dpy, 0, &atoms);
-
-    XWindowAttributes attr = {
-        .class = InputOutput,
-    };
-    setWindowAttr(1, &attr);
-    vector_putBack(&eventQ, &(XCreateWindowEvent){
-        .type = CreateNotify,
-        .window = 1,
-        .parent = 0,
-    });
-    readAllEvents(&ctx);
-
-    vector_putBack(&eventQ, &(XDamageNotifyEvent){
-        .type = ctx.capabilities.event[PROTO_DAMAGE] - XDamageNotify,
-        .drawable = 1,
-    });
-    Vector* events = readAllEvents(&ctx);
-
-    assertEvents(events,
-        (struct Event){.type = ET_DAMAGE, .damage.xid = 1}
-    );
-}
-
-struct TestResult xorg__emit_nothing_when_damaged__window_is_unmapped() {
+struct TestResult xorg__emit_nothing__unmapped_window_is_damaged() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -2911,7 +2913,7 @@ struct TestResult xorg__emit_nothing_when_damaged__window_is_unmapped() {
     );
 }
 
-struct TestResult xorg__emit_damage__unmapped_window_is_damaged() {
+struct TestResult xorg__emit_damage__mapped_window_is_damaged() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -2925,6 +2927,10 @@ struct TestResult xorg__emit_damage__unmapped_window_is_damaged() {
         .type = CreateNotify,
         .window = 1,
         .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
     });
     readAllEvents(&ctx);
 
@@ -3210,6 +3216,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_unmap__frame_is_unmapped);
 
     TEST(xorg__emit_bypass__mapped_frame_requests_bypass);
+    TEST(xorg__emit_nothing__unmapped_frame_requests_bypass);
     TEST(xorg__emit_bypass__unmapped_bypassed_window_maps);
     TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);
     TEST(xorg__emit_bypass__bypassed_frame_is_mapped);
@@ -3225,8 +3232,8 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_wintype_and_winclass__class_atom_changes);
     TEST(xorg__emit_wintype__name_atom_changes_on_client);
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
-    TEST(xorg__emit_damage__window_is_damaged);
-    TEST(xorg__emit_nothing_when_damaged__window_is_unmapped);
+    TEST(xorg__emit_damage__mapped_window_is_damaged);
+    TEST(xorg__emit_nothing__unmapped_window_is_damaged);
 
     TEST(xorg__set_event_mask__window_is_created);
     TEST(xorg__set_event_mask__subwindow_is_created);
