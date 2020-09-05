@@ -604,12 +604,12 @@ static void refreshRoot(struct X11Context* xctx) {
 }
 
 static int32_t xBypassState(const struct X11Context* xctx, const Window win) {
-    xcb_connection_t* xcb = XGetXCBConnection(xctx->display);
+    xcb_connection_t* xcb = XGetXCBConnectionH(xctx->display);
 
-    xcb_get_property_cookie_t cookie = xcb_get_property(xcb, false, win, xctx->atoms->atom_bypass, XA_CARDINAL, 0, 1);
+    xcb_get_property_cookie_t cookie = xcb_get_propertyH(xcb, false, win, xctx->atoms->atom_bypass, XA_CARDINAL, 0, 1);
 
     xcb_generic_error_t *error;
-    xcb_get_property_reply_t *reply = xcb_get_property_reply(xcb, cookie, &error);
+    xcb_get_property_reply_t *reply = xcb_get_property_replyH(xcb, cookie, &error);
     if(reply == NULL) {
         printf_errf("Failed fetching bypass property: code %d", error->error_code);
         free(error);
@@ -632,13 +632,13 @@ static int32_t xBypassState(const struct X11Context* xctx, const Window win) {
         free(reply);
         return -1;
     }
-    if(xcb_get_property_value_length(reply) == 0) {
+    if(xcb_get_property_value_lengthH(reply) == 0) {
         printf_errf("The _NET_WM_BYPASS_COMPOSITOR property was 0 size");
         free(reply);
         return -1;
     }
 
-    int32_t bypass = *(uint32_t*)xcb_get_property_value(reply);
+    int32_t bypass = *(uint32_t*)xcb_get_property_valueH(reply);
     free(reply);
 
     return bypass;

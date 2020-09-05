@@ -1349,21 +1349,81 @@ xcb_connection_t* XGetXCBConnectionH(Display *dpy) {
     return NULL;
 }
 
+struct windowProperty {
+    struct xcb_get_property_reply_t reply;
+    char value[];
+};
+void* winProp;
+void* reqs;
+uint64_t nextSeq = 0;
 xcb_get_property_cookie_t xcb_get_propertyH(xcb_connection_t* conn, uint8_t _delete, xcb_window_t window, xcb_atom_t property, xcb_atom_t type, uint32_t long_offset, uint32_t long_length) {
+    void** perWindow;
+    JLG(perWindow, winProp, window);
+    assert(perWindow != NULL);
+
+    struct windowProperty** value;
+    JLG(value, *perWindow, property);
+    assert(value != NULL);
+
+    struct windowProperty** requestPtr;
+    JLI(requestPtr, reqs, nextSeq);
+    assert(requestPtr != NULL);
+
+    *requestPtr = *value;
+
     return (xcb_get_property_cookie_t) {
+        .sequence = nextSeq++
     };
 }
 
 xcb_get_property_reply_t* xcb_get_property_replyH(xcb_connection_t* conn, xcb_get_property_cookie_t cookie, xcb_generic_error_t **e) {
-    return NULL;
+    *e = NULL;
+
+    struct windowProperty** value;
+    JLG(value, reqs, cookie.sequence);
+    assert(value != NULL);
+
+    return &(*value)->reply;
 }
 
-void* xcb_get_property_valueH(const xcb_get_property_request_t* reply) {
-    return NULL;
+void* xcb_get_property_valueH(const xcb_get_property_reply_t* reply) {
+    struct windowProperty* prop = (struct windowProperty*) reply;
+    return &prop->value;
 }
 
 int xcb_get_property_value_lengthH(const xcb_get_property_reply_t* reply) {
-    return 0;
+    return reply->value_len;
+}
+
+void setProperty(Window win, Atom atom, uint32_t value) {
+    uint32_t value_len = 4;
+    uint32_t total_len = sizeof(struct windowProperty) + value_len;
+    struct windowProperty* prop = malloc(total_len);
+    assert(prop != NULL);
+
+    *prop = (struct windowProperty) {
+        .reply = {
+            .response_type = XCB_GET_PROPERTY,
+            .length = total_len,
+            .format = 32,
+            .type = XA_CARDINAL,
+            .bytes_after = 0,
+            .value_len = value_len / 4,
+        },
+    };
+
+    memcpy(&prop->value, &value, sizeof(value_len));
+
+    // Not always an insert. If the value is already there we just modify it
+    void** perWindow;
+    JLI(perWindow, winProp, win);
+    assert(perWindow != NULL);
+
+    struct windowProperty** propPtr;
+    JLI(propPtr, *perWindow, atom);
+    assert(value != NULL);
+
+    *propPtr = prop;
 }
 
 void* inputMasks;
@@ -1380,7 +1440,6 @@ long inputMask(Window win) {
         return -1;
     }
     return *value;
-    return 1;
 }
 
 void setWindowAttr(Window window, XWindowAttributes* attrs) {
@@ -2322,6 +2381,7 @@ struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2356,6 +2416,7 @@ struct TestResult xorg__emit_bypass__unmapped_bypassed_window_maps() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2390,6 +2451,7 @@ struct TestResult xorg__emit_map__bypassed_mapped_frame_requests_compositing() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2430,6 +2492,7 @@ struct TestResult xorg__emit_bypass__bypassed_frame_is_mapped() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2464,6 +2527,7 @@ struct TestResult xorg__emit_nothing__bypassed_unmapped_window_requests_composit
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2500,6 +2564,7 @@ struct TestResult xorg__emit_bypass__bypassed_window_becomes_client() {
     };
     setWindowAttr(1, &attr);
     setWindowAttr(2, &attr);
+    setProperty(2, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2819,7 +2884,7 @@ struct TestResult xorg__emit_damage__window_is_damaged() {
     );
 }
 
-struct TestResult xorg__emit_nothing__damaged_window_is_unmapped() {
+struct TestResult xorg__emit_nothing_when_damaged__window_is_unmapped() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -3161,7 +3226,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_wintype__name_atom_changes_on_client);
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
     TEST(xorg__emit_damage__window_is_damaged);
-    TEST(xorg__emit_nothing__damaged_window_is_unmapped);
+    TEST(xorg__emit_nothing_when_damaged__window_is_unmapped);
 
     TEST(xorg__set_event_mask__window_is_created);
     TEST(xorg__set_event_mask__subwindow_is_created);
