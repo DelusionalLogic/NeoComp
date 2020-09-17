@@ -52,7 +52,7 @@ fun void XShapeSelectInput(Display* dpy, Window win, unsigned long mask);
 
 fun int glXGetFBConfigAttrib(Display* dpy, GLXFBConfig config, int attribute, int* value);
 
-fun xcb_connection_t* XGetXCBConnection(Display* dpy);
+fun xcb_connection_t* XGetXCBConnection(Display*  dpy);
 
 fun xcb_get_property_cookie_t xcb_get_property(xcb_connection_t* conn, uint8_t _delete, xcb_window_t window, xcb_atom_t property, xcb_atom_t type, uint32_t long_offset, uint32_t long_length);
 fun xcb_get_property_reply_t* xcb_get_property_reply(xcb_connection_t* conn, xcb_get_property_cookie_t cookie, xcb_generic_error_t** e);

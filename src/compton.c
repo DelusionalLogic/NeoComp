@@ -748,31 +748,21 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
-static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
-    session_t * const ps = ps_g;
-
+static char* eventName(struct X11Context* xctx, XErrorEvent* ev) {
     int o = 0;
-    const char *name = "Unknown";
+#define CASESTRRET2(s)   case s: return #s; break
 
-    if (xorgContext_convertOpcode(&ps->xcontext.capabilities, ev->request_code) == PROTO_COMPOSITE
-            && ev->minor_code == X_CompositeRedirectSubwindows) {
-        fprintf(stderr, "Another composite manager is already running\n");
-        exit(1);
-    }
-
-#define CASESTRRET2(s)   case s: name = #s; break
-
-    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_FIXES, ev->error_code);
+    o = xorgContext_convertError(&xctx->capabilities, PROTO_FIXES, ev->error_code);
     switch (o) {
         CASESTRRET2(BadRegion);
     }
 
-    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_DAMAGE, ev->error_code);
+    o = xorgContext_convertError(&xctx->capabilities, PROTO_DAMAGE, ev->error_code);
     switch (o) {
         CASESTRRET2(BadDamage);
     }
 
-    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_RENDER, ev->error_code);
+    o = xorgContext_convertError(&xctx->capabilities, PROTO_RENDER, ev->error_code);
     switch (o) {
         CASESTRRET2(BadPictFormat);
         CASESTRRET2(BadPicture);
@@ -781,7 +771,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
         CASESTRRET2(BadGlyph);
     }
 
-    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_GLX, ev->error_code);
+    o = xorgContext_convertError(&xctx->capabilities, PROTO_GLX, ev->error_code);
     switch (o) {
         CASESTRRET2(GLX_BAD_SCREEN);
         CASESTRRET2(GLX_BAD_ATTRIBUTE);
@@ -792,7 +782,7 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
         CASESTRRET2(GLX_BAD_ENUM);
     }
 
-    o = xorgContext_convertError(&ps->xcontext.capabilities, PROTO_SYNC, ev->error_code);
+    o = xorgContext_convertError(&xctx->capabilities, PROTO_SYNC, ev->error_code);
     switch (o) {
         CASESTRRET2(XSyncBadCounter);
         CASESTRRET2(XSyncBadAlarm);
@@ -820,6 +810,20 @@ static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
     }
 
 #undef CASESTRRET2
+
+    return "Unknown";
+}
+
+static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
+    session_t * const ps = ps_g;
+
+    if (xorgContext_convertOpcode(&ps->xcontext.capabilities, ev->request_code) == PROTO_COMPOSITE
+            && ev->minor_code == X_CompositeRedirectSubwindows) {
+        fprintf(stderr, "Another composite manager is already running\n");
+        exit(1);
+    }
+
+    const char* name = eventName(&ps->xcontext, ev);
 
     print_timestamp(ps);
     {

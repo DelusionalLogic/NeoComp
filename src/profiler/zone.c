@@ -74,6 +74,7 @@ void zone_leave_extra_raw(struct ProgramZone* zone, char* location, char* format
     va_start(args, format);
 
     struct ZoneEvent* event = reserve();
+    event->location = location;
     vsnprintf(event->userdata, 64, format, args);
     zone_event(zone, ZE_LEAVE, event);
 
