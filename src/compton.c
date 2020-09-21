@@ -2836,11 +2836,6 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update_wintype);
 
-        // Fetch all the class changes for newly mapped windows
-        for_components(it, em, COMPONENT_MAP, CQ_END) {
-            swiss_addComponent(em, COMPONENT_CLASS_CHANGE, it.id);
-        }
-
         fill_class_changes(&ps->win_list, ps);
         fill_wintype_changes(&ps->win_list, ps);
 
