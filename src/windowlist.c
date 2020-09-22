@@ -195,6 +195,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             {
                 shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
+                shader_set_future_uniform_vec2(shader_type->window, &physical->size);
 
                 double opac = opacity->opacity / 100.0;
                 shader_set_future_uniform_float(shader_type->opacity, tint->color.w * opac);
@@ -281,6 +282,7 @@ void windowlist_drawTint(session_t* ps) {
     struct Colored* shader_type = program->shader_type;
 
     shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
+    shader_set_future_uniform_vec2(shader_type->window, &(Vector2){{0, 0}});
     shader_use(program);
 
     for_components(it, &ps->win_list,
@@ -290,6 +292,7 @@ void windowlist_drawTint(session_t* ps) {
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
 
+		shader_set_uniform_vec2(shader_type->window, &physical->size);
         shader_set_uniform_float(shader_type->opacity, tint->color.w);
         shader_set_uniform_vec3(shader_type->color, &tint->color.rgb);
 

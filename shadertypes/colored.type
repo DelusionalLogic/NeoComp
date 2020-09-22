@@ -6,5 +6,6 @@ struct Colored
 
 uniform mvp
 uniform viewport
+uniform window
 uniform opacity 
 uniform color

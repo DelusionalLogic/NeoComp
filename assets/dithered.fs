@@ -4,7 +4,6 @@ in vec2 fragmentUV;
 uniform sampler2D tex_scr;
 uniform sampler2D noise_scr;
 
-
 float sampleNoise(vec2 uv) {
     vec4 noise = texture2D(noise_scr, uv / 8.0);
     return noise.r / 64.0 - (1.0 / 128.0);

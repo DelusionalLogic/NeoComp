@@ -1943,6 +1943,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   }
 
   XSetErrorHandler(xerror);
+  XSynchronize(ps->dpy, true);
 
   ps->scr = DefaultScreen(ps->dpy);
   ps->root = RootWindow(ps->dpy, ps->scr);
