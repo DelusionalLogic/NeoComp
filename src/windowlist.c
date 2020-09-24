@@ -292,7 +292,7 @@ void windowlist_drawTint(session_t* ps) {
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, it.id);
 
-		shader_set_uniform_vec2(shader_type->window, &physical->size);
+        shader_set_uniform_vec2(shader_type->window, &physical->size);
         shader_set_uniform_float(shader_type->opacity, tint->color.w);
         shader_set_uniform_vec3(shader_type->color, &tint->color.rgb);
 

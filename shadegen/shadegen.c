@@ -155,6 +155,8 @@ int main(int argc, char **argv) {
             fprintf(out, "        return NULL;\n");
             fprintf(out, "    }\n");
             fprintf(out, "    bool found[%d] = {false};\n", type[i].num_uniforms);
+
+            fprintf(out, "    printf(\"Uniforms in shader \\\"%s\\\"\\n\");\n", type[i].name);
             fprintf(out, "    for(int i = 0; i < program->uniforms_num; i++) {\n");
             for(int j = 0; j < type[i].num_uniforms; j++) {
                 if(j == 0) {
@@ -162,7 +164,11 @@ int main(int argc, char **argv) {
                 } else {
                     fprintf(out, "        else if(strcmp(names[i], \"%s\") == 0) {\n", type[i].uniforms[j]);
                 }
-                fprintf(out, "            type->%s = &program->uniforms[i];\n", type[i].uniforms[j]);
+                fprintf(out, "            struct shader_value* uniform = &program->uniforms[i];\n");
+                fprintf(out, "            type->%s = uniform;\n", type[i].uniforms[j]);
+                fprintf(out, "            uniform->gl_uniform = glGetUniformLocation(program->gl_program, \"%s\");\n", type[i].uniforms[j]);
+                fprintf(out, "            printf(\"\\tUniform \\\"%s\\\" has id %%d, required %%d\\n\", uniform->gl_uniform, uniform->required);\n", type[i].uniforms[j]);
+                fprintf(out, "            shader_clear_future_uniform(uniform);\n");
                 fprintf(out, "            found[%d] = true;\n", j);
                 fprintf(out, "        }\n");
             }
