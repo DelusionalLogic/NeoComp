@@ -96,8 +96,6 @@ typedef struct _options_t {
   bool fork_after_register;
   /// Blur Level
   int blur_level;
-  /// Whether to re-redirect screen on root size change.
-  bool reredir_on_root_change;
   /// Path to log file.
   char *logpath;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.

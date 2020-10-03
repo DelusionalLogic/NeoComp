@@ -232,7 +232,10 @@ glx_init(session_t *ps, bool need_render) {
 
   // Render preparations
   if (need_render) {
-    glx_on_root_change(ps);
+    glViewport(0, 0, ps->root_size.x, ps->root_size.y);
+
+    ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
+    view = ps->psglx->view;
   }
 
   if(!framebuffer_init(&psglx->shared_fbo)) {
@@ -278,14 +281,4 @@ glx_destroy(session_t *ps) {
 
   free(ps->psglx);
   ps->psglx = NULL;
-}
-
-/**
- * Callback to run on root window size change.
- */
-void glx_on_root_change(session_t *ps) {
-  glViewport(0, 0, ps->root_size.x, ps->root_size.y);
-
-  ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
-  view = ps->psglx->view;
 }

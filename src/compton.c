@@ -629,23 +629,20 @@ restack_win(session_t *ps, struct Restack* ev) {
     vector_circulate(&ps->order, w_loc, new_loc);
 }
 
-static void
-configure_win(session_t *ps, struct MandR* ev) {
-  // On root window changes
-  if (ev->xid == ps->root) {
-
+static void canvas_change(session_t* ps, struct CanvasChange* ev) {
     ps->root_size = ev->size;
-    // Re-redirect screen if required
-    if (ps->o.reredir_on_root_change) {
-      redir_stop(ps);
-      redir_start(ps);
-    }
 
-    // GLX root change callback
-    glx_on_root_change(ps);
+    glViewport(0, 0, ps->root_size.x, ps->root_size.y);
+
+    ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
+    view = ps->psglx->view;
 
     return;
-  }
+}
+
+static void
+configure_win(session_t *ps, struct MandR* ev) {
+  assert(ev->xid != ps->root);
 
   // Other window changes
   win *w = find_win(ps, ev->xid);
@@ -1227,7 +1224,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "blur-level", required_argument, NULL, 301 },
     { "show-all-xerrors", no_argument, NULL, 314 },
     { "version", no_argument, NULL, 318 },
-    { "reredir-on-root-change", no_argument, NULL, 731 },
     // Must terminate with a NULL entry
     { NULL, 0, NULL, 0 },
   };
@@ -1349,7 +1345,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         break;
       P_CASELONG(293, benchmark);
       P_CASELONG(301, blur_level);
-      P_CASEBOOL(731, reredir_on_root_change);
       default:
         usage(1);
         break;
@@ -1703,6 +1698,12 @@ mainloop(session_t *ps) {
                     zone_enter_extra(&ZONE_one_event, "CLIENT");
                     processed = true;
                     getsclient(ps, &event.cli);
+                    zone_leave(&ZONE_one_event);
+                    break;
+                case ET_CCHANGE:
+                    zone_enter_extra(&ZONE_one_event, "CCHANGE");
+                    processed = true;
+                    canvas_change(ps, &event.cchange);
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_MANDR:
