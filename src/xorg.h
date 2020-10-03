@@ -62,6 +62,7 @@ enum EventType {
     ET_MAP,
     ET_UNMAP,
     ET_CLIENT,
+    ET_CCHANGE,
     ET_MANDR,
     ET_RESTACK,
     ET_FOCUS,
@@ -97,6 +98,10 @@ struct UnmapWin {
 struct GetsClient {
     Window xid;
     Window client_xid;
+};
+
+struct CanvasChange {
+    Vector2 size;
 };
 
 struct MandR {
@@ -155,6 +160,7 @@ struct Event {
         struct MapWin map;
         struct UnmapWin unmap;
         struct GetsClient cli;
+        struct CanvasChange cchange;
         struct MandR mandr;
         struct Restack restack;
         struct Focus focus;

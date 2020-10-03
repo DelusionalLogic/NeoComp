@@ -780,7 +780,16 @@ static void fillBuffer(struct X11Context* xctx) {
         case ConfigureNotify: {
             XConfigureEvent* ev = (XConfigureEvent *)&raw;
             zone_scope_extra(&ZONE_event_preprocess, "Configure");
-            createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->override_redirect, ev->width, ev->height, ev->above);
+            if(ev->window == xctx->root) {
+                // Root changes change the rendering canvas
+                struct Event event = {
+                    .type = ET_CCHANGE,
+                    .cchange.size = (Vector2){{ev->width, ev->height}},
+                };
+                pushEvent(xctx, event);
+            } else {
+                createMandr(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->override_redirect, ev->width, ev->height, ev->above);
+            }
             break;
         }
         case CirculateNotify: {

@@ -2311,6 +2311,28 @@ struct TestResult xorg__not_emit_restack__restacked_window_is_not_frame() {
     );
 }
 
+struct TestResult xorg__emit_mandr__window_is_configured() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(0, &attr);
+
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = ConfigureNotify,
+        .window = 0,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_CCHANGE}
+    );
+}
+
 struct TestResult xorg__emit_map__frame_is_mapped() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -3211,6 +3233,8 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_restack__window_placed_on_top);
     TEST(xorg__emit_restack__window_placed_on_bottom);
     TEST(xorg__not_emit_restack__restacked_window_is_not_frame);
+
+    TEST(xorg__emit_mandr__window_is_configured);
 
     TEST(xorg__emit_map__frame_is_mapped);
     TEST(xorg__emit_unmap__frame_is_unmapped);
