@@ -942,7 +942,10 @@ static void fillBuffer(struct X11Context* xctx) {
                         if(xBypassState(xctx, ev->window) == 1) {
                             Word_t rc;
                             J1S(rc, xctx->bypassed, affected);
-                            assert(rc != 0);
+                            if(rc == 0) {
+                                break;
+                            }
+
                             if(isWindowMapped(xctx, affected)) {
                                 struct Event event = {
                                     .type = ET_BYPASS,

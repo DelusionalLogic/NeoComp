@@ -2431,6 +2431,46 @@ struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
     );
 }
 
+struct TestResult xorg__emit_nothing__bypassed_frame_requests_bypass() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 struct TestResult xorg__emit_nothing__unmapped_frame_requests_bypass() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -3243,6 +3283,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_unmap__frame_is_unmapped);
 
     TEST(xorg__emit_bypass__mapped_frame_requests_bypass);
+    TEST(xorg__emit_nothing__bypassed_frame_requests_bypass);
     TEST(xorg__emit_nothing__unmapped_frame_requests_bypass);
     TEST(xorg__emit_bypass__unmapped_bypassed_window_maps);
     TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);

@@ -109,6 +109,12 @@ void shadowsystem_tick(Swiss* em) {
             swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
         }
     }
+
+    for_components(it, em, COMPONENT_BYPASS, COMPONENT_SHADOW, CQ_END) {
+        struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);
+        shadow_cache_delete(shadow);
+        swiss_removeComponent(em, COMPONENT_SHADOW, it.id);
+    }
 }
 
 void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
