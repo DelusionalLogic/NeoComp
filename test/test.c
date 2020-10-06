@@ -1383,7 +1383,10 @@ xcb_get_property_reply_t* xcb_get_property_replyH(xcb_connection_t* conn, xcb_ge
     JLG(value, reqs, cookie.sequence);
     assert(value != NULL);
 
-    return &(*value)->reply;
+    struct windowProperty* ret = malloc(sizeof(struct windowProperty) + (*value)->reply.value_len);
+    memcpy(ret, *value, sizeof(struct windowProperty) + (*value)->reply.value_len);
+
+    return &ret->reply;
 }
 
 void* xcb_get_property_valueH(const xcb_get_property_reply_t* reply) {
