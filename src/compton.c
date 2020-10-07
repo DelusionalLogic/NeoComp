@@ -1022,7 +1022,6 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
         ps->active_win = NULL;
         return;
     }
-
     win *w = find_win_all(ps, ev->xid);
 
     if(w == NULL) {
@@ -1641,6 +1640,8 @@ static void ev_bypass(session_t* ps, struct Bypass* ev) {
         swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
     }
 
+    struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
+    stateful->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_BYPASS, wid);
 }
 
