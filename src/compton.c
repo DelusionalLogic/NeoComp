@@ -982,8 +982,8 @@ static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
 }
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
-    // We just destroyed the window, so it shouldn't be found
-    assert(find_toplevel(ps, event->client_xid) != -1);
+    // The new client shouldn't be the client of any other window
+    assert(find_toplevel(ps, event->client_xid) == -1);
 
     // Find our new frame
     win *w_frame = find_toplevel2(ps, event->xid);

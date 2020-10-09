@@ -1052,6 +1052,113 @@ void xorg_nextEvent(struct X11Context* xctx, struct Event* event) {
     }
 }
 
+static bool hasProperty(xcb_connection_t* xcb, Atom atom, Window xid) {
+    xcb_get_property_cookie_t cookie = xcb_get_propertyH(xcb, false, xid, atom, XA_CARDINAL, 0, 1);
+
+    xcb_generic_error_t *error;
+    xcb_get_property_reply_t *reply = xcb_get_property_replyH(xcb, cookie, &error);
+    if(reply == NULL) {
+        printf_errf("Failed initializing window: code %d", error->error_code);
+        free(error);
+        return false;
+    }
+
+    bool ret = reply->type != None;
+    free(reply);
+    return ret;
+}
+
+static void recurseWindow(struct X11Context* xctx, Window xid);
+
+static void beginSubWindow(struct X11Context* xctx, Window xid, Window parent) {
+    attachSubtree(xctx, parent, xid);
+    XSelectInputH(xctx->display, xid, PropertyChangeMask);
+
+    XWindowAttributes attribs;
+    if (!XGetWindowAttributesH(xctx->display, xid, &attribs)) {
+        // Failed to get window attributes probably means the window is gone
+        // already.
+        return;
+    }
+
+    recurseWindow(xctx, xid);
+
+    if(attribs.class != InputOnly) {
+        if(attribs.map_state == IsViewable) {
+            windowMap(xctx, xid);
+        }
+    }
+
+    xcb_connection_t* xcb = XGetXCBConnectionH(xctx->display);
+
+    if(hasProperty(xcb, xctx->atoms->atom_client, xid)) {
+        Word_t rc;
+        J1S(rc, xctx->client, xid);
+        assert(rc == 1);
+    }
+
+}
+
+static void recurseWindow(struct X11Context* xctx, Window xid) {
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+
+    XQueryTree(xctx->display, xid, &root_return, &parent_return,
+            &children, &nchildren);
+
+    for (unsigned i = 0; i < nchildren; i++) {
+        beginSubWindow(xctx, children[i], xid);
+    }
+}
+
+
+static void beginTopWindow(struct X11Context* xctx, Window xid) {
+    if(xid == xctx->overlay) {
+        // Ignore our overlay window.
+        return;
+    }
+
+    XWindowAttributes attribs;
+    if (!XGetWindowAttributesH(xctx->display, xid, &attribs)) {
+        // Failed to get window attributes probably means the window is gone
+        // already.
+        return;
+    }
+
+    windowCreate(xctx, xid, attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
+    XSelectInputH(xctx->display, xid, PropertyChangeMask);
+
+    recurseWindow(xctx, xid);
+
+    if(attribs.class != InputOnly) {
+        if(attribs.map_state == IsViewable) {
+            windowMap(xctx, xid);
+        }
+    }
+
+    Window client;
+    if(findClosestClient(xctx, xid, &client)) {
+        createGetsClient(xctx, xid, client);
+    } else {
+        client = xid;
+    }
+
+    if(xBypassState(xctx, client) == 1) {
+        Word_t rc;
+        J1S(rc, xctx->bypassed, xid);
+        assert(rc != 0);
+
+        if(isWindowMapped(xctx, xid)) {
+            struct Event event = {
+                .type = ET_BYPASS,
+                .bypass.xid = xid,
+            };
+            pushEvent(xctx, event);
+        }
+    }
+}
+
 // Synthesize events for the initial state
 void xorg_beginEvents(struct X11Context* xctx) {
     Window root_return, parent_return;
@@ -1062,24 +1169,7 @@ void xorg_beginEvents(struct X11Context* xctx) {
             &parent_return, &children, &nchildren);
 
     for (unsigned i = 0; i < nchildren; i++) {
-        if(children[i] == xctx->overlay) {
-            // Ignore our overlay window.
-            continue;
-        }
-
-        XWindowAttributes attribs;
-        if (!XGetWindowAttributesH(xctx->display, children[i], &attribs)) {
-            // Failed to get window attributes probably means the window is gone
-            // already.
-            continue;
-        }
-        windowCreate(xctx, children[i], attribs.x, attribs.y, attribs.border_width, attribs.width, attribs.height);
-        XSelectInputH(xctx->display, children[i], PropertyChangeMask);
-        if(attribs.class != InputOnly) {
-            if(attribs.map_state == IsViewable) {
-                windowMap(xctx, children[i]);
-            }
-        }
+        beginTopWindow(xctx, children[i]);
     }
 
     XFree(children);
