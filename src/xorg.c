@@ -1131,12 +1131,6 @@ static void beginTopWindow(struct X11Context* xctx, Window xid) {
 
     recurseWindow(xctx, xid);
 
-    if(attribs.class != InputOnly) {
-        if(attribs.map_state == IsViewable) {
-            windowMap(xctx, xid);
-        }
-    }
-
     Window client;
     if(findClosestClient(xctx, xid, &client)) {
         createGetsClient(xctx, xid, client);
@@ -1148,13 +1142,11 @@ static void beginTopWindow(struct X11Context* xctx, Window xid) {
         Word_t rc;
         J1S(rc, xctx->bypassed, xid);
         assert(rc != 0);
+    }
 
-        if(isWindowMapped(xctx, xid)) {
-            struct Event event = {
-                .type = ET_BYPASS,
-                .bypass.xid = xid,
-            };
-            pushEvent(xctx, event);
+    if(attribs.class != InputOnly) {
+        if(attribs.map_state == IsViewable) {
+            windowMap(xctx, xid);
         }
     }
 }
