@@ -393,7 +393,7 @@ static bool isFrameBypassed(struct X11Context* xctx, Window xid) {
     Window client;
     bool hasClient = findClosestClient(xctx, xid, &client);
     if(hasClient) {
-        if(isWindowActive(xctx, client)) {
+        if(isWindowBypassed(xctx, client)) {
             return true;
         }
     }
@@ -710,11 +710,29 @@ static void fillBuffer(struct X11Context* xctx) {
             XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
             zone_scope_extra(&ZONE_event_preprocess, "Destroy");
 
+            Window frame = findRoot(xctx, ev->window);
+            bool old_bypassed = isFrameBypassed(xctx, frame);
+
             Word_t rc;
             J1U(rc, xctx->mapped, ev->window);
 
             createDestroyWin(xctx, ev->window);
             detachSubtree(xctx, ev->window);
+
+            bool bypassed = isFrameBypassed(xctx, frame);
+            if(frame != ev->window
+                    && old_bypassed != bypassed) {
+                // It's not possible for a destroy to make a window suddenly bypassed
+                assert(bypassed == false);
+                if(isWindowMapped(xctx, frame)) {
+                    struct Event event = {
+                        .type = ET_MAP,
+                        .map.xid = frame,
+                    };
+                    pushEvent(xctx, event);
+                }
+            }
+
             break;
         }
         case ReparentNotify: {
@@ -941,7 +959,7 @@ static void fillBuffer(struct X11Context* xctx) {
                     if(ev->state == PropertyNewValue) {
                         if(xBypassState(xctx, ev->window) == 1) {
                             Word_t rc;
-                            J1S(rc, xctx->bypassed, affected);
+                            J1S(rc, xctx->bypassed, ev->window);
                             if(rc == 0) {
                                 break;
                             }
@@ -955,18 +973,18 @@ static void fillBuffer(struct X11Context* xctx) {
                             }
                         } else {
                             Word_t rc;
-                            J1U(rc, xctx->bypassed, affected);
+                            J1U(rc, xctx->bypassed, ev->window);
                             if(rc == 1 && isWindowMapped(xctx, affected)) {
                                 struct Event event = {
                                     .type = ET_MAP,
-                                    .bypass.xid = affected,
+                                    .map.xid = affected,
                                 };
                                 pushEvent(xctx, event);
                             }
                         }
                     } else if(ev->state == PropertyDelete) {
                         Word_t rc;
-                        J1U(rc, xctx->bypassed, affected);
+                        J1U(rc, xctx->bypassed, ev->window);
                         if(rc == 1 && isWindowMapped(xctx, affected)) {
                             struct Event event = {
                                 .type = ET_MAP,
@@ -1140,7 +1158,7 @@ static void beginTopWindow(struct X11Context* xctx, Window xid) {
 
     if(xBypassState(xctx, client) == 1) {
         Word_t rc;
-        J1S(rc, xctx->bypassed, xid);
+        J1S(rc, xctx->bypassed, client);
         assert(rc != 0);
     }
 
