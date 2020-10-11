@@ -76,7 +76,6 @@ DECLARE_ZONE(x_communication);
 
 DECLARE_ZONE(commit_move);
 DECLARE_ZONE(commit_resize);
-DECLARE_ZONE(commit_reshape);
 
 DECLARE_ZONE(paint);
 DECLARE_ZONE(effect_textures);
@@ -549,15 +548,10 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
       window->id = ev->xid;
   }
   {
-      struct ShapedComponent* shaped = swiss_addComponent(&ps->win_list, COMPONENT_SHAPED, slot);
-      shaped->face = NULL;
-  }
-  {
       // Windows frame themselves until they get a client
       struct HasClientComponent* cli = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, slot);
       cli->id = ev->xid;
   }
-  swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
 
@@ -2105,19 +2099,7 @@ void session_destroy(session_t *ps) {
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
   shadowsystem_delete(&ps->win_list);
   blursystem_delete(&ps->win_list);
-  for_components(it, &ps->win_list,
-      COMPONENT_SHAPED, CQ_END) {
-      struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
-      face_unload_file(shaped->face);
-      free(shaped->face);
-  }
-  swiss_resetComponent(&ps->win_list, COMPONENT_SHAPED);
-  for_components(it, &ps->win_list,
-      COMPONENT_SHAPE_DAMAGED, CQ_END) {
-      struct ShapeDamagedEvent* damaged = swiss_getComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, it.id);
-      vector_kill(&damaged->rects);
-  }
-  swiss_resetComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED);
+  shapesystem_delete(&ps->win_list);
 
   // Free tracked atom list
   atoms_kill(&ps->atoms);
@@ -2374,34 +2356,6 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
         }
     }
 
-    // Destroy shaped components of destroyed windows
-    for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_SHAPED, CQ_END) {
-        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        if(stateful->state == STATE_DESTROYED) {
-            if(shaped->face != NULL) {
-                face_unload_file(shaped->face);
-                free(shaped->face);
-            }
-            swiss_removeComponent(em, COMPONENT_SHAPED, it.id);
-        }
-    }
-
-    for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_SHAPE_DAMAGED, CQ_END) {
-#ifndef NDEBUG
-        struct ShapeDamagedEvent* d = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
-#endif
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        if(stateful->state == STATE_DESTROYED) {
-            assert(d->rects.elementSize == 0);
-            swiss_removeComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
-        }
-    }
-
     for_components(it, em,
             COMPONENT_STATEFUL, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
@@ -2548,28 +2502,6 @@ void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double d
         struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
         t->time = 0;
         t->duration = fmax(dim_fade_time, fmax(fade_time, bg_fade_time));
-    }
-}
-
-static void commit_reshape(Swiss* em, struct X11Context* context) {
-    zone_scope(&ZONE_commit_reshape);
-    for_components(it, em,
-            COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
-        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
-        struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
-
-        if(shaped->face != NULL) {
-            face_unload_file(shaped->face);
-            free(shaped->face);
-        }
-
-        struct face* face = malloc(sizeof(struct face));
-        // Triangulate the rectangles into a triangle vertex stream
-        face_init_rects(face, &shapeDamaged->rects);
-        vector_kill(&shapeDamaged->rects);
-        face_upload(face);
-
-        shaped->face = face;
     }
 }
 
@@ -2868,7 +2800,6 @@ void session_run(session_t *ps) {
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         physics_tick(&ps->win_list);
         commit_move(&ps->win_list, &ps->order);
-        commit_reshape(&ps->win_list, &ps->xcontext);
         zone_leave(&ZONE_input_react);
 
         {
@@ -2930,6 +2861,7 @@ void session_run(session_t *ps) {
         blursystem_tick(em, &ps->order);
         remove_texture_invis_windows(&ps->win_list);
         finish_destroyed_windows(&ps->win_list, ps);
+        shapesystem_finish(&ps->win_list);
         zone_leave(&ZONE_update);
 
         Vector opaque;
@@ -3014,6 +2946,7 @@ void session_run(session_t *ps) {
         swiss_resetComponent(&ps->win_list, COMPONENT_UNMAP);
         swiss_resetComponent(&ps->win_list, COMPONENT_BYPASS);
         swiss_resetComponent(&ps->win_list, COMPONENT_MOVE);
+        swiss_resetComponent(&ps->win_list, COMPONENT_NEW);
         swiss_removeComponentWhere(
             &ps->win_list,
             COMPONENT_RESIZE,
