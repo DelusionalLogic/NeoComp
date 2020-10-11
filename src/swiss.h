@@ -55,6 +55,7 @@ enum ComponentType {
     COMPONENT_TRANSITIONING,
 
     // Messages
+    COMPONENT_NEW,
     COMPONENT_MAP,
     COMPONENT_UNMAP,
     COMPONENT_BYPASS,

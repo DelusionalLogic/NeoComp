@@ -185,7 +185,6 @@ typedef struct {
   /// Pointer to FrameTerminatorGREMEDY function.
   f_FrameTerminatorGREMEDY glFrameTerminatorGREMEDY;
 #endif
-  struct blur blur;
   /// Current GLX Z value.
   int z;
   // Standard view matrix

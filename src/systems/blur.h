@@ -40,14 +40,13 @@ typedef struct glx_blur_cache {
 
 #include "session.h"
 
-void blur_init(struct blur* blur);
-void blur_destroy(struct blur* blur);
-void blursystem_updateBlur(struct blur* blur, Swiss* em, Vector2* root_size,
+void blursystem_init();
+void blursystem_updateBlur(Swiss* em, Vector2* root_size,
         struct Texture* texture, int level, struct _session* ps);
 void blursystem_delete(Swiss* em);
 void blursystem_tick(Swiss* em, Vector* order);
 
-bool blur_backbuffer(struct blur* blur, struct _session_t* ps, const Vector2* pos,
+bool blur_backbuffer(struct _session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
         glx_blur_cache_t* pbc, struct _win* w);
 
