@@ -92,6 +92,16 @@ void shadowsystem_delete(Swiss *em) {
 
 void shadowsystem_tick(Swiss* em) {
     for_components(it, em,
+            COMPONENT_SHADOW, COMPONENT_SHAPE_DAMAGED, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
+    }
+
+    for_components(it, em,
+            COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
+    }
+
+    for_components(it, em,
             COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
         struct ResizeComponent* resize = swiss_getComponent(em, COMPONENT_RESIZE, it.id);
         struct glx_shadow_cache* shadow = swiss_getComponent(em, COMPONENT_SHADOW, it.id);

@@ -521,6 +521,7 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   }
 
 
+  swiss_addComponent(&ps->win_list, COMPONENT_NEW, slot);
   {
       struct PhysicalComponent* phy = swiss_addComponent(&ps->win_list, COMPONENT_PHYSICAL, slot);
       phy->position = ev->pos;
@@ -557,7 +558,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
       cli->id = ev->xid;
   }
   swiss_addComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, slot);
-  swiss_addComponent(&ps->win_list, COMPONENT_BLUR_DAMAGED, slot);
 
   memcpy(new, &win_def, sizeof(win_def));
 
@@ -740,9 +740,6 @@ static void damage_win(session_t *ps, struct Damage *ev) {
         return;
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
-    // @CLEANUP: We shouldn't damage the shadow here. It's more of an update
-    // thing. Maybe make a function for quick or?
-    swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 static char* eventName(struct X11Context* xctx, XErrorEvent* ev) {
@@ -1046,9 +1043,6 @@ static void ev_shape_notify(session_t *ps, struct Shape *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
     // We need to mark some damage
     // The blur isn't damaged, because it will be cut out by the new geometry
-
-    //The shadow is damaged because the outline (and therefore the inner clip) has changed.
-    swiss_ensureComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED, wid);
 }
 
 // === Main ===
@@ -2039,7 +2033,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   bezier_init(&ps->curve, 0.29, 0.1, 0.29, 1);
 
   // Initialize filters, must be preceded by OpenGL context creation
-  blur_init(&ps->psglx->blur);
+  blursystem_init();
   glx_check_err(ps);
 
   XGrabServer(ps->xcontext.display);
@@ -2966,7 +2960,7 @@ void session_run(session_t *ps) {
         shadowsystem_updateShadow(ps, &transparent);
 
         if(ps->o.blur_background)
-            blursystem_updateBlur(&ps->psglx->blur, &ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, (struct _session*) ps);
+            blursystem_updateBlur(&ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, (struct _session*) ps);
 
         zone_leave(&ZONE_effect_textures);
 

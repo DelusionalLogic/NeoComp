@@ -19,6 +19,8 @@ DECLARE_ZONE(detect_changes);
 DECLARE_ZONE(mark_dirty);
 DECLARE_ZONE(fetch_candidates);
 
+struct blur context;
+
 // @CUTNPASTE: This has been copied around a bunch. Maybe it needs someplace
 // for itself.
 static Vector2 X11_rectpos_to_gl(const Vector2* rootsize, const Vector2* xpos, const Vector2* size) {
@@ -37,35 +39,24 @@ static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
 #define fetchSortedWindowsWith(em, result, ...) \
     fetchSortedWindowsWithArr(em, result, (CType[]){ __VA_ARGS__ })
 
-void blur_init(struct blur* blur) {
-    glGenVertexArrays(1, &blur->array);
-    glBindVertexArray(blur->array);
+void blursystem_init() {
+    glGenVertexArrays(1, &context.array);
+    glBindVertexArray(context.array);
 
     // Generate FBO if needed
-    if(!framebuffer_initialized(&blur->fbo)) {
-        if(!framebuffer_init(&blur->fbo)) {
+    if(!framebuffer_initialized(&context.fbo)) {
+        if(!framebuffer_init(&context.fbo)) {
             printf("Failed allocating framebuffer for cache\n");
             return;
         }
     }
-    vector_init(&blur->to_blur, sizeof(win_id), 128);
-    vector_init(&blur->opaque_renderable, sizeof(win_id), 128);
-    vector_init(&blur->shadow_renderable, sizeof(win_id), 128);
-    vector_init(&blur->transparent_renderable, sizeof(win_id), 128);
+    vector_init(&context.to_blur, sizeof(win_id), 128);
+    vector_init(&context.opaque_renderable, sizeof(win_id), 128);
+    vector_init(&context.shadow_renderable, sizeof(win_id), 128);
+    vector_init(&context.transparent_renderable, sizeof(win_id), 128);
 
-	vector_init(&blur->opaque_behind, sizeof(win_id), 16);
-	vector_init(&blur->transparent_behind, sizeof(win_id), 16);
-}
-
-void blur_destroy(struct blur* blur) {
-    glDeleteVertexArrays(1, &blur->array);
-    vector_kill(&blur->to_blur);
-    vector_kill(&blur->opaque_renderable);
-    vector_kill(&blur->shadow_renderable);
-    vector_kill(&blur->transparent_renderable);
-
-	vector_kill(&blur->opaque_behind);
-	vector_kill(&blur->transparent_behind);
+	vector_init(&context.opaque_behind, sizeof(win_id), 16);
+	vector_init(&context.transparent_behind, sizeof(win_id), 16);
 }
 
 void blursystem_delete(Swiss* em) {
@@ -75,6 +66,15 @@ void blursystem_delete(Swiss* em) {
         blur_cache_delete(blur);
     }
     swiss_resetComponent(em, COMPONENT_BLUR);
+
+    glDeleteVertexArrays(1, &context.array);
+    vector_kill(&context.to_blur);
+    vector_kill(&context.opaque_renderable);
+    vector_kill(&context.shadow_renderable);
+    vector_kill(&context.transparent_renderable);
+
+	vector_kill(&context.opaque_behind);
+	vector_kill(&context.transparent_behind);
 }
 
 DECLARE_ZONE(fade_damage_blur);
@@ -166,6 +166,11 @@ static void damage_blur_over_fade(Swiss* em) {
 
 
 void blursystem_tick(Swiss* em, Vector* order) {
+    for_components(it, em,
+            COMPONENT_BLUR, COMPONENT_NEW, CQ_NOT, COMPONENT_BLUR_DAMAGED, CQ_END) {
+        swiss_addComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
+
     damage_blur_over_fade(em);
 
     // Damage all windows on top of windows that resize
@@ -213,7 +218,7 @@ void blursystem_tick(Swiss* em, Vector* order) {
     }
 }
 
-void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
+void blursystem_updateBlur(Swiss* em, Vector2* root_size,
         struct Texture* texture, int level, struct _session* ps) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
@@ -242,32 +247,32 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
 
     {
         zone_scope(&ZONE_fetch_candidates);
-        vector_clear(&gblur->to_blur);
-        fetchSortedWindowsWith(em, &gblur->to_blur, 
+        vector_clear(&context.to_blur);
+        fetchSortedWindowsWith(em, &context.to_blur, 
                 COMPONENT_MUD, COMPONENT_BLUR, COMPONENT_BLUR_DAMAGED, COMPONENT_Z,
                 COMPONENT_PHYSICAL, CQ_END);
 
-        vector_clear(&gblur->opaque_renderable);
-        fetchSortedWindowsWith(em, &gblur->opaque_renderable, 
+        vector_clear(&context.opaque_renderable);
+        fetchSortedWindowsWith(em, &context.opaque_renderable, 
                 COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL,
                 CQ_NOT, COMPONENT_OPACITY, CQ_END);
 
-        vector_clear(&gblur->shadow_renderable);
-        fetchSortedWindowsWith(em, &gblur->shadow_renderable, 
+        vector_clear(&context.shadow_renderable);
+        fetchSortedWindowsWith(em, &context.shadow_renderable, 
                 COMPONENT_MUD, COMPONENT_SHADOW, COMPONENT_Z, COMPONENT_PHYSICAL,
                 CQ_NOT, COMPONENT_OPACITY, CQ_END);
 
         // @PERFORMANCE: We should probably restrict these windows to only those
         // that could possibly do something in drawTransparent. for that we need
         // some way to merge vectors.
-        vector_clear(&gblur->transparent_renderable);
-        fetchSortedWindowsWith(em, &gblur->transparent_renderable, 
+        vector_clear(&context.transparent_renderable);
+        fetchSortedWindowsWith(em, &context.transparent_renderable, 
                 COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL,
                 /* COMPONENT_OPACITY, */ CQ_END);
     }
 
-    framebuffer_resetTarget(&gblur->fbo);
-    framebuffer_bind(&gblur->fbo);
+    framebuffer_resetTarget(&context.fbo);
+    framebuffer_bind(&context.fbo);
 
     struct face* face = assets_load("window.face");
 
@@ -278,7 +283,7 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
     // behind it. Therefore we render them individually, starting from the
     // back.
     size_t index;
-    win_id* w_id = vector_getLast(&gblur->to_blur, &index);
+    win_id* w_id = vector_getLast(&context.to_blur, &index);
     while(w_id != NULL) {
         struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, *w_id);
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, *w_id);
@@ -287,10 +292,10 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
 
         struct Texture* tex = &blur->texture[1];
 
-        framebuffer_resetTarget(&gblur->fbo);
-        framebuffer_targetRenderBuffer_stencil(&gblur->fbo, &blur->stencil);
-        framebuffer_targetTexture(&gblur->fbo, tex);
-        framebuffer_rebind(&gblur->fbo);
+        framebuffer_resetTarget(&context.fbo);
+        framebuffer_targetRenderBuffer_stencil(&context.fbo, &blur->stencil);
+        framebuffer_targetTexture(&context.fbo, tex);
+        framebuffer_rebind(&context.fbo);
 
         Matrix old_view = view;
         view = mat4_orthogonal(glpos.x, glpos.x + physical->size.x, glpos.y, glpos.y + physical->size.y, -1, 1);
@@ -306,20 +311,20 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Find the drawables behind this one
-        vector_clear(&gblur->opaque_behind);
-        windowlist_findbehind(em, &gblur->opaque_renderable, *w_id, &gblur->opaque_behind);
-        vector_clear(&gblur->transparent_behind);
-        windowlist_findbehind(em, &gblur->transparent_renderable, *w_id, &gblur->transparent_behind);
+        vector_clear(&context.opaque_behind);
+        windowlist_findbehind(em, &context.opaque_renderable, *w_id, &context.opaque_behind);
+        vector_clear(&context.transparent_behind);
+        windowlist_findbehind(em, &context.transparent_renderable, *w_id, &context.transparent_behind);
 
-        windowlist_drawBackground(ps, &gblur->opaque_behind);
-        windowlist_draw(ps, &gblur->opaque_behind);
+        windowlist_drawBackground(ps, &context.opaque_behind);
+        windowlist_draw(ps, &context.opaque_behind);
 
         // Draw root
         glEnable(GL_DEPTH_TEST);
         draw_tex(face, texture, &(Vector3){{0, 0, 0.99999}}, root_size);
         glDisable(GL_DEPTH_TEST);
 
-        windowlist_drawTransparent(ps, &gblur->transparent_behind);
+        windowlist_drawTransparent(ps, &context.transparent_behind);
 
         view = old_view;
 
@@ -333,15 +338,15 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
 
         // @PERFORMANCE: I think we could do some batching here as long as the
         // windows don't overlap
-        if(!texture_blur(&blurData, &gblur->fbo, level, false)) {
+        if(!texture_blur(&blurData, &context.fbo, level, false)) {
             printf_errf("Failed blurring the background texture\n");
             return;
         }
 
         // Flip the blur back into texture[0] to clip to the stencil
-        framebuffer_resetTarget(&gblur->fbo);
-        framebuffer_targetTexture(&gblur->fbo, &blur->texture[0]);
-        if(framebuffer_rebind(&gblur->fbo) != 0) {
+        framebuffer_resetTarget(&context.fbo);
+        framebuffer_targetTexture(&context.fbo, &blur->texture[0]);
+        if(framebuffer_rebind(&context.fbo) != 0) {
             printf("Failed binding framebuffer to clip blur\n");
             return;
         }
@@ -363,7 +368,7 @@ void blursystem_updateBlur(struct blur* gblur, Swiss* em, Vector2* root_size,
         /* glDisable(GL_STENCIL_TEST); */
         view = old_view;
 
-        w_id = vector_getPrev(&gblur->to_blur, &index);
+        w_id = vector_getPrev(&context.to_blur, &index);
     }
 
     swiss_resetComponent(em, COMPONENT_BLUR_DAMAGED);

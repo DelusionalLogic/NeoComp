@@ -262,8 +262,6 @@ glx_destroy(session_t *ps) {
   if (!ps->psglx)
     return;
 
-  blur_destroy(&ps->psglx->blur);
-
   glx_check_err(ps);
 
   // Free FBConfigs
