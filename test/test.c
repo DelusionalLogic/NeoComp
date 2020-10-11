@@ -2577,6 +2577,57 @@ struct TestResult xorg__emit_map__bypassed_mapped_frame_requests_compositing() {
     );
 }
 
+struct TestResult xorg__emit_map__mapped_frame_loses_bypassed_client() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    setProperty(2, atoms.atom_bypass, 1);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_client,
+        .state = PropertyNewValue,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 2,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XDestroyWindowEvent){
+        .type = DestroyNotify,
+        .window = 2,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_MAP, .map.xid = 1}
+    );
+}
+
 struct TestResult xorg__emit_bypass__bypassed_frame_is_mapped() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -3287,6 +3338,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_nothing__unmapped_frame_requests_bypass);
     TEST(xorg__emit_bypass__unmapped_bypassed_window_maps);
     TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);
+    TEST(xorg__emit_map__mapped_frame_loses_bypassed_client);
     TEST(xorg__emit_bypass__bypassed_frame_is_mapped);
     TEST(xorg__emit_bypass__bypassed_window_becomes_client);
     TEST(xorg__emit_nothing__bypassed_unmapped_window_requests_compositing);
