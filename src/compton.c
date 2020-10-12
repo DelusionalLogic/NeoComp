@@ -2275,21 +2275,11 @@ void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Frame
         }
     }
 
-    for_componentsArr(it2, em, req_types) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-
-        XSyncFence fence = XSyncCreateFence(xcontext->display, bindsTexture->drawable.wid, false);
-        XSyncTriggerFence(xcontext->display, fence);
-        XSyncAwaitFence(xcontext->display, &fence, 1);
-        XSyncDestroyFence(xcontext->display, fence);
-    }
-
     zone_enter(&ZONE_x_communication);
     if(!wd_bind(xcontext, drawables, drawable_count)) {
         // If we fail to bind we just assume that the window must have been
         // closed and keep the old texture
         printf_err("Failed binding some drawable");
-        zone_leave(&ZONE_x_communication);
     }
 
     free(drawables);
