@@ -72,7 +72,6 @@ DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
 
 DECLARE_ZONE(x_error);
-DECLARE_ZONE(x_communication);
 
 DECLARE_ZONE(commit_move);
 DECLARE_ZONE(commit_resize);
@@ -83,9 +82,6 @@ DECLARE_ZONE(blur_background);
 DECLARE_ZONE(fetch_prop);
 
 DECLARE_ZONE(update_fade);
-
-DECLARE_ZONE(update_textures);
-DECLARE_ZONE(update_single_texture);
 
 // From the header {{{
 
@@ -2221,132 +2217,6 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     return skip_poll;
 }
 
-void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Framebuffer* fbo) {
-    static const enum ComponentType req_types[] = {
-        COMPONENT_BINDS_TEXTURE,
-        COMPONENT_TEXTURED,
-        COMPONENT_CONTENTS_DAMAGED,
-        CQ_END
-    };
-    struct SwissIterator it = {0};
-    swiss_getFirst(em, req_types, &it);
-    if(it.done)
-        return;
-
-    framebuffer_resetTarget(fbo);
-    framebuffer_bind(fbo);
-
-    glEnable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_BLEND);
-
-    glStencilMask(0xFF);
-    glStencilFunc(GL_ALWAYS, 0, 0);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-
-    struct shader_program* program = assets_load("stencil.shader");
-    if(program->shader_type_info != &stencil_info) {
-        printf_errf("Shader was not a stencil shader\n");
-        return;
-    }
-    struct Stencil* shader_type = program->shader_type;
-
-    shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
-
-    shader_use(program);
-
-    // @RESEARCH: According to the spec (https://www.khronos.org/registry/OpenGL/extensions/EXT/GLX_EXT_texture_from_pixmap.txt)
-    // we should always grab the server before binding glx textures, and keep
-    // server until we are done with the textures. Experiments show that it
-    // completely kills rendering performance for chrome and electron.
-    // - Delusional 19/08-2018
-    zone_enter(&ZONE_x_communication);
-    XGrabServer(xcontext->display);
-    glXWaitX();
-    zone_leave(&ZONE_x_communication);
-
-    struct WindowDrawable** drawables = malloc(sizeof(struct WindowDrawable*) * em->size);
-    size_t drawable_count = 0;
-    {
-        for_componentsArr(it2, em, req_types) {
-            struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-            drawables[drawable_count] = &bindsTexture->drawable;
-            drawable_count++;
-        }
-    }
-
-    for_componentsArr(it2, em, req_types) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-
-        XSyncFence fence = XSyncCreateFence(xcontext->display, bindsTexture->drawable.wid, false);
-        XSyncTriggerFence(xcontext->display, fence);
-        XSyncAwaitFence(xcontext->display, &fence, 1);
-        XSyncDestroyFence(xcontext->display, fence);
-    }
-
-    zone_enter(&ZONE_x_communication);
-    if(!wd_bind(xcontext, drawables, drawable_count)) {
-        // If we fail to bind we just assume that the window must have been
-        // closed and keep the old texture
-        printf_err("Failed binding some drawable");
-        zone_leave(&ZONE_x_communication);
-    }
-
-    free(drawables);
-    zone_leave(&ZONE_x_communication);
-
-    glClearColor(0, 0, 0, 0);
-
-    for_componentsArr(it2, em, req_types) {
-        zone_scope(&ZONE_update_single_texture);
-
-        struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
-        framebuffer_resetTarget(fbo);
-        framebuffer_targetTexture(fbo, &textured->texture);
-        framebuffer_targetRenderBuffer_stencil(fbo, &textured->stencil);
-        framebuffer_rebind(fbo);
-
-        Vector2 offset = textured->texture.size;
-        vec2_sub(&offset, &bindsTexture->drawable.texture.size);
-
-        Matrix old_view = view;
-        view = mat4_orthogonal(0, textured->texture.size.x, 0, textured->texture.size.y, -1, 1);
-        glViewport(0, 0, textured->texture.size.x, textured->texture.size.y);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-        // If the texture didn't bind, we just clear the window without rendering on top.
-        if(bindsTexture->drawable.bound) {
-            texture_bind(&bindsTexture->drawable.texture, GL_TEXTURE0);
-
-            shader_set_uniform_bool(shader_type->flip, bindsTexture->drawable.texture.flipped);
-
-            draw_rect(shaped->face, shader_type->mvp, (Vector3){{0, offset.y, 0}}, bindsTexture->drawable.texture.size);
-        }
-
-        view = old_view;
-
-    }
-
-    for_componentsArr(it2, em, req_types) {
-        struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
-
-        // The texture might not have bound successfully
-        if(bindsTexture->drawable.bound) {
-            wd_unbind(&bindsTexture->drawable);
-        }
-    }
-
-    glDisable(GL_STENCIL_TEST);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-
-    zone_enter(&ZONE_x_communication);
-    XUngrabServer(xcontext->display);
-    glXWaitX();
-    zone_leave(&ZONE_x_communication);
-}
-
 static void finish_destroyed_windows(Swiss* em, session_t* ps) {
     for_components(it, em, COMPONENT_STATEFUL, COMPONENT_TINT, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
@@ -2796,7 +2666,6 @@ void session_run(session_t *ps) {
         xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
-        texturesystem_tick(&ps->win_list);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         physics_tick(&ps->win_list);
         commit_move(&ps->win_list, &ps->order);
@@ -2826,9 +2695,7 @@ void session_run(session_t *ps) {
         damage_blur_over_damaged(&ps->win_list, &ps->order);
         zone_leave(&ZONE_prop_blur_damage);
 
-        zone_enter(&ZONE_update_textures);
-        update_window_textures(&ps->win_list, &ps->xcontext, &ps->psglx->shared_fbo);
-        zone_leave(&ZONE_update_textures);
+        texturesystem_tick(&ps->win_list, &ps->xcontext, &ps->psglx->shared_fbo);
 
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);
@@ -2860,8 +2727,8 @@ void session_run(session_t *ps) {
         shadowsystem_tick(em);
         blursystem_tick(em, &ps->order);
         remove_texture_invis_windows(&ps->win_list);
-        finish_destroyed_windows(&ps->win_list, ps);
         shapesystem_finish(&ps->win_list);
+        finish_destroyed_windows(&ps->win_list, ps);
         zone_leave(&ZONE_update);
 
         Vector opaque;
