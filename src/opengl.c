@@ -238,11 +238,6 @@ glx_init(session_t *ps, bool need_render) {
     view = ps->psglx->view;
   }
 
-  if(!framebuffer_init(&psglx->shared_fbo)) {
-      printf_errf("Failed initializing the global framebuffer");
-      goto glx_init_end;
-  }
-
   success = true;
 
 glx_init_end:
@@ -269,8 +264,6 @@ glx_destroy(session_t *ps) {
     free(ps->psglx->fbconfigs[i]);
     ps->psglx->fbconfigs[i] = NULL;
   }
-
-  framebuffer_delete(&ps->psglx->shared_fbo);
 
   // Destroy GLX context
   glXMakeCurrent(ps->dpy, 0, 0);

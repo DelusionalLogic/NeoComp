@@ -5,4 +5,6 @@
 #include "xorg.h"
 #include "framebuffer.h"
 
-void texturesystem_tick(Swiss* em, struct X11Context* xcontext, struct Framebuffer* fbo);
+void texturesystem_init();
+void texturesystem_delete();
+void texturesystem_tick(Swiss* em, struct X11Context* xcontext);

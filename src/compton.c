@@ -2024,6 +2024,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   // Initialize filters, must be preceded by OpenGL context creation
   blursystem_init();
+  texturesystem_init();
   glx_check_err(ps);
 
   XGrabServer(ps->xcontext.display);
@@ -2042,7 +2043,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   // Fork to background, if asked
   if (ps->o.fork_after_register) {
-    if (!fork_after(ps)) {
+      if (!fork_after(ps)) {
       session_destroy(ps);
       return NULL;
     }
@@ -2095,6 +2096,7 @@ void session_destroy(session_t *ps) {
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
   shadowsystem_delete(&ps->win_list);
   blursystem_delete(&ps->win_list);
+  texturesystem_delete();
   shapesystem_delete(&ps->win_list);
 
   // Free tracked atom list
@@ -2695,7 +2697,7 @@ void session_run(session_t *ps) {
         damage_blur_over_damaged(&ps->win_list, &ps->order);
         zone_leave(&ZONE_prop_blur_damage);
 
-        texturesystem_tick(&ps->win_list, &ps->xcontext, &ps->psglx->shared_fbo);
+        texturesystem_tick(&ps->win_list, &ps->xcontext);
 
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);

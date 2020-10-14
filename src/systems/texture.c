@@ -15,7 +15,19 @@ DECLARE_ZONE(x_communication);
 
 DECLARE_ZONE(update_textures);
 
-static void update_window_textures(Swiss* em, struct X11Context* xcontext, struct Framebuffer* fbo) {
+static struct Framebuffer fbo;
+
+void texturesystem_init() {
+    if(!framebuffer_init(&fbo)) {
+        printf_errf("Failed initializing the global framebuffer");
+    }
+}
+
+void texturesystem_delete() {
+    framebuffer_delete(&fbo);
+}
+
+static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
     static const enum ComponentType req_types[] = {
         COMPONENT_BINDS_TEXTURE,
         COMPONENT_TEXTURED,
@@ -27,8 +39,8 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext, struc
     if(it.done)
         return;
 
-    framebuffer_resetTarget(fbo);
-    framebuffer_bind(fbo);
+    framebuffer_resetTarget(&fbo);
+    framebuffer_bind(&fbo);
 
     glEnable(GL_STENCIL_TEST);
     glDisable(GL_SCISSOR_TEST);
@@ -97,10 +109,10 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext, struc
         struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it2.id);
         struct BindsTextureComponent* bindsTexture = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it2.id);
         struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it2.id);
-        framebuffer_resetTarget(fbo);
-        framebuffer_targetTexture(fbo, &textured->texture);
-        framebuffer_targetRenderBuffer_stencil(fbo, &textured->stencil);
-        framebuffer_rebind(fbo);
+        framebuffer_resetTarget(&fbo);
+        framebuffer_targetTexture(&fbo, &textured->texture);
+        framebuffer_targetRenderBuffer_stencil(&fbo, &textured->stencil);
+        framebuffer_rebind(&fbo);
 
         Vector2 offset = textured->texture.size;
         vec2_sub(&offset, &bindsTexture->drawable.texture.size);
@@ -142,7 +154,7 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext, struc
 }
 
 
-void texturesystem_tick(Swiss* em, struct X11Context* xcontext, struct Framebuffer* fbo) {
+void texturesystem_tick(Swiss* em, struct X11Context* xcontext) {
     zone_scope(&ZONE_texture_tick);
     // Resize textures when mapping a window with a texture
     for_components(it, em,
@@ -192,6 +204,6 @@ void texturesystem_tick(Swiss* em, struct X11Context* xcontext, struct Framebuff
     }
 
     zone_enter(&ZONE_update_textures);
-    update_window_textures(em, xcontext, fbo);
+    update_window_textures(em, xcontext);
     zone_leave(&ZONE_update_textures);
 }
