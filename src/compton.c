@@ -73,7 +73,6 @@ DECLARE_ZONE(prop_blur_damage);
 
 DECLARE_ZONE(x_error);
 
-DECLARE_ZONE(commit_move);
 DECLARE_ZONE(commit_resize);
 
 DECLARE_ZONE(paint);
@@ -2377,26 +2376,6 @@ void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double d
     }
 }
 
-static void commit_move(Swiss* em, Vector* order) {
-    zone_scope(&ZONE_commit_move);
-    for_components(it, em,
-            COMPONENT_MOVE, CQ_END) {
-        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
-    }
-
-    // Damage all windows on top of windows that move
-    for_components(it, em, COMPONENT_MOVE, CQ_END) {
-        size_t order_slot = vector_find_uint64(order, it.id);
-        assert(order_slot >= 0);
-
-        win_id* other_id = vector_getNext(order, &order_slot);
-        while(other_id != NULL) {
-            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
-            other_id = vector_getNext(order, &order_slot);
-        }
-    }
-}
-
 void commit_destroy(Swiss* em) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_DESTROY, CQ_END) {
@@ -2670,7 +2649,6 @@ void session_run(session_t *ps) {
         commit_unmap(&ps->win_list, &ps->xcontext);
         commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         physics_tick(&ps->win_list);
-        commit_move(&ps->win_list, &ps->order);
         zone_leave(&ZONE_input_react);
 
         {

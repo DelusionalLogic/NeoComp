@@ -171,6 +171,24 @@ void blursystem_tick(Swiss* em, Vector* order) {
         swiss_addComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
 
+    // Damage the blur of moved windows
+    for_components(it, em,
+            COMPONENT_MOVE, COMPONENT_BLUR, CQ_END) {
+        swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
+    }
+
+    // Damage all windows on top of windows that move
+    for_components(it, em, COMPONENT_MOVE, CQ_END) {
+        size_t order_slot = vector_find_uint64(order, it.id);
+        assert(order_slot >= 0);
+
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            other_id = vector_getNext(order, &order_slot);
+        }
+    }
+
     damage_blur_over_fade(em);
 
     // Damage all windows on top of windows that resize
