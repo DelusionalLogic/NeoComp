@@ -66,13 +66,6 @@ ifeq "$(NO_LIBCONFIG)" ""
   CFG += $(shell pkg-config --atleast-version=1.4 libconfig || echo '-DCONFIG_LIBCONFIG_LEGACY')
 endif
 
-# ==== DRM VSync ====
-# Enables support for "drm" VSync method
-ifeq "$(NO_VSYNC_DRM)" ""
-  INCS += $(shell pkg-config --cflags libdrm)
-  CFG += -DCONFIG_VSYNC_DRM
-endif
-
 # === Version string ===
 COMPTON_VERSION ?= git-$(shell git describe --always --dirty)-$(shell git log -1 --date=short --pretty=format:%cd)
 CFG += -DCOMPTON_VERSION="\"$(COMPTON_VERSION)\""

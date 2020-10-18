@@ -35,8 +35,6 @@
 // #define CONFIG_LIBCONFIG 1
 // Whether we are using a legacy version of libconfig (1.3.x).
 // #define CONFIG_LIBCONFIG_LEGACY 1
-// Whether to enable DRM VSync support
-// #define CONFIG_VSYNC_DRM 1
 // Whether to enable condition support.
 // #define CONFIG_C2 1
 // Whether to enable GLX Sync support.

@@ -22,16 +22,6 @@
 #include <locale.h>
 #include <signal.h>
 
-#ifdef CONFIG_VSYNC_DRM
-#include <fcntl.h>
-// We references some definitions in drm.h, which could also be found in
-// /usr/src/linux/include/drm/drm.h, but that path is probably even less
-// reliable than libdrm
-#include <drm.h>
-#include <sys/ioctl.h>
-#include <errno.h>
-#endif
-
 void convert_xrects_to_relative_rect(XRectangle* rects, size_t rect_count, Vector2* extents, Vector2* offset, Vector* mrects);
 bool do_win_fade(struct Bezier* curve, double dt, Swiss* em);
 void commit_destroy(Swiss* em);
