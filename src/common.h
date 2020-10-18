@@ -29,7 +29,6 @@
 // #define DEBUG_GLX        1
 // #define DEBUG_GLX_GLSL   1
 // #define DEBUG_GLX_ERR    1
-// #define DEBUG_GLX_MARK   1
 // #define DEBUG_GLX_PAINTREG 1
 
 // Whether to enable parsing of configuration files using libconfig.
@@ -254,11 +253,6 @@ typedef void (*f_WaitSync) (GLsync sync, GLbitfield flags,
     GLuint64 timeout);
 typedef GLsync (*f_ImportSyncEXT) (GLenum external_sync_type,
     GLintptr external_sync, GLbitfield flags);
-#endif
-
-#ifdef DEBUG_GLX_MARK
-typedef void (*f_StringMarkerGREMEDY) (GLsizei len, const void *string);
-typedef void (*f_FrameTerminatorGREMEDY) (void);
 #endif
 
 /// @brief Wrapper of a binded GLX texture.
@@ -1033,38 +1027,6 @@ free_glx_fbo(session_t *ps, GLuint *pfbo) {
     *pfbo = 0;
   }
   assert(!*pfbo);
-}
-
-/**
- * Add a OpenGL debugging marker.
- */
-static inline void
-glx_mark_(session_t *ps, const char *func, XID xid, bool start) {
-#ifdef DEBUG_GLX_MARK
-  if (glx_has_context(ps) && ps->psglx->glStringMarkerGREMEDY) {
-    if (!func) func = "(unknown)";
-    const char *postfix = (start ? " (start)": " (end)");
-    char *str = malloc((strlen(func) + 12 + 2
-          + strlen(postfix) + 5) * sizeof(char));
-    strcpy(str, func);
-    sprintf(str + strlen(str), "(%#010lx)%s", xid, postfix);
-    ps->psglx->glStringMarkerGREMEDY(strlen(str), str);
-    free(str);
-  }
-#endif
-}
-
-#define glx_mark(ps, xid, start) glx_mark_(ps, __func__, xid, start)
-
-/**
- * Add a OpenGL debugging marker.
- */
-static inline void
-glx_mark_frame(session_t *ps) {
-#ifdef DEBUG_GLX_MARK
-  if (glx_has_context(ps) && ps->psglx->glFrameTerminatorGREMEDY)
-    ps->psglx->glFrameTerminatorGREMEDY();
-#endif
 }
 
 ///@}

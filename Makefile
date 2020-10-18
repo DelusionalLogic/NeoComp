@@ -37,10 +37,6 @@ print-%  : ; @echo $* = $($*)
 
 # === Configuration flags ===
 
-ifneq "$(GLX_MARK)" ""
-    CFG += -DDEBUG_GLX_MARK
-endif
-
 ifneq "$(GLX_DEBUG)" ""
   CFG += -DDEBUG_GLX
   # CFG += -DDEBUG_GLX_PAINTREG

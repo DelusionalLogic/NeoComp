@@ -179,12 +179,6 @@ typedef struct {
   /// Pointer to the glImportSyncEXT() function.
   f_ImportSyncEXT glImportSyncEXT;
 #endif
-#ifdef DEBUG_GLX_MARK
-  /// Pointer to StringMarkerGREMEDY function.
-  f_StringMarkerGREMEDY glStringMarkerGREMEDY;
-  /// Pointer to FrameTerminatorGREMEDY function.
-  f_FrameTerminatorGREMEDY glFrameTerminatorGREMEDY;
-#endif
   /// Current GLX Z value.
   int z;
   // Standard view matrix
