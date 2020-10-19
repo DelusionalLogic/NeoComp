@@ -1252,9 +1252,19 @@ GLXFBConfig* glXGetFBConfigsH(Display* dpy, int scr, int* num) {
     return config;
 }
 Bool XQueryExtensionH(Display* dpy, const char* name, int* opcode, int* event, int* error) {
-    *opcode = 0;
-    *event = 0;
-    *error = 0;
+    if(strcmp(name, DAMAGE_NAME) == 0) {
+        *opcode = 1;
+        *event = 1;
+        *error = 1;
+    } else if(strcmp(name, SHAPENAME)) {
+        *opcode = 2;
+        *event = 2;
+        *error = 2;
+    } else {
+        *opcode = 0;
+        *event = 0;
+        *error = 0;
+    }
     return True;
 }
 Status XCompositeQueryVersionH(Display* dpy, int* major, int* minor) {
@@ -3190,6 +3200,67 @@ struct TestResult xorg__set_event_mask__window_is_remapped_away_from_root() {
     assertEq(PropertyChangeMask, inputMask(1));
 }
 
+struct TestResult xorg__emit_shape_damage__unmapped_window_changes_shape() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XShapeEvent){
+        .type = ctx.capabilities.event[PROTO_SHAPE] - ShapeNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_SHAPE},
+    );
+}
+
+struct TestResult xorg__emit_nothing__subwindow_changes_shape() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setWindowAttr(2, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 2,
+        .parent = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XShapeEvent){
+        .type = ctx.capabilities.event[PROTO_SHAPE] - ShapeNotify,
+        .window = 2,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 int main(int argc, char** argv) {
     test_select(argc, argv);
 
@@ -3359,5 +3430,10 @@ int main(int argc, char** argv) {
     TEST(xorg__set_event_mask__subwindow_is_created);
     TEST(xorg__set_event_mask__window_is_mapped);
     TEST(xorg__blank_event_mask__window_is_unmapped);
+
+    TEST(xorg__emit_shape_damage__unmapped_window_changes_shape);
+    TEST(xorg__emit_nothing__subwindow_changes_shape);
+
+
     return test_end();
 }

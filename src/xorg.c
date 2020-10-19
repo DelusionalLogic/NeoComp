@@ -1028,13 +1028,7 @@ static void fillBuffer(struct X11Context* xctx) {
                 XShapeEvent* ev = (XShapeEvent*)&raw;
                 zone_scope_extra(&ZONE_event_preprocess, "Shape");
 
-                assert(isWindowActive(xctx, ev->window));
-
-                Window* parent;
-                JLG(parent, xctx->winParent, ev->window);
-                if(parent != NULL) {
-                    // If this window is not the parent, we don't care about
-                    // its shape
+                if(!isWindowActive(xctx, ev->window)) {
                     break;
                 }
 
