@@ -14,6 +14,7 @@ DECLARE_ZONE(texture_tick);
 DECLARE_ZONE(x_communication);
 
 DECLARE_ZONE(update_textures);
+DECLARE_ZONE(update_single_texture);
 
 static struct Framebuffer fbo;
 

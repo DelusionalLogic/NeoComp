@@ -3434,6 +3434,5 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_shape_damage__unmapped_window_changes_shape);
     TEST(xorg__emit_nothing__subwindow_changes_shape);
 
-
     return test_end();
 }
