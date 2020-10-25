@@ -8,11 +8,116 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+
+DECLARE_ZONE(x_error);
 
 DECLARE_ZONE(select_config);
 DECLARE_ZONE(select_config_visual);
 DECLARE_ZONE(select_config_attribs);
 DECLARE_ZONE(event_preprocess);
+
+struct X11Context* current_xctx = NULL;
+
+static char* eventName(struct X11Capabilities* caps, XErrorEvent* ev) {
+    int o = 0;
+#define CASESTRRET2(s)   case s: return #s; break
+
+    o = xorgContext_convertError(caps, PROTO_FIXES, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadRegion);
+    }
+
+    o = xorgContext_convertError(caps, PROTO_DAMAGE, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadDamage);
+    }
+
+    o = xorgContext_convertError(caps, PROTO_RENDER, ev->error_code);
+    switch (o) {
+        CASESTRRET2(BadPictFormat);
+        CASESTRRET2(BadPicture);
+        CASESTRRET2(BadPictOp);
+        CASESTRRET2(BadGlyphSet);
+        CASESTRRET2(BadGlyph);
+    }
+
+    o = xorgContext_convertError(caps, PROTO_GLX, ev->error_code);
+    switch (o) {
+        CASESTRRET2(GLX_BAD_SCREEN);
+        CASESTRRET2(GLX_BAD_ATTRIBUTE);
+        CASESTRRET2(GLX_NO_EXTENSION);
+        CASESTRRET2(GLX_BAD_VISUAL);
+        CASESTRRET2(GLX_BAD_CONTEXT);
+        CASESTRRET2(GLX_BAD_VALUE);
+        CASESTRRET2(GLX_BAD_ENUM);
+    }
+
+    o = xorgContext_convertError(caps, PROTO_SYNC, ev->error_code);
+    switch (o) {
+        CASESTRRET2(XSyncBadCounter);
+        CASESTRRET2(XSyncBadAlarm);
+        CASESTRRET2(XSyncBadFence);
+    }
+
+    switch (ev->error_code) {
+        CASESTRRET2(BadAccess);
+        CASESTRRET2(BadAlloc);
+        CASESTRRET2(BadAtom);
+        CASESTRRET2(BadColor);
+        CASESTRRET2(BadCursor);
+        CASESTRRET2(BadDrawable);
+        CASESTRRET2(BadFont);
+        CASESTRRET2(BadGC);
+        CASESTRRET2(BadIDChoice);
+        CASESTRRET2(BadImplementation);
+        CASESTRRET2(BadLength);
+        CASESTRRET2(BadMatch);
+        CASESTRRET2(BadName);
+        CASESTRRET2(BadPixmap);
+        CASESTRRET2(BadRequest);
+        CASESTRRET2(BadValue);
+        CASESTRRET2(BadWindow);
+    }
+
+#undef CASESTRRET2
+
+    return "Unknown";
+}
+
+static int xerror(Display *dpy, XErrorEvent *ev) {
+    struct X11Context * xctx = current_xctx;
+    assert(dpy == xctx->display);
+
+    if (xorgContext_convertOpcode(&xctx->capabilities, ev->request_code) == PROTO_COMPOSITE
+            && ev->minor_code == X_CompositeRedirectSubwindows) {
+        fprintf(stderr, "Another composite manager is already running\n");
+        exit(1);
+    }
+
+    const char* name = eventName(&xctx->capabilities, ev);
+
+    struct timeval tm;
+    if (gettimeofday(&tm, NULL))
+        return 0;
+
+    printf("[ %5ld.%02ld ] ", tm.tv_sec, tm.tv_usec / 10000);
+#define BUF_LEN 80
+    {
+        zone_insta_extra(&ZONE_x_error, "%s:%ld", name, ev->request_code);
+        char buf[BUF_LEN] = "";
+        XGetErrorText(dpy, ev->error_code, buf, BUF_LEN);
+        printf("error %4d %-12s request %4d minor %4d serial %6lu resource %4lu: \"%s\"\n",
+                ev->error_code, name, ev->request_code,
+                ev->minor_code, ev->serial, ev->resourceid, buf);
+    }
+#undef BUF_LEN
+
+    /* print_backtrace(); */
+
+    return 0;
+}
+
 
 const char* X11Protocols_Names[] = {
     COMPOSITE_NAME,
@@ -119,10 +224,18 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
     assert(context != NULL);
     assert(display != NULL);
 
+    assert(current_xctx == NULL);
+    current_xctx = context;
+
     context->display = display;
     context->screen = screen;
     context->root = RootWindowH(display, screen);
     // The overlay is set later
+
+    //Register the error handler
+    XSetErrorHandler(xerror);
+    // Flush all xorg calls immediately
+    /* XSynchronize(context->display, true); */
 
     context->configs = glXGetFBConfigsH(display, screen, &context->numConfigs);
     if(context->configs == NULL) {
@@ -229,7 +342,12 @@ GLXFBConfig* xorgContext_selectConfig(struct X11Context* context, VisualID visua
 }
 
 void xorgContext_delete(struct X11Context* context) {
+    assert(context != NULL);
     assert(context->display != NULL);
+
+    assert(current_xctx == context);
+    current_xctx = NULL;
+
     free(context->configs);
 }
 

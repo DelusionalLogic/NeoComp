@@ -71,8 +71,6 @@ DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
 DECLARE_ZONE(prop_blur_damage);
 
-DECLARE_ZONE(x_error);
-
 DECLARE_ZONE(commit_resize);
 
 DECLARE_ZONE(paint);
@@ -729,98 +727,6 @@ static void damage_win(session_t *ps, struct Damage *ev) {
         return;
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
-}
-
-static char* eventName(struct X11Context* xctx, XErrorEvent* ev) {
-    int o = 0;
-#define CASESTRRET2(s)   case s: return #s; break
-
-    o = xorgContext_convertError(&xctx->capabilities, PROTO_FIXES, ev->error_code);
-    switch (o) {
-        CASESTRRET2(BadRegion);
-    }
-
-    o = xorgContext_convertError(&xctx->capabilities, PROTO_DAMAGE, ev->error_code);
-    switch (o) {
-        CASESTRRET2(BadDamage);
-    }
-
-    o = xorgContext_convertError(&xctx->capabilities, PROTO_RENDER, ev->error_code);
-    switch (o) {
-        CASESTRRET2(BadPictFormat);
-        CASESTRRET2(BadPicture);
-        CASESTRRET2(BadPictOp);
-        CASESTRRET2(BadGlyphSet);
-        CASESTRRET2(BadGlyph);
-    }
-
-    o = xorgContext_convertError(&xctx->capabilities, PROTO_GLX, ev->error_code);
-    switch (o) {
-        CASESTRRET2(GLX_BAD_SCREEN);
-        CASESTRRET2(GLX_BAD_ATTRIBUTE);
-        CASESTRRET2(GLX_NO_EXTENSION);
-        CASESTRRET2(GLX_BAD_VISUAL);
-        CASESTRRET2(GLX_BAD_CONTEXT);
-        CASESTRRET2(GLX_BAD_VALUE);
-        CASESTRRET2(GLX_BAD_ENUM);
-    }
-
-    o = xorgContext_convertError(&xctx->capabilities, PROTO_SYNC, ev->error_code);
-    switch (o) {
-        CASESTRRET2(XSyncBadCounter);
-        CASESTRRET2(XSyncBadAlarm);
-        CASESTRRET2(XSyncBadFence);
-    }
-
-    switch (ev->error_code) {
-        CASESTRRET2(BadAccess);
-        CASESTRRET2(BadAlloc);
-        CASESTRRET2(BadAtom);
-        CASESTRRET2(BadColor);
-        CASESTRRET2(BadCursor);
-        CASESTRRET2(BadDrawable);
-        CASESTRRET2(BadFont);
-        CASESTRRET2(BadGC);
-        CASESTRRET2(BadIDChoice);
-        CASESTRRET2(BadImplementation);
-        CASESTRRET2(BadLength);
-        CASESTRRET2(BadMatch);
-        CASESTRRET2(BadName);
-        CASESTRRET2(BadPixmap);
-        CASESTRRET2(BadRequest);
-        CASESTRRET2(BadValue);
-        CASESTRRET2(BadWindow);
-    }
-
-#undef CASESTRRET2
-
-    return "Unknown";
-}
-
-static int xerror(Display __attribute__((unused)) *dpy, XErrorEvent *ev) {
-    session_t * const ps = ps_g;
-
-    if (xorgContext_convertOpcode(&ps->xcontext.capabilities, ev->request_code) == PROTO_COMPOSITE
-            && ev->minor_code == X_CompositeRedirectSubwindows) {
-        fprintf(stderr, "Another composite manager is already running\n");
-        exit(1);
-    }
-
-    const char* name = eventName(&ps->xcontext, ev);
-
-    print_timestamp(ps);
-    {
-        zone_insta_extra(&ZONE_x_error, "%s:%ld", name, ev->request_code);
-        char buf[BUF_LEN] = "";
-        XGetErrorText(ps->dpy, ev->error_code, buf, BUF_LEN);
-        printf("error %4d %-12s request %4d minor %4d serial %6lu resource %4lu: \"%s\"\n",
-                ev->error_code, name, ev->request_code,
-                ev->minor_code, ev->serial, ev->resourceid, buf);
-    }
-
-    /* print_backtrace(); */
-
-    return 0;
 }
 
 /**
@@ -1926,9 +1832,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       printf_errfq(1, "(): Can't open display.");
     }
   }
-
-  XSetErrorHandler(xerror);
-  XSynchronize(ps->dpy, true);
 
   ps->scr = DefaultScreen(ps->dpy);
   ps->root = RootWindow(ps->dpy, ps->scr);
