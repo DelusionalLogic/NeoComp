@@ -435,7 +435,7 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
         .type = ET_ADD,
         .add.xid = xid,
         .add.mapped = false,
-        .add.pos = (Vector2){{x, y}},
+        .add.pos = (Vector2){{x - border, y - border}},
         .add.size = (Vector2){{
           width + border * 2,
           height + border * 2,
@@ -601,7 +601,7 @@ static void createMandr(struct X11Context* xctx, Window xid, float x, float y, f
     struct Event event = {
         .type = ET_MANDR,
         .mandr.xid = xid,
-        .mandr.pos = (Vector2){{x, y}},
+        .mandr.pos = (Vector2){{x - border, y - border}},
         .mandr.size = (Vector2){{
           width + border * 2,
           height + border * 2,

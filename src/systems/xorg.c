@@ -80,7 +80,7 @@ static void doMap(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
 
     // Mapping a window causes it to bind from X
     for_components(it, em,
-            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
+            COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_NOT, COMPONENT_BINDS_TEXTURE, CQ_END) {
         struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
         struct BindsTextureComponent* bindsTexture = swiss_addComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
 

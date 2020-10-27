@@ -639,7 +639,13 @@ configure_win(session_t *ps, struct MandR* ev) {
 
   win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
-  w->border_size = ev->border_size;
+  if(w->border_size != ev->border_size) {
+    w->border_size = ev->border_size;
+    // @HACK @CLEANUP: When the border size changes we have to offset the shape
+    // of the window. Currently that's not handled anywhere, so we hack in
+    // a full shape refresh when the border changes
+    swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
+  }
   w->override_redirect = ev->override_redirect;
   physics_move_window(&ps->win_list, wid, &ev->pos, &ev->size);
 }
@@ -2560,11 +2566,12 @@ void session_run(session_t *ps) {
             for_components(it, em,
                     COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
                 struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+                struct _win* win = swiss_getComponent(em, COMPONENT_MUD, it.id);
                 struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
                 if(win_mapped(em, it.id)) {
                     XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->xcontext.display, tracksWindow->id, ShapeBounding);
-                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x+1, physical->position.y+1);
+                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x + win->border_size, physical->position.y + win->border_size);
                     XFixesUnionRegionH(ps->xcontext.display, newShape, newShape, windowRegion);
                     XFixesDestroyRegionH(ps->xcontext.display, windowRegion);
                 }
