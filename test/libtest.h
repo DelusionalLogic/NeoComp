@@ -47,6 +47,13 @@ struct TestResultEqStr {
     int length;
 };
 
+struct TestResultEqVec2 {
+    char* name;
+    bool inverse;
+    const Vector2 actual;
+    const Vector2 expected;
+};
+
 struct TestResultAssert {
 };
 
@@ -58,6 +65,7 @@ enum TestResultType {
     TEST_EQ_PTR,
     TEST_EQ_ARRAY,
     TEST_EQ_STRING,
+    TEST_EQ_VEC2,
 };
 
 struct TestResult {
@@ -74,6 +82,7 @@ struct TestResult {
         struct TestResultEqPtr ptr_eq;
         struct TestResultEqArr eq_arr;
         struct TestResultEqStr eq_str;
+        struct TestResultEqVec2 eq_vec2;
     };
 };
 

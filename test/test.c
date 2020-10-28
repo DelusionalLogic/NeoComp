@@ -2324,7 +2324,7 @@ struct TestResult xorg__not_emit_restack__restacked_window_is_not_frame() {
     );
 }
 
-struct TestResult xorg__emit_mandr__window_is_configured() {
+struct TestResult xorg__emit_canvas_change__root_is_resized() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -2338,11 +2338,84 @@ struct TestResult xorg__emit_mandr__window_is_configured() {
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = ConfigureNotify,
         .window = 0,
+        .width = 100,
+        .height = 200,
     });
     Vector* events = readAllEvents(&ctx);
 
     assertEvents(events,
-        (struct Event){.type = ET_CCHANGE}
+        (struct Event){.type = ET_CCHANGE, .cchange.size = (Vector2){{100, 200}}}
+    );
+}
+
+struct TestResult xorg__emit_mandr_and_restack__window_is_configured() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = ConfigureNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_MANDR, .mandr.xid=1},
+        (struct Event){.type = ET_RESTACK, .restack.xid=1, .restack.loc=LOC_BELOW, .restack.above=0}
+    );
+}
+
+struct TestResult xorg__adjust_window_for_border__window_is_configured_with_border() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = ConfigureNotify,
+        .window = 1,
+        .border_width = 10,
+        .x = 10,
+        .y = 20,
+        .width = 100,
+        .height = 200,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_MANDR, .mandr.xid=1, .mandr.pos=(Vector2){{0, 10}}, .mandr.size=(Vector2){{120, 220}}},
+        (struct Event){.type = ET_RESTACK, .restack.xid=1, .restack.loc=LOC_BELOW, .restack.above=0}
     );
 }
 
@@ -3399,7 +3472,9 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_restack__window_placed_on_bottom);
     TEST(xorg__not_emit_restack__restacked_window_is_not_frame);
 
-    TEST(xorg__emit_mandr__window_is_configured);
+    TEST(xorg__emit_canvas_change__root_is_resized);
+    TEST(xorg__emit_mandr_and_restack__window_is_configured);
+    TEST(xorg__adjust_window_for_border__window_is_configured_with_border);
 
     TEST(xorg__emit_map__frame_is_mapped);
     TEST(xorg__emit_unmap__frame_is_unmapped);

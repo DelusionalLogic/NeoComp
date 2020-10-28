@@ -2571,7 +2571,10 @@ void session_run(session_t *ps) {
 
                 if(win_mapped(em, it.id)) {
                     XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->xcontext.display, tracksWindow->id, ShapeBounding);
-                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x + win->border_size, physical->position.y + win->border_size);
+                    // @HACK: I'm not quite sure why I need to add 2 times the
+                    // border here. One makes sense since i'm subtracting that
+                    // from the positioin in the X11 layer.
+                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x + win->border_size*2, physical->position.y + win->border_size*2);
                     XFixesUnionRegionH(ps->xcontext.display, newShape, newShape, windowRegion);
                     XFixesDestroyRegionH(ps->xcontext.display, windowRegion);
                 }

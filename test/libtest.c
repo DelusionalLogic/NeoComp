@@ -211,6 +211,44 @@ struct TestResult assertEvents_internal(Vector* events, struct Event matchers[],
                     };
                 }
                 break;
+            case ET_MANDR:
+                if(ev->mandr.xid != matchers[i].mandr.xid) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ,
+                        .success = false,
+                        .eq = {
+                            .name = "window",
+                            .inverse = false,
+                            .actual = ev->mandr.xid,
+                            .expected = matchers[i].mandr.xid,
+                        }
+                    };
+                }
+                if(memcmp(&ev->mandr.pos, &matchers[i].mandr.pos, sizeof(Vector2))) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ_VEC2,
+                        .success = false,
+                        .eq_vec2 = {
+                            .name = "window position",
+                            .inverse = false,
+                            .actual = ev->mandr.pos,
+                            .expected = matchers[i].mandr.pos,
+                        }
+                    };
+                }
+                if(memcmp(&ev->mandr.size, &matchers[i].mandr.size, sizeof(Vector2))) {
+                    return  (struct TestResult){
+                        .type = TEST_EQ_VEC2,
+                        .success = false,
+                        .eq_vec2 = {
+                            .name = "window size",
+                            .inverse = false,
+                            .actual = ev->mandr.size,
+                            .expected = matchers[i].mandr.size,
+                        }
+                    };
+                }
+                break;
             case ET_RESTACK:
                 if(ev->restack.xid != matchers[i].restack.xid) {
                     return  (struct TestResult){
@@ -492,6 +530,12 @@ uint32_t test_end() {
                             result.eq_str.length, (char*)result.extra + result.eq_str.expected);
                     // @LEAK: We just leak the actual and expected strings here.
                     // It's a test script, so who cares?
+                    break;
+                case TEST_EQ_VEC2:
+                    printf("\tBy vector equality test on %s (%f, %f)==(%f, %f)\n",
+                            result.eq_vec2.name,
+                            result.eq_vec2.actual.x, result.eq_vec2.actual.y,
+                            result.eq_vec2.expected.x, result.eq_vec2.expected.y);
                     break;
             }
         } else if(test->outcome == OUTCOME_ASSERT) {
