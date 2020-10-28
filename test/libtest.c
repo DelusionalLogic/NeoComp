@@ -5,6 +5,13 @@
 #include <sys/resource.h>
 #include <fnmatch.h>
 
+#define RET_IF_FAIL(STMT) \
+        do{ \
+            struct TestResult r = STMT;\
+            if(!r.success) \
+                return r; \
+        }while(0)
+
 Vector results;
 char** selected;
 size_t selected_num;
@@ -106,7 +113,6 @@ struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bo
 
     success = inverse ? !success : success;
 
-    // @IMPROVEMENT: Maybe we shouldn't be doing == for floats.
     struct TestResult result = {
         .type = TEST_EQ_BOOL,
         .success = success,
@@ -119,6 +125,11 @@ struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bo
     };
 
     return result;
+}
+
+struct TestResult assertEqVec2_internal(char* name, bool inverse, const Vector2 value, const Vector2 expected) {
+    RET_IF_FAIL(assertEqFloat_internal(name, inverse, value.x, expected.x));
+    return assertEqFloat_internal(name, inverse, value.y, expected.y);
 }
 
 struct TestResult assertEqArray_internal(char* name, bool inverse, const void* var, const void* value, size_t size) {
@@ -157,123 +168,25 @@ struct TestResult assertEqString_internal(char* name, bool inverse, const char* 
 struct TestResult assertEvents_internal(Vector* events, struct Event matchers[], size_t numMatch) {
     bool success = true;
 
-    if(numMatch != vector_size(events)) {
-        return  (struct TestResult){
-            .type = TEST_EQ,
-            .success = false,
-            .eq = {
-                .name = "number of events",
-                .inverse = false,
-                .actual = vector_size(events),
-                .expected = numMatch,
-            }
-        };
-    }
+    RET_IF_FAIL(assertEq_internal("number of events", false, numMatch, vector_size(events)));
+
     for(size_t i = 0; i < numMatch; i++) {
         struct Event* ev = vector_get(events, i);
-        if(ev->type != matchers[i].type) {
-            return  (struct TestResult){
-                .type = TEST_EQ,
-                .success = false,
-                .eq = {
-                    .name = "event type",
-                    .inverse = false,
-                    .actual = ev->type,
-                    .expected = matchers[i].type,
-                }
-            };
-        }
+        RET_IF_FAIL(assertEq_internal("event type", false, ev->type, matchers[i].type));
 
         switch(ev->type) {
             case ET_CLIENT:
-                if(ev->cli.client_xid != matchers[i].cli.client_xid) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ,
-                        .success = false,
-                        .eq = {
-                            .name = "client window",
-                            .inverse = false,
-                            .actual = ev->cli.client_xid,
-                            .expected = matchers[i].cli.client_xid,
-                        }
-                    };
-                }
-                if(ev->cli.xid != matchers[i].cli.xid) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ,
-                        .success = false,
-                        .eq = {
-                            .name = "parent window",
-                            .inverse = false,
-                            .actual = ev->cli.xid,
-                            .expected = matchers[i].cli.xid,
-                        }
-                    };
-                }
+                RET_IF_FAIL(assertEq_internal("client window", false, ev->cli.client_xid, matchers[i].cli.client_xid));
+                RET_IF_FAIL(assertEq_internal("parent window", false, ev->cli.xid, matchers[i].cli.xid));
                 break;
             case ET_MANDR:
-                if(ev->mandr.xid != matchers[i].mandr.xid) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ,
-                        .success = false,
-                        .eq = {
-                            .name = "window",
-                            .inverse = false,
-                            .actual = ev->mandr.xid,
-                            .expected = matchers[i].mandr.xid,
-                        }
-                    };
-                }
-                if(memcmp(&ev->mandr.pos, &matchers[i].mandr.pos, sizeof(Vector2))) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ_VEC2,
-                        .success = false,
-                        .eq_vec2 = {
-                            .name = "window position",
-                            .inverse = false,
-                            .actual = ev->mandr.pos,
-                            .expected = matchers[i].mandr.pos,
-                        }
-                    };
-                }
-                if(memcmp(&ev->mandr.size, &matchers[i].mandr.size, sizeof(Vector2))) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ_VEC2,
-                        .success = false,
-                        .eq_vec2 = {
-                            .name = "window size",
-                            .inverse = false,
-                            .actual = ev->mandr.size,
-                            .expected = matchers[i].mandr.size,
-                        }
-                    };
-                }
+                RET_IF_FAIL(assertEq_internal("window", false, ev->mandr.xid, matchers[i].mandr.xid));
+                RET_IF_FAIL(assertEqVec2_internal("window position", false, ev->mandr.pos, matchers[i].mandr.pos));
+                RET_IF_FAIL(assertEqVec2_internal("window size", false, ev->mandr.size, matchers[i].mandr.size));
                 break;
             case ET_RESTACK:
-                if(ev->restack.xid != matchers[i].restack.xid) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ,
-                        .success = false,
-                        .eq = {
-                            .name = "window",
-                            .inverse = false,
-                            .actual = ev->restack.xid,
-                            .expected = matchers[i].restack.xid,
-                        }
-                    };
-                }
-                if(ev->restack.loc != matchers[i].restack.loc) {
-                    return  (struct TestResult){
-                        .type = TEST_EQ,
-                        .success = false,
-                        .eq = {
-                            .name = "restack location",
-                            .inverse = false,
-                            .actual = ev->restack.loc,
-                            .expected = matchers[i].restack.loc,
-                        }
-                    };
-                }
+                RET_IF_FAIL(assertEq_internal("window", false, ev->restack.xid, matchers[i].restack.xid));
+                RET_IF_FAIL(assertEq_internal("restack location", false, ev->restack.loc, matchers[i].restack.loc));
                 break;
         }
     }

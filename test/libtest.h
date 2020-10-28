@@ -104,22 +104,24 @@ struct TestResult assertEqPtr_internal(char* name, bool inverse, const void* val
 struct TestResult assertEq_internal(char* name, bool inverse, uint64_t value, uint64_t expected);
 struct TestResult assertEqBool_internal(char* name, bool inverse, bool value, bool expected);
 struct TestResult assertEqFloat_internal(char* name, bool inverse, double value, double expected);
+struct TestResult assertEqVec2_internal(char* name, bool inverse, const Vector2 value, const Vector2 expected);
 struct TestResult assertEqArray_internal(char* name, bool inverse, const void* var, const void* value, size_t size);
 struct TestResult assertEqString_internal(char* name, bool inverse, const char* var, const char* value, size_t size);
 
 struct TestResult assertEvents_internal(Vector* events, struct Event match[], size_t numMatch);
 
-#define GET_ASSERT_FUNCTION(var)            \
-    _Generic((var),                         \
-            void*: assertEqPtr_internal,    \
-            char*: assertEqPtr_internal,    \
-            bool: assertEqBool_internal,    \
-            uint64_t: assertEq_internal,    \
-            char: assertEq_internal,        \
-            long: assertEq_internal,        \
-            float: assertEqFloat_internal,  \
-            double: assertEqFloat_internal  \
-            )                               \
+#define GET_ASSERT_FUNCTION(var)                  \
+    _Generic((var),                               \
+            void*: assertEqPtr_internal,          \
+            char*: assertEqPtr_internal,          \
+            bool: assertEqBool_internal,          \
+            uint64_t: assertEq_internal,          \
+            char: assertEq_internal,              \
+            long: assertEq_internal,              \
+            float: assertEqFloat_internal,        \
+            double: assertEqFloat_internal,       \
+            Vector2: assertEqVec2_internal        \
+            )                                     \
 
 #define assertEq(var, val)                  \
     return GET_ASSERT_FUNCTION(var)(#var, false, var, val)
