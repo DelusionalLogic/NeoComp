@@ -154,7 +154,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             }
         }
 
-        struct OpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
+        struct OpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_BGOPACITY, *w_id);
 
         // Background
         if(bgOpacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
@@ -183,8 +183,11 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
         struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
 
+        bool render_content = bgOpacity != NULL;
+        double effective_opacity = opacity != NULL ? opacity->opacity : 100.0;
+
         // Tint
-        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
+        if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
             struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id);
             struct shader_program* program = assets_load("tint.shader");
             if(program->shader_type_info != &colored_info) {
@@ -197,7 +200,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
                 shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
                 shader_set_future_uniform_vec2(shader_type->window, &physical->size);
 
-                double opac = opacity->opacity / 100.0;
+                double opac = effective_opacity / 100.0;
                 shader_set_future_uniform_float(shader_type->opacity, tint->color.w * opac);
 
                 Vector3 color = tint->color.rgb;
@@ -216,7 +219,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         }
 
         // Content
-        if(opacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
+        if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
             struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
             struct shader_program* global_program = assets_load("global.shader");
@@ -232,7 +235,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             shader_set_future_uniform_bool(global_type->invert, w->invert_color);
             shader_set_future_uniform_bool(global_type->flip, textured->texture.flipped);
-            shader_set_future_uniform_float(global_type->opacity, (float)(opacity->opacity / 100.0));
+            shader_set_future_uniform_float(global_type->opacity, (float)(effective_opacity / 100.0));
             shader_set_future_uniform_float(global_type->dim, dim->dim/100.0);
 
             shader_use(global_program);
