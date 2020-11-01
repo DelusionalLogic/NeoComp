@@ -2329,7 +2329,7 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
         struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
-        tint->color = (Vector4){{1, 1, 1, .017}};
+        tint->color = (Vector4){{1, 1, 1, 1}};
     }
 
     // Blur and shadow have been migrated to the system

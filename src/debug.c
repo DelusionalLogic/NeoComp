@@ -41,8 +41,10 @@ char *component_names[NUM_COMPONENT_TYPES] = {
     "[Debugged]",
     "[Transitioning]",
 
+    "[New]",
     "[Map]",
     "[Unmap]",
+    "[Bypass]",
     "[Destroy]",
     "[Move]",
     "[Resize]",
@@ -52,6 +54,7 @@ char *component_names[NUM_COMPONENT_TYPES] = {
     "[Shape Damaged]",
     "[Focus Changed]",
     "[Wintype Changed]",
+    "[Class Changed]",
 };
 
 static void draw_generic_component(Swiss* em, enum ComponentType ctype) {

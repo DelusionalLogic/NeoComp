@@ -289,7 +289,7 @@ void windowlist_drawTint(session_t* ps) {
     shader_use(program);
 
     for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z, CQ_END) {
+            COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z, CQ_NOT, COMPONENT_OPACITY, CQ_NOT, COMPONENT_BGOPACITY, CQ_END) {
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
         struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);

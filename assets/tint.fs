@@ -19,4 +19,5 @@ void main(void) {
 
     gl_FragColor = vec4(color, 1.0);
     gl_FragColor *= rand(screen_uv) * 0.05;
+    gl_FragColor *= opacity;
 }
