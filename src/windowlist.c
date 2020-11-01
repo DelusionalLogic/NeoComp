@@ -101,6 +101,22 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     }
     struct BgBlit* shader_type = shader->shader_type;
 
+    struct shader_program* tint_shader = assets_load("tint.shader");
+    if(tint_shader->shader_type_info != &colored_info) {
+        printf_errf("Shader was not a colored shader");
+        return;
+    }
+    struct Colored* tint_shader_type = tint_shader->shader_type;
+
+    struct shader_program* global_shader = assets_load("global.shader");
+    if(global_shader->shader_type_info != &global_info) {
+        printf_errf("Shader was not a global shader");
+        // @INCOMPLETE: Make sure the config is correct
+        return;
+    }
+
+    struct Global* global_shader_type = global_shader->shader_type;
+
     size_t index;
     win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
@@ -189,32 +205,26 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         // Tint
         if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TINT, *w_id)) {
             struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, *w_id);
-            struct shader_program* program = assets_load("tint.shader");
-            if(program->shader_type_info != &colored_info) {
-                printf_errf("Shader was not a colored shader");
-                return;
-            }
-            struct Colored* shader_type = program->shader_type;
 
             {
-                shader_set_future_uniform_vec2(shader_type->viewport, &ps->root_size);
-                shader_set_future_uniform_vec2(shader_type->window, &physical->size);
+                shader_set_future_uniform_vec2(tint_shader_type->viewport, &ps->root_size);
+                shader_set_future_uniform_vec2(tint_shader_type->window, &physical->size);
 
                 double opac = effective_opacity / 100.0;
-                shader_set_future_uniform_float(shader_type->opacity, tint->color.w * opac);
+                shader_set_future_uniform_float(tint_shader_type->opacity, tint->color.w * opac);
 
                 Vector3 color = tint->color.rgb;
                 vec3_imul(&color, opac);
-                shader_set_future_uniform_vec3(shader_type->color, &color);
+                shader_set_future_uniform_vec3(tint_shader_type->color, &color);
             }
 
-            shader_use(program);
+            shader_use(tint_shader);
 
             {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
-                draw_rect(shaped->face, shader_type->mvp, winpos, physical->size);
+                draw_rect(shaped->face, tint_shader_type->mvp, winpos, physical->size);
             }
         }
 
@@ -222,23 +232,15 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
             struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
-            struct shader_program* global_program = assets_load("global.shader");
-            if(global_program->shader_type_info != &global_info) {
-                printf_errf("Shader was not a global shader");
-                // @INCOMPLETE: Make sure the config is correct
-                return;
-            }
 
-            struct Global* global_type = global_program->shader_type;
+            shader_set_future_uniform_sampler(global_shader_type->tex_scr, 0);
 
-            shader_set_future_uniform_sampler(global_type->tex_scr, 0);
+            shader_set_future_uniform_bool(global_shader_type->invert, w->invert_color);
+            shader_set_future_uniform_bool(global_shader_type->flip, textured->texture.flipped);
+            shader_set_future_uniform_float(global_shader_type->opacity, (float)(effective_opacity / 100.0));
+            shader_set_future_uniform_float(global_shader_type->dim, dim->dim/100.0);
 
-            shader_set_future_uniform_bool(global_type->invert, w->invert_color);
-            shader_set_future_uniform_bool(global_type->flip, textured->texture.flipped);
-            shader_set_future_uniform_float(global_type->opacity, (float)(effective_opacity / 100.0));
-            shader_set_future_uniform_float(global_type->dim, dim->dim/100.0);
-
-            shader_use(global_program);
+            shader_use(global_shader);
             zone_enter_extra(&ZONE_paint_window, "%s", w->name);
 
             // Bind texture
@@ -250,7 +252,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
                 /* Vector4 color = {{0.0, 1.0, 0.4, opacity->opacity/100}}; */
                 /* draw_colored_rect(w->face, &winpos, &textured->texture.size, &color); */
-                draw_rect(shaped->face, global_type->mvp, winpos, textured->texture.size);
+                draw_rect(shaped->face, global_shader_type->mvp, winpos, textured->texture.size);
             }
 
             zone_leave(&ZONE_paint_window);
@@ -289,7 +291,8 @@ void windowlist_drawTint(session_t* ps) {
     shader_use(program);
 
     for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z, CQ_NOT, COMPONENT_OPACITY, CQ_NOT, COMPONENT_BGOPACITY, CQ_END) {
+            COMPONENT_MUD, COMPONENT_TINT, COMPONENT_PHYSICAL, COMPONENT_Z,
+            CQ_NOT, COMPONENT_OPACITY, CQ_NOT, COMPONENT_BGOPACITY, CQ_END) {
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, it.id);
         struct TintComponent* tint = swiss_getComponent(&ps->win_list, COMPONENT_TINT, it.id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, it.id);
