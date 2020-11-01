@@ -126,13 +126,13 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
-        // All windows have a texture!
-        assert(swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id));
-        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
-        texture_bind(&textured->texture, GL_TEXTURE1);
+        struct TexturedComponent* textured = swiss_godComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+        if(textured != NULL) {
+            texture_bind(&textured->texture, GL_TEXTURE1);
+        }
 
         // Shadow
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
+        if(textured != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
             struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
             struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
 
@@ -173,7 +173,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct OpacityComponent* bgOpacity = swiss_godComponent(&ps->win_list, COMPONENT_BGOPACITY, *w_id);
 
         // Background
-        if(bgOpacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
+        if(textured != NULL && bgOpacity != NULL && swiss_hasComponent(&ps->win_list, COMPONENT_BLUR, *w_id)) {
             struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
@@ -224,7 +224,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         }
 
         // Content
-        if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
+        if(render_content && textured != NULL) {
             struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
 
             shader_set_future_uniform_sampler(global_shader_type->tex_scr, 1);
