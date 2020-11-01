@@ -126,15 +126,15 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
         Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
 
+        // All windows have a texture!
+        assert(swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id));
+        struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
+        texture_bind(&textured->texture, GL_TEXTURE1);
+
         // Shadow
         if(swiss_hasComponent(&ps->win_list, COMPONENT_SHADOW, *w_id)) {
             struct OpacityComponent* opacity = swiss_godComponent(&ps->win_list, COMPONENT_OPACITY, *w_id);
             struct glx_shadow_cache* shadow = swiss_getComponent(&ps->win_list, COMPONENT_SHADOW, *w_id);
-
-            // @COMPAT: There's an assumption here that everything that has
-            // a shadow also has a texture. It might be nicer to just not clip
-            // it if we don't have a texture.
-            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
 
             shader_set_future_uniform_bool(shader_type->invert, true);
             shader_set_future_uniform_bool(shader_type->flip, shadow->effect.flipped);
@@ -158,7 +158,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             shader_set_uniform_mat4(shader_type->win_tran, &m);
 
             texture_bind(&shadow->effect, GL_TEXTURE0);
-            texture_bind(&textured->texture, GL_TEXTURE1);
+            // Windows texture already bound
 
             {
                 Vector2 rpos = {{glPos.x, glPos.y}};
@@ -177,11 +177,6 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.00001);
 
-            // @COMPAT: There's an assumption here that everything that has
-            // a blur also has a texture. It might be nicer to just not clip it
-            // if we don't have a texture.
-            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
-
             shader_set_future_uniform_bool(shader_type->flip, blur->texture[0].flipped);
             shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
             shader_set_future_uniform_sampler(shader_type->win_tex, 1);
@@ -190,7 +185,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             shader_use(shader);
 
             texture_bind(&blur->texture[0], GL_TEXTURE0);
-            texture_bind(&textured->texture, GL_TEXTURE1);
+            // Windows texture already bound
 
             /* Vector4 color = {{1.0, 1.0, 1.0, 1.0}}; */
             /* draw_colored_rect(shaped->face, &dglPos, &physical->size, &color); */
@@ -230,10 +225,9 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
         // Content
         if(render_content && swiss_hasComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id)) {
-            struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
             struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
 
-            shader_set_future_uniform_sampler(global_shader_type->tex_scr, 0);
+            shader_set_future_uniform_sampler(global_shader_type->tex_scr, 1);
 
             shader_set_future_uniform_bool(global_shader_type->invert, w->invert_color);
             shader_set_future_uniform_bool(global_shader_type->flip, textured->texture.flipped);
@@ -243,8 +237,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             shader_use(global_shader);
             zone_enter_extra(&ZONE_paint_window, "%s", w->name);
 
-            // Bind texture
-            texture_bind(&textured->texture, GL_TEXTURE0);
+            // Texture is already bound
 
             {
                 Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);

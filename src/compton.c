@@ -2652,7 +2652,7 @@ void session_run(session_t *ps) {
         shadowsystem_updateShadow(ps, &transparent);
 
         if(ps->o.blur_background)
-            blursystem_updateBlur(&ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, (struct _session*) ps);
+            blursystem_updateBlur(&ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, ps);
 
         zone_leave(&ZONE_effect_textures);
 

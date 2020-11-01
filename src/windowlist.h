@@ -3,8 +3,6 @@
 #include "common.h"
 #include "swiss.h"
 
-Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size);
-
 void windowlist_drawBackground(session_t* ps, Vector* opaque);
 void windowlist_drawShadow(session_t* ps);
 void windowlist_drawTransparent(session_t* ps, Vector* transparent);
@@ -14,5 +12,6 @@ void windowlist_updateStencil(session_t* ps, Vector* paints);
 void windowlist_updateBlur(session_t* ps);
 
 size_t binaryZSearch(Swiss* em, const Vector* candidates, double needle);
+void windowlist_findbehind(Swiss* win_list, const Vector* windows, const win_id overlap, Vector* overlaps);
 
 void windowlist_drawDebug(Swiss* em, session_t* ps);

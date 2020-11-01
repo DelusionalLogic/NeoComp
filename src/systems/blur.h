@@ -9,7 +9,6 @@
 
 #include <GL/glx.h>
 
-struct _session;
 struct _win;
 
 struct blur {
@@ -42,7 +41,7 @@ typedef struct glx_blur_cache {
 
 void blursystem_init();
 void blursystem_updateBlur(Swiss* em, Vector2* root_size,
-        struct Texture* texture, int level, struct _session* ps);
+        struct Texture* texture, int level, struct _session_t* ps);
 void blursystem_delete(Swiss* em);
 void blursystem_tick(Swiss* em, Vector* order);
 

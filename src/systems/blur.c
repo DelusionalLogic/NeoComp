@@ -11,6 +11,8 @@
 #include "textureeffects.h"
 #include "framebuffer.h"
 
+#include "windowlist.h"
+
 #include <stdio.h>
 
 DECLARE_ZONE(zsort);
@@ -237,11 +239,9 @@ void blursystem_tick(Swiss* em, Vector* order) {
 }
 
 void blursystem_updateBlur(Swiss* em, Vector2* root_size,
-        struct Texture* texture, int level, struct _session* ps) {
+        struct Texture* texture, int level, struct _session_t* ps) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
         struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
 
         if(blur_cache_init(blur) != 0) {
