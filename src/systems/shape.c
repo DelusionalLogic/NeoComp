@@ -66,6 +66,7 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
             XRectangle default_clip = {.x = offset.x, .y = offset.y, .width = extents.x, .height = extents.y};
             XserverRegion default_clip_region = XFixesCreateRegionH(xcontext->display, &default_clip, 1);
             XFixesIntersectRegionH(xcontext->display, window_region, window_region, default_clip_region);
+            XFixesDestroyRegion(xcontext->display, default_clip_region);
 
             int rect_count;
             XRectangle* rects = XFixesFetchRegionH(xcontext->display, window_region, &rect_count);
