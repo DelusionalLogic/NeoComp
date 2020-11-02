@@ -19,7 +19,7 @@ INCS = -Isrc/ -Igen/ -I.
 
 CFG = -std=gnu11 -fms-extensions -flto
 
-PACKAGES = xcomposite xfixes xdamage xrender xext xrandr libpcre xinerama xcb x11-xcb xcb-composite
+PACKAGES = xcomposite xres xfixes xdamage xrender xext xrandr libpcre xinerama xcb x11-xcb xcb-composite
 # Text rendering
 PACKAGES += freetype2
 
