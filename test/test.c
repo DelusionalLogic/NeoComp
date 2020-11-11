@@ -1298,8 +1298,36 @@ Status glXQueryVersionH(Display* dpy, int* major, int* minor) {
 Status XineramaQueryVersionH(Display* dpy, int* major, int* minor) {
     return 1;
 }
+Status XResQueryVersionH(Display* dpy, int* major, int* minor) {
+    return 1;
+}
 Status XSyncInitializeH(Display* dpy, int* major, int* minor) {
     return 1;
+}
+
+int XmbTextListToTextPropertyH(Display* display,  char** list,  int count,  XICCEncodingStyle style,  XTextProperty* text_prop_return) {
+    return 0;
+}
+void XSetTextPropertyH(Display* display,  Window w,  XTextProperty* text_prop,  Atom property) {
+    return;
+}
+Window XCreateSimpleWindowH(Display* display,  Window parent,  int x,  int y,  unsigned int width,  unsigned int height,  unsigned int border_width,  unsigned long border,  unsigned long background) {
+    return 0;
+}
+void XCompositeUnredirectWindowH(Display* dpy,  Window window,  int update) {
+    return;
+}
+void Xutf8SetWMPropertiesH(Display* display,  Window w,  _Xconst char* window_name,  _Xconst char* icon_name,  char** argv,  int argc,  XSizeHints* normal_hints,  XWMHints* wm_hints,  XClassHint* class_hints) {
+    return;
+}
+int XChangePropertyH(Display* display,  Window w,  Atom property,  Atom type,  int format,  int mode,  _Xconst unsigned char* data,  int nelements) {
+    return 0;
+}
+int XSetSelectionOwnerH(Display* display,  Atom selection,  Window owner,  Time time) {
+    return 0;
+}
+int XFreeH(void* data) {
+    return 0;
 }
 
 void* atoms;

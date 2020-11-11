@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
+
+#define REGISTER_PROP "_NET_WM_CM_S"
 
 DECLARE_ZONE(x_error);
 
@@ -129,6 +132,7 @@ const char* X11Protocols_Names[] = {
     GLX_EXTENSION_NAME,
     "XINERAMA",
     SYNC_NAME,
+    "X-Resource"
 };
 
 const char* VERSION_NAMES[] = {
@@ -211,6 +215,12 @@ static int xorgContext_capabilities(struct X11Capabilities* caps, struct X11Cont
         XSyncInitializeH(context->display, &major, &minor);
     }
 
+    if(caps->version[PROTO_RES] == XVERSION_YES) {
+        int major;
+        int minor;
+        XResQueryVersionH(context->display, &major, &minor);
+    }
+
     return 0;
 }
 
@@ -219,6 +229,92 @@ int winvis_compar(const void* av, const void* bv, void* userdata) {
     const struct WinVis* b = bv;
     return a->id - b->id;
 };
+
+static XTextProperty * make_text_prop(Display* dpy, char *str) {
+    XTextProperty *pprop = calloc(1, sizeof(XTextProperty));
+    if(pprop == NULL) {
+        printf_errf("Allocation failure");
+        exit(1);
+    }
+
+    if (XmbTextListToTextPropertyH(dpy, &str, 1,  XStringStyle, pprop)) {
+        XFreeH(pprop->value);
+        free(pprop);
+        pprop = NULL;
+    }
+
+    return pprop;
+}
+
+static bool wid_set_text_prop(Display* dpy, Window wid, Atom prop_atom, char *str) {
+    XTextProperty *pprop = make_text_prop(dpy, str);
+    if (!pprop) {
+        printf_errf("(\"%s\"): Failed to make text property.", str);
+        return false;
+    }
+
+    XSetTextPropertyH(dpy, wid, pprop, prop_atom);
+    XFreeH(pprop->value);
+    XFreeH(pprop);
+
+    return true;
+}
+
+
+static Window register_cm(Display* dpy, int screen, Window root) {
+    assert(!ps->reg_win);
+
+    Window win = XCreateSimpleWindowH(dpy, root, 0, 0, 1, 1, 0, None, None);
+
+    if (!win) {
+        printf_errf("(): Failed to create window.");
+        return -1;
+    }
+
+    XCompositeUnredirectWindowH(dpy, win, CompositeRedirectManual);
+
+    {
+        XClassHint *h = XAllocClassHint();
+        if (h) {
+            h->res_name = "compton";
+            h->res_class = "xcompmgr";
+        }
+        Xutf8SetWMPropertiesH(dpy, win, "xcompmgr", "xcompmgr", NULL, 0, NULL, NULL, h);
+        XFreeH(h);
+    }
+
+    // Set _NET_WM_PID
+    {
+        long pid = getpid();
+        if (!XChangePropertyH(dpy, win,
+                    XInternAtomH(dpy, "_NET_WM_PID", False), XA_CARDINAL, 32, PropModeReplace,
+                    (unsigned char *) &pid, 1)) {
+            printf_errf("(): Failed to set _NET_WM_PID.");
+        }
+    }
+
+    // Set COMPTON_VERSION
+    if (!wid_set_text_prop(dpy, win, XInternAtomH(dpy, "COMPTON_VERSION", False), COMPTON_VERSION)) {
+        printf_errf("(): Failed to set COMPTON_VERSION.");
+    }
+
+    // Acquire X Selection _NET_WM_CM_S
+    unsigned len = strlen(REGISTER_PROP) + 2;
+    int s = screen;
+
+    while (s >= 10) {
+        ++len;
+        s /= 10;
+    }
+
+    char *buf = malloc(len);
+    snprintf(buf, len, REGISTER_PROP "%d", screen);
+    buf[len - 1] = '\0';
+    XSetSelectionOwnerH(dpy, XInternAtomH(dpy, buf, False), win, 0);
+    free(buf);
+
+    return win;
+}
 
 bool xorgContext_init(struct X11Context* context, Display* display, int screen, struct Atoms* atoms) {
     assert(context != NULL);
@@ -286,6 +382,8 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
 
     context->atoms = atoms;
     atoms_init(atoms, context->display);
+
+    context->reg = register_cm(display, screen, context->root);
     return true;
 }
 
@@ -811,8 +909,9 @@ static void fillBuffer(struct X11Context* xctx) {
     switch (raw.type) {
         case CreateNotify: {
             XCreateWindowEvent* ev = (XCreateWindowEvent *)&raw;
-            // Ignore our overlay window.
+            // Ignore our overlay  and reg window.
             if(ev->window == xctx->overlay) break;
+            if(ev->window == xctx->reg) break;
             zone_scope_extra(&ZONE_event_preprocess, "Create");
             if(ev->parent == xctx->root) {
                 windowCreate(xctx, ev->window, ev->x, ev->y, ev->border_width, ev->width, ev->height);
@@ -1211,12 +1310,14 @@ static void beginSubWindow(struct X11Context* xctx, Window xid, Window parent) {
         return;
     }
 
+    if(attribs.class == InputOnly) {
+        return;
+    }
+
     recurseWindow(xctx, xid);
 
-    if(attribs.class != InputOnly) {
-        if(attribs.map_state == IsViewable) {
-            windowMap(xctx, xid);
-        }
+    if(attribs.map_state == IsViewable) {
+        windowMap(xctx, xid);
     }
 
     xcb_connection_t* xcb = XGetXCBConnectionH(xctx->display);
@@ -1244,8 +1345,8 @@ static void recurseWindow(struct X11Context* xctx, Window xid) {
 
 
 static void beginTopWindow(struct X11Context* xctx, Window xid) {
-    if(xid == xctx->overlay) {
-        // Ignore our overlay window.
+    if(xid == xctx->overlay || xid == xctx->reg) {
+        // Ignore our overlay and reg window.
         return;
     }
 
@@ -1253,6 +1354,10 @@ static void beginTopWindow(struct X11Context* xctx, Window xid) {
     if (!XGetWindowAttributesH(xctx->display, xid, &attribs)) {
         // Failed to get window attributes probably means the window is gone
         // already.
+        return;
+    }
+
+    if(attribs.class == InputOnly) {
         return;
     }
 
@@ -1274,10 +1379,8 @@ static void beginTopWindow(struct X11Context* xctx, Window xid) {
         assert(rc != 0);
     }
 
-    if(attribs.class != InputOnly) {
-        if(attribs.map_state == IsViewable) {
-            windowMap(xctx, xid);
-        }
+    if(attribs.map_state == IsViewable) {
+        windowMap(xctx, xid);
     }
 }
 
@@ -1298,4 +1401,8 @@ void xorg_beginEvents(struct X11Context* xctx) {
 
     refreshFocus(xctx);
     refreshRoot(xctx);
+}
+
+uint8_t xorg_resource(struct X11Context* xctx) {
+    return 9.5;
 }

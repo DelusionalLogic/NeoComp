@@ -36,6 +36,7 @@ enum X11Protocol {
     PROTO_GLX,
     PROTO_XINERAMA,
     PROTO_SYNC,
+    PROTO_RES,
     PROTO_COUNT,
 };
 
@@ -178,6 +179,9 @@ struct X11Context {
     int screen;
     Window root;
     Window overlay;
+    // @CLEANUP: Currently this window is created somewhere else, but really we
+    // should own it.
+    Window reg;
 
     struct X11Capabilities capabilities;
 
@@ -226,3 +230,5 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
 
 void xorg_nextEvent(struct X11Context* xcontext, struct Event* event);
 void xorg_beginEvents(struct X11Context* xcontext);
+
+uint8_t xorg_resource(struct X11Context* xctx);

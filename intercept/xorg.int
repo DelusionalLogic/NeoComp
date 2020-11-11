@@ -37,7 +37,19 @@ fun Bool XResQueryExtension(Display* dpy, int* event_base_return, int* error_bas
 fun Status XResQueryVersion(Display* dpy, int* major_version_return, int* minor_version_return);
 fun Status XResQueryClientResources(Display* dpy, XID xid, int* num_types, XResType** types);
 
+fun int XmbTextListToTextProperty(Display* display, char** list, int count, XICCEncodingStyle style, XTextProperty* text_prop_return);
+fun void XSetTextProperty(Display* display, Window w, XTextProperty* text_prop, Atom property);
+
+fun Window XCreateSimpleWindow(Display* display, Window parent, int x, int y, unsigned int width, unsigned int height, unsigned int border_width, unsigned long border, unsigned long background);
+
+fun void XCompositeUnredirectWindow(Display* dpy, Window window, int update);
+
+fun void Xutf8SetWMProperties(Display* display, Window w, _Xconst char* window_name, _Xconst char* icon_name, char** argv, int argc, XSizeHints* normal_hints, XWMHints* wm_hints, XClassHint* class_hints);
+fun int XChangeProperty(Display* display, Window w, Atom property, Atom type, int format, int mode, _Xconst unsigned char* data, int nelements);
+fun int XSetSelectionOwner(Display* display, Atom selection, Window owner, Time time);
+
 ffun Atom XInternAtom(Display* dpy, char* name, Bool query);
+ffun int XFree(void* data);
 
 fun Damage XDamageCreate(Display* dpy, Window win, int level);
 fun void XDamageDestroy(Display* dpy, Damage damage);

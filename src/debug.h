@@ -10,9 +10,11 @@
 #include "texture.h"
 #include "buffer.h"
 
+#include "xorg.h"
+
 void draw_component_debug(Swiss* em, Vector2* rootSize);
 
-#define GRAPHS 2
+#define GRAPHS 3
 struct DebugGraphState {
     struct BufferObject bo[GRAPHS];
     struct Texture tex[GRAPHS];
@@ -26,5 +28,5 @@ struct DebugGraphState {
 
 void init_debug_graph(struct DebugGraphState* state);
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos);
-void update_debug_graph(struct DebugGraphState* state, timestamp startTime);
+void update_debug_graph(struct DebugGraphState* state, timestamp startTime, struct X11Context* xctx);
 void debug_mark_draw();

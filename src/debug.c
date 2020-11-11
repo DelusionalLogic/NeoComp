@@ -7,6 +7,8 @@
 #include "assets/assets.h"
 #include "assets/shader.h"
 
+#include "intercept/xorg.h"
+
 const Vector4 header_bg = {{ 0.1, 0.1, 0.12, .7 }};
 const Vector4 content_bg = {{ 0.2, 0.2, 0.24, .6 }};
 
@@ -649,7 +651,13 @@ void init_debug_graph(struct DebugGraphState* state) {
 }
 
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
-    Vector2 winSize = {{200, 75}};
+    float winWidth = 200;
+    Vector2 bigSize = {{winWidth - 10, 65}};
+
+    Vector2 winSize = {{winWidth, 10}};
+    winSize.y += bigSize.y;
+    winSize.y += bigSize.y;
+
     Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
     Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
     Vector3 fgColor2 = {{.369, .537, .737}};
@@ -709,29 +717,33 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     struct Graph* type = program->shader_type;
     shader_set_future_uniform_sampler(type->sampler, 0);
-    shader_set_future_uniform_vec3(type->color, &fgColor);
+    shader_set_future_uniform_vec3(type->color, &VEC3_ZERO);
     shader_set_future_uniform_float(type->width, state->width);
 
     shader_use(program);
 
-    texture_bind(&state->tex[0], GL_TEXTURE0);
-
     Vector3 graphPos = {{5, 5, 0}};
     vec3_add(&graphPos, &winPos);
-    Vector2 graphSize = {{-10, -10}};
-    vec2_add(&graphSize, &winSize);
 
-    draw_rect(face, type->mvp, graphPos, graphSize);
+    shader_set_uniform_vec3(type->color, &fgColor2);
+    texture_bind(&state->tex[2], GL_TEXTURE0);
+    draw_rect(face, type->mvp, graphPos, bigSize);
+
+    graphPos.y += bigSize.y;
+
+    shader_set_uniform_vec3(type->color, &fgColor);
+    texture_bind(&state->tex[0], GL_TEXTURE0);
+    draw_rect(face, type->mvp, graphPos, bigSize);
 
     shader_set_uniform_vec3(type->color, &fgColor2);
     texture_bind(&state->tex[1], GL_TEXTURE0);
-    draw_rect(face, type->mvp, graphPos, graphSize);
+    draw_rect(face, type->mvp, graphPos, bigSize);
 
     glDisable(GL_BLEND);
 }
 
 static int draws = 0;
-void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
+void update_debug_graph(struct DebugGraphState* state, timestamp startTime, struct X11Context* xctx) {
     timestamp currentTime;
     if(!getTime(&currentTime)) {
         printf_errf("Failed getting time");
@@ -746,13 +758,20 @@ void update_debug_graph(struct DebugGraphState* state, timestamp startTime) {
         state->data[0][state->cursor] = dt;
     }
 
-
     {
         uint8_t data = (uint8_t)((draws / 200.0) * 255.0);
         bo_update(&state->bo[1], state->cursor, 1, &data);
         state->avg[1] += (draws / (double)state->width) - (state->data[1][state->cursor] / state->width);
         state->data[1][state->cursor] = draws;
         draws = 0;
+    }
+
+    {
+        uint8_t point = xorg_resource(xctx);
+        uint8_t data = (uint8_t)((point / 10.0) * 255.0);
+        bo_update(&state->bo[2], state->cursor, 1, &data);
+        state->avg[2] += (point / state->width) - (state->data[2][state->cursor] / state->width);
+        state->data[2][state->cursor] = point;
     }
 
     state->cursor++;

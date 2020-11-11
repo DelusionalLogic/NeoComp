@@ -1916,10 +1916,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   if (!vsync_init(ps))
     exit(1);
 
-  // Create registration window
-  if (!ps->reg_win && !register_cm(ps))
-    exit(1);
-
   char* debug_font_loc = assets_resolve_path("Roboto-Light.ttf");
   if(debug_font_loc != NULL) {
       text_debug_load(debug_font_loc);
@@ -2731,7 +2727,7 @@ void session_run(session_t *ps) {
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
 
 #ifdef FRAMERATE_DISPLAY
-        update_debug_graph(&ps->debug_graph, currentTime);
+        update_debug_graph(&ps->debug_graph, currentTime, &ps->xcontext);
         draw_debug_graph(&ps->debug_graph, &(Vector2){{10, ps->root_size.y - 10}});
 #endif
 
