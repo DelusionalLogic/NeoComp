@@ -384,6 +384,11 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
     atoms_init(atoms, context->display);
 
     context->reg = register_cm(display, screen, context->root);
+    if(context->reg == -1) {
+        printf_errf("Can't lock compositor");
+        return false;
+    }
+
     return true;
 }
 
@@ -1404,5 +1409,5 @@ void xorg_beginEvents(struct X11Context* xctx) {
 }
 
 uint8_t xorg_resource(struct X11Context* xctx) {
-    return 9.5;
+    return 1;
 }
