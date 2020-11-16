@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: install dependencies
-      run: sudo apt-get update && sudo apt-get install -y libx11-dev libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxrandr-dev libxinerama-dev libxcb-composite0-dev libconfig-dev libjudy-dev mesa-common-dev libgl1-mesa-dev libfreetype6-dev
+      run: sudo apt-get update && sudo apt-get install -y libx11-dev libx11-xcb-dev libxres-dev libxcomposite-dev libxdamage-dev libxext-dev libxrandr-dev libxinerama-dev libxcb-composite0-dev libconfig-dev libjudy-dev mesa-common-dev libgl1-mesa-dev libfreetype6-dev
     - name: make
       run: make
     - name: make test
