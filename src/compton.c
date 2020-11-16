@@ -949,67 +949,6 @@ static void ev_shape_notify(session_t *ps, struct Shape *ev) {
 // === Main ===
 
 /**
- * Register a window as symbol, and initialize GLX context if wanted.
- */
-static bool
-register_cm(session_t *ps) {
-  assert(!ps->reg_win);
-
-  ps->reg_win = XCreateSimpleWindow(ps->dpy, ps->root, 0, 0, 1, 1, 0,
-        None, None);
-
-  if (!ps->reg_win) {
-    printf_errf("(): Failed to create window.");
-    return false;
-  }
-
-  XCompositeUnredirectWindow(ps->dpy, ps->reg_win, CompositeRedirectManual);
-
-  {
-    XClassHint *h = XAllocClassHint();
-    if (h) {
-      h->res_name = "compton";
-      h->res_class = "xcompmgr";
-    }
-    Xutf8SetWMProperties(ps->dpy, ps->reg_win, "xcompmgr", "xcompmgr",
-        NULL, 0, NULL, NULL, h);
-    cxfree(h);
-  }
-
-  // Set _NET_WM_PID
-  {
-    long pid = getpid();
-    if (!XChangeProperty(ps->dpy, ps->reg_win,
-          get_atom(&ps->xcontext, "_NET_WM_PID"), XA_CARDINAL, 32, PropModeReplace,
-          (unsigned char *) &pid, 1)) {
-      printf_errf("(): Failed to set _NET_WM_PID.");
-    }
-  }
-
-  // Set COMPTON_VERSION
-  if (!wid_set_text_prop(ps, ps->reg_win, get_atom(&ps->xcontext, "COMPTON_VERSION"), COMPTON_VERSION)) {
-    printf_errf("(): Failed to set COMPTON_VERSION.");
-  }
-
-  // Acquire X Selection _NET_WM_CM_S
-  unsigned len = strlen(REGISTER_PROP) + 2;
-  int s = ps->scr;
-
-  while (s >= 10) {
-	  ++len;
-	  s /= 10;
-  }
-
-  char *buf = malloc(len);
-  snprintf(buf, len, REGISTER_PROP "%d", ps->scr);
-  buf[len - 1] = '\0';
-  XSetSelectionOwner(ps->dpy, get_atom(&ps->xcontext, buf), ps->reg_win, 0);
-  free(buf);
-
-  return true;
-}
-
-/**
  * Reopen streams for logging.
  */
 static bool
