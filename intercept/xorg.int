@@ -35,6 +35,10 @@ fun Status XSyncInitialize(Display* dpy, int* major, int* minor);
 
 fun Bool XResQueryExtension(Display* dpy, int* event_base_return, int* error_base_return);
 fun Status XResQueryVersion(Display* dpy, int* major_version_return, int* minor_version_return);
+
+fun Status XResQueryClientIds(Display* dpy, long num_specs, XResClientIdSpec* client_specs, long* num_ids, XResClientIdValue** client_ids);
+
+fun Status XResQueryClientPixmapBytes(Display* dpy, XID xid, unsigned long* bytes);
 fun Status XResQueryClientResources(Display* dpy, XID xid, int* num_types, XResType** types);
 
 fun int XmbTextListToTextProperty(Display* display, char** list, int count, XICCEncodingStyle style, XTextProperty* text_prop_return);

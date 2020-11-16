@@ -648,15 +648,17 @@ void init_debug_graph(struct DebugGraphState* state) {
     }
 
     state->cursor = 0;
+    vector_init(&state->xdata.values, sizeof(uint64_t), 16);
 }
 
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     float winWidth = 200;
     Vector2 bigSize = {{winWidth - 10, 65}};
+    Vector2 smallSize = {{winWidth - 10, 20}};
 
     Vector2 winSize = {{winWidth, 10}};
     winSize.y += bigSize.y;
-    winSize.y += bigSize.y;
+    winSize.y += smallSize.y * vector_size(&state->xdata.values);
 
     Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
     Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
@@ -674,40 +676,73 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     Vector2 scale = {{1, 1}};
     Vector2 size = {{0}};
     {
-        static char* buffer = "Frametime";
+        float savedY = pen.y;
+        {
+            static char* buffer = "Frametime";
 
-        text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{pen.x, pen.y - size.y}};
+            text_size(&debug_font, buffer, &scale, &size);
+            Vector2 pos = {{pen.x, pen.y - size.y}};
 
-        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
-    }
-    {
-        static char buffer[128];
-        snprintf(buffer, 128, "%.1f ms", state->avg[0]);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+        }
+        {
+            static char buffer[128];
+            snprintf(buffer, 128, "%.1f ms", state->avg[0]);
 
-        text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+            text_size(&debug_font, buffer, &scale, &size);
+            Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
-        text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor2);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor2);
+        }
         pen.y -= size.y;
+        {
+            static char* buffer = "Rectangles";
+
+            text_size(&debug_font, buffer, &scale, &size);
+            Vector2 pos = {{pen.x, pen.y - size.y}};
+
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+        }
+        {
+            static char buffer[128];
+            snprintf(buffer, 128, "%.0f", state->avg[1]);
+
+            text_size(&debug_font, buffer, &scale, &size);
+            Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor);
+        }
+        pen.y = savedY - bigSize.y;
     }
-    {
-        static char* buffer = "Rectangles";
+
+    for(size_t i = 0; i < vector_size(&state->xdata.values); i++) {
+        char* buffer = state->xdata.names[i];
 
         text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{pen.x, pen.y - size.y}};
+        Vector2 pos = {{pen.x, (pen.y - i * smallSize.y) - size.y}};
 
         text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
     }
-    {
+
+    for(size_t i = 0; i < vector_size(&state->xdata.values); i++) {
         static char buffer[128];
-        snprintf(buffer, 128, "%.0f", state->avg[1]);
+        snprintf(buffer, 128, "%ld", *((uint64_t*)vector_get(&state->xdata.values, i)));
 
         text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+        Vector2 pos = {{pen.x + winSize.x - size.x, (pen.y - i * smallSize.y) - size.y}};
 
-        text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor);
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
     }
+    /* { */
+    /*     static char buffer[128]; */
+    /*     snprintf(buffer, 128, "%.0f", state->avg[2]); */
+
+    /*     text_size(&debug_font, buffer, &scale, &size); */
+    /*     Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}}; */
+
+    /*     text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor); */
+    /*     pen.y -= size.y; */
+    /* } */
 
     struct shader_program* program = assets_load("graph.shader");
     if(program->shader_type_info != &graph_info) {
@@ -722,14 +757,8 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     shader_use(program);
 
-    Vector3 graphPos = {{5, 5, 0}};
+    Vector3 graphPos = {{5, winSize.y - bigSize.y - 5, 0}};
     vec3_add(&graphPos, &winPos);
-
-    shader_set_uniform_vec3(type->color, &fgColor2);
-    texture_bind(&state->tex[2], GL_TEXTURE0);
-    draw_rect(face, type->mvp, graphPos, bigSize);
-
-    graphPos.y += bigSize.y;
 
     shader_set_uniform_vec3(type->color, &fgColor);
     texture_bind(&state->tex[0], GL_TEXTURE0);
@@ -766,13 +795,7 @@ void update_debug_graph(struct DebugGraphState* state, timestamp startTime, stru
         draws = 0;
     }
 
-    {
-        uint8_t point = xorg_resource(xctx);
-        uint8_t data = (uint8_t)((point / 10.0) * 255.0);
-        bo_update(&state->bo[2], state->cursor, 1, &data);
-        state->avg[2] += (point / state->width) - (state->data[2][state->cursor] / state->width);
-        state->data[2][state->cursor] = point;
-    }
+    xorg_resource(xctx, &state->xdata);
 
     state->cursor++;
     if(state->cursor >= state->width)

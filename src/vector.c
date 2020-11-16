@@ -158,6 +158,9 @@ int vector_size(const Vector* vector)
 size_t vector_bisect(Vector* vector, const void* needle, int (*compar)(const void *, const void*, void*), void* userdata) {
     assert(vector->elementSize != 0);
 
+    if(vector->size == 0)
+        return -1;
+
     int32_t bottom = 0;
     int32_t top = vector_size(vector) - 1;
 

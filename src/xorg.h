@@ -4,6 +4,7 @@
 
 #include "vmath.h"
 #include "vector.h"
+#include "intercept/xorg.h"
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/glx.h>
@@ -179,8 +180,7 @@ struct X11Context {
     int screen;
     Window root;
     Window overlay;
-    // @CLEANUP: Currently this window is created somewhere else, but really we
-    // should own it.
+
     Window reg;
 
     struct X11Capabilities capabilities;
@@ -189,6 +189,11 @@ struct X11Context {
     int numConfigs;
 
     Vector cfgs;
+
+    // X resource tracking stuff
+    XID xres;
+    Vector resAtoms;
+    Vector resNames;
 
     // @CLEANUP: This should be internal but currently it lives in the session
     struct Atoms* atoms;
@@ -231,4 +236,14 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
 void xorg_nextEvent(struct X11Context* xcontext, struct Event* event);
 void xorg_beginEvents(struct X11Context* xcontext);
 
-uint8_t xorg_resource(struct X11Context* xctx);
+struct AtomEntry {
+    Atom atom;
+    size_t index;
+};
+
+struct XResourceUsage {
+    char** names;
+    Vector values;
+};
+
+void xorg_resource(struct X11Context* xctx, struct XResourceUsage* usage);

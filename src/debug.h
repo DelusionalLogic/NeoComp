@@ -14,7 +14,7 @@
 
 void draw_component_debug(Swiss* em, Vector2* rootSize);
 
-#define GRAPHS 3
+#define GRAPHS 2
 struct DebugGraphState {
     struct BufferObject bo[GRAPHS];
     struct Texture tex[GRAPHS];
@@ -24,6 +24,8 @@ struct DebugGraphState {
 
     size_t cursor;
     size_t width;
+
+    struct XResourceUsage xdata;
 };
 
 void init_debug_graph(struct DebugGraphState* state);

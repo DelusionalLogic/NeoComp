@@ -262,8 +262,6 @@ static bool wid_set_text_prop(Display* dpy, Window wid, Atom prop_atom, char *st
 
 
 static Window register_cm(Display* dpy, int screen, Window root) {
-    assert(!ps->reg_win);
-
     Window win = XCreateSimpleWindowH(dpy, root, 0, 0, 1, 1, 0, None, None);
 
     if (!win) {
@@ -388,6 +386,21 @@ bool xorgContext_init(struct X11Context* context, Display* display, int screen, 
         printf_errf("Can't lock compositor");
         return false;
     }
+
+    XResClientIdSpec spec = {
+        .client = context->reg,
+        .mask = XRES_CLIENT_ID_XID_MASK
+    };
+    long ret_ids = 0;
+    XResClientIdValue* value;
+    XResQueryClientIdsH(display, 1, &spec, &ret_ids, &value);
+    if(ret_ids != 0) {
+        context->xres = value->spec.client;
+    }
+    XFree(value);
+
+    vector_init(&context->resAtoms, sizeof(struct AtomEntry), 16);
+    vector_init(&context->resNames, sizeof(char*), 16);
 
     return true;
 }
@@ -1408,6 +1421,73 @@ void xorg_beginEvents(struct X11Context* xctx) {
     refreshRoot(xctx);
 }
 
-uint8_t xorg_resource(struct X11Context* xctx) {
-    return 1;
+static int atomEntry_compar(const void* ptrNeedle, const void* ptrPivot, void* userdata) {
+    Atom* needle = (Atom*)ptrNeedle;
+    struct AtomEntry* pivot = (struct AtomEntry*)ptrPivot;
+
+    return (*needle) - pivot->atom;
+}
+
+static int atomEntry_atomSort(const void* ptrA, const void* ptrB, void* userdata) {
+    struct AtomEntry* a = (struct AtomEntry*)ptrA;
+    struct AtomEntry* b = (struct AtomEntry*)ptrB;
+
+    return a->atom - b->atom;
+}
+
+void xorg_resource(struct X11Context* xctx, struct XResourceUsage* usage) {
+    int numRes;
+    XResType* resTypes;
+    XResQueryClientResourcesH(xctx->display, xctx->xres, &numRes, &resTypes);
+
+    size_t slots[numRes];
+    for(int i = 0; i < numRes; i++) {
+        XResType* resType = &resTypes[i];
+
+        size_t entrySlot = vector_bisect(&xctx->resAtoms, &resType->resource_type, &atomEntry_compar, NULL);
+        if(entrySlot == -1) {
+            slots[i] = -1;
+            continue;
+        }
+
+        slots[i] = ((struct AtomEntry*)vector_get(&xctx->resAtoms, entrySlot))->index;
+    }
+
+    size_t new = 0;
+    size_t nextSlot = vector_size(&xctx->resNames);
+    for(int i = 0; i < numRes; i++) {
+        if(slots[i] != -1) {
+            continue;
+        }
+
+        XResType* resType = &resTypes[i];
+        slots[i] = nextSlot + new++;
+
+        struct AtomEntry entry = {
+            .atom = resType->resource_type,
+            .index = slots[i],
+        };
+        vector_putBack(&xctx->resAtoms, &entry);
+
+        char* name = XGetAtomName(xctx->display, resType->resource_type);
+        vector_putBack(&xctx->resNames, &name);
+    }
+
+    vector_qsort(&xctx->resAtoms, &atomEntry_atomSort, NULL);
+
+    // Make space for new values
+    vector_reserve(&usage->values, new);
+
+    for(int i = 0; i < numRes; i++) {
+        XResType* resType = &resTypes[i];
+        assert(slots[i] != -1);
+
+        uint64_t* value = vector_get(&usage->values, slots[i]);
+        *value = resType->count;
+    }
+    // @HACK @FRAGILE
+    usage->names = (char**)xctx->resNames.data;
+
+
+    XFree(resTypes);
 }
