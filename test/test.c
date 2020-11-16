@@ -1329,6 +1329,14 @@ int XSetSelectionOwnerH(Display* display,  Atom selection,  Window owner,  Time 
 int XFreeH(void* data) {
     return 0;
 }
+Status XResQueryClientIdsH(Display* dpy,  long num_specs,  XResClientIdSpec* client_specs,  long* num_ids,  XResClientIdValue** client_ids) {
+    assert(false);
+    return 0;
+}
+Status XResQueryClientResourcesH(Display* dpy,  XID xid,  int* num_types,  XResType** types) {
+    assert(false);
+    return 0;
+}
 
 void* atoms;
 int nextAtom = 1;
