@@ -661,7 +661,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     winSize.y += smallSize.y * vector_size(&state->xdata.values);
 
 
-    Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
+    Vector3 winPos = {{pos->x, pos->y - winSize.y, 1.0}};
 
     Vector3 fgColors[] = {
         {{0.337255, 0.737255, 0.631373}},
