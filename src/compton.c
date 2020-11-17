@@ -2667,7 +2667,7 @@ void session_run(session_t *ps) {
 
 #ifdef FRAMERATE_DISPLAY
         update_debug_graph(&ps->debug_graph, currentTime, &ps->xcontext);
-        draw_debug_graph(&ps->debug_graph, &(Vector2){{10, ps->root_size.y - 10}});
+        draw_debug_graph(&ps->debug_graph, &(Vector2){{20, ps->root_size.y - 20}});
 #endif
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time

@@ -522,6 +522,17 @@ static void pushEvent(struct X11Context* xctx, const struct Event event) {
 }
 
 static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int border, int width, int height) {
+    Word_t rc;
+    J1S(rc, xctx->active, xid);
+    if(rc == 0) {
+        // @CLEANUP @CONSISTENCY: I really want to assert here, but during
+        // initialization someone might create a window in between our calls to
+        // subscribe to window create events and bootstrap the state
+        // assert(false);
+        // For now just do nothing
+        return;
+    }
+
     Damage damage = XDamageCreateH(xctx->display, xid, XDamageReportNonEmpty);
     uint64_t* pValue;
     JLI(pValue, xctx->damage, xid);
@@ -534,17 +545,6 @@ static void windowCreate(struct X11Context* xctx, Window xid, int x, int y, int 
     if (xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES) {
         // Subscribe to events when the window shape changes
         XShapeSelectInputH(xctx->display, xid, ShapeNotifyMask);
-    }
-
-    Word_t rc;
-    J1S(rc, xctx->active, xid);
-    if(rc == 0) {
-        // @CLEANUP @CONSISTENCY: I really want to assert here, but during
-        // initialization someone might create a window in between our calls to
-        // subscribe to window create events and bootstrap the state
-        // assert(false);
-        // For now just do nothing
-        return;
     }
 
     struct Event event = {
@@ -676,7 +676,6 @@ static void createDestroyWin(struct X11Context* xctx, Window xid) {
         return;
     }
 
-    // The damage object is already destroyed with the window
     JLD(rc_int, xctx->damage, xid);
     if(rc_int == JERR) {
         printf_errf("Alloc error");
@@ -1006,6 +1005,11 @@ static void fillBuffer(struct X11Context* xctx) {
 
                 detachSubtree(xctx, ev->window);
             } else {
+                // DestroyWin expects the damage to already be freed.
+                Damage* damage;
+                JLG(damage, xctx->damage, ev->window);
+                XDamageDestroyH(xctx->display, *damage);
+
                 createDestroyWin(xctx, ev->window);
                 Window frame = findRoot(xctx, ev->parent);
 

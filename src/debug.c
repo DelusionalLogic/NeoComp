@@ -652,17 +652,21 @@ void init_debug_graph(struct DebugGraphState* state) {
 }
 
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
-    float winWidth = 200;
-    Vector2 bigSize = {{winWidth - 10, 65}};
-    Vector2 smallSize = {{winWidth - 10, 20}};
+    const static float winWidth = 200;
+    Vector2 bigSize = {{winWidth, 65}};
+    Vector2 smallSize = {{winWidth, 20}};
 
-    Vector2 winSize = {{winWidth, 10}};
+    Vector2 winSize = {{winWidth, 0}};
     winSize.y += bigSize.y;
     winSize.y += smallSize.y * vector_size(&state->xdata.values);
 
+
     Vector3 winPos = vec3_from_vec2(&(Vector2){{pos->x, pos->y - winSize.y}}, 1.0);
-    Vector3 fgColor = {{0.337255, 0.737255, 0.631373}};
-    Vector3 fgColor2 = {{.369, .537, .737}};
+
+    Vector3 fgColors[] = {
+        {{0.337255, 0.737255, 0.631373}},
+        {{.369, .537, .737}},
+    };
     Vector4 bgColor = {{.1, .1, .1, .5}};
     struct face* face = assets_load("window.face");
 
@@ -670,7 +674,9 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     glEnable(GL_BLEND);
     glDepthMask(GL_FALSE);
 
-    draw_colored_rect(face, &winPos, &winSize, &bgColor);
+    Vector3 winBorderPos = {{winPos.x - 5, winPos.y - 5, winPos.z}};
+    Vector2 winExtents = {{winSize.x + 10, winSize.y + 10}};
+    draw_colored_rect(face, &winBorderPos, &winExtents, &bgColor);
 
     Vector2 pen = {{winPos.x, winPos.y + winSize.y}};
     Vector2 scale = {{1, 1}};
@@ -692,7 +698,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
-            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor2);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[1]);
         }
         pen.y -= size.y;
         {
@@ -710,7 +716,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
-            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[0]);
         }
         pen.y = savedY - bigSize.y;
     }
@@ -719,7 +725,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         char* buffer = state->xdata.names[i];
 
         text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{pen.x, (pen.y - i * smallSize.y) - size.y}};
+        Vector2 pos = {{pen.x, (pen.y - (i + 0.5) * smallSize.y) - (0.5 * size.y)}};
 
         text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
     }
@@ -729,20 +735,10 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         snprintf(buffer, 128, "%ld", *((uint64_t*)vector_get(&state->xdata.values, i)));
 
         text_size(&debug_font, buffer, &scale, &size);
-        Vector2 pos = {{pen.x + winSize.x - size.x, (pen.y - i * smallSize.y) - size.y}};
+        Vector2 pos = {{pen.x + winSize.x - size.x, (pen.y - (i + 0.5) * smallSize.y) - (0.5 * size.y)}};
 
         text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
     }
-    /* { */
-    /*     static char buffer[128]; */
-    /*     snprintf(buffer, 128, "%.0f", state->avg[2]); */
-
-    /*     text_size(&debug_font, buffer, &scale, &size); */
-    /*     Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}}; */
-
-    /*     text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColor); */
-    /*     pen.y -= size.y; */
-    /* } */
 
     struct shader_program* program = assets_load("graph.shader");
     if(program->shader_type_info != &graph_info) {
@@ -757,14 +753,14 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     shader_use(program);
 
-    Vector3 graphPos = {{5, winSize.y - bigSize.y - 5, 0}};
+    Vector3 graphPos = {{0, winSize.y - bigSize.y, 0}};
     vec3_add(&graphPos, &winPos);
 
-    shader_set_uniform_vec3(type->color, &fgColor);
+    shader_set_uniform_vec3(type->color, &fgColors[0]);
     texture_bind(&state->tex[0], GL_TEXTURE0);
     draw_rect(face, type->mvp, graphPos, bigSize);
 
-    shader_set_uniform_vec3(type->color, &fgColor2);
+    shader_set_uniform_vec3(type->color, &fgColors[1]);
     texture_bind(&state->tex[1], GL_TEXTURE0);
     draw_rect(face, type->mvp, graphPos, bigSize);
 
