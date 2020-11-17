@@ -7,17 +7,16 @@ uniform samplerBuffer sampler;
 
 uniform vec3 color;
 uniform float opacity;
-// @HACK: These should really be ints, but we don't have support for that yet
-// in the shader system
-uniform float width;
-uniform float cursor;
+
+uniform int width;
+uniform int cursor;
 
 void main() {
     vec2 uv = fragmentUV;
 
     float x = uv.x * width;
     int below = int(floor(x));
-    below = (below + int(cursor)) % int(width);
+    below = (below + cursor) % width;
     vec4 texel = texelFetch(sampler, below);
 
     float distance = abs(uv.y - texel.r);

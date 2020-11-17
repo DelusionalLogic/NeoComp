@@ -167,6 +167,14 @@ static int parse_type(char* def, struct shader_value* uniform) {
 
             uniform->stock.flt = atof(value);
         }
+    } else if(strcmp(type, "int") == 0) {
+        uniform->type = SHADER_VALUE_INT;
+        uniform->required = true;
+        if(matches == 2) {
+            uniform->required = false;
+
+            uniform->stock.integer = atoi(value);
+        }
     } else if(strcmp(type, "sampler") == 0) {
         uniform->type = SHADER_VALUE_SAMPLER;
         uniform->required = true;
@@ -422,6 +430,9 @@ static void set_shader_uniform(const struct shader_value* uniform, const union s
         case SHADER_VALUE_FLOAT:
             glUniform1f(uniform->gl_uniform, (double)value->flt);
             break;
+        case SHADER_VALUE_INT:
+            glUniform1i(uniform->gl_uniform, (double)value->integer);
+            break;
         case SHADER_VALUE_VEC2:
             glUniform2f(uniform->gl_uniform, value->vector.x, value->vector.y);
             break;
@@ -469,6 +480,10 @@ void shader_set_uniform_float(const struct shader_value* uniform, float value) {
     glUniform1f(uniform->gl_uniform, value);
 }
 
+void shader_set_uniform_int(const struct shader_value* uniform, int32_t value) {
+    glUniform1i(uniform->gl_uniform, value);
+}
+
 void shader_set_uniform_vec2(const struct shader_value* uniform, const Vector2* value) {
     glUniform2f(uniform->gl_uniform, value->x, value->y);
 }
@@ -492,6 +507,11 @@ void shader_set_future_uniform_bool(struct shader_value* uniform, bool value) {
 
 void shader_set_future_uniform_float(struct shader_value* uniform, float value) {
     uniform->value.flt = value;
+    uniform->set = true;
+}
+
+void shader_set_future_uniform_int(struct shader_value* uniform, int32_t value) {
+    uniform->value.integer = value;
     uniform->set = true;
 }
 

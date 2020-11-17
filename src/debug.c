@@ -749,8 +749,8 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     struct Graph* type = program->shader_type;
     shader_set_future_uniform_sampler(type->sampler, 0);
     shader_set_future_uniform_vec3(type->color, &VEC3_ZERO);
-    shader_set_future_uniform_float(type->width, state->width);
-    shader_set_future_uniform_float(type->cursor, state->cursor);
+    shader_set_future_uniform_int(type->width, state->width);
+    shader_set_future_uniform_int(type->cursor, state->cursor);
 
     shader_use(program);
 
