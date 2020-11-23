@@ -693,12 +693,12 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         }
         {
             static char buffer[128];
-            snprintf(buffer, 128, "%.1f ms", state->avg[0]);
+            snprintf(buffer, 128, "%.2f ms", state->avg[0]);
 
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
-            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[1]);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[0]);
         }
         pen.y -= size.y;
         {
@@ -716,7 +716,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
 
-            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[0]);
+            text_draw_colored(&debug_font, buffer, &pos, &scale, &fgColors[1]);
         }
         pen.y = savedY - bigSize.y;
     }
@@ -778,14 +778,14 @@ void update_debug_graph(struct DebugGraphState* state, timestamp startTime, stru
     double dt = timeDiff(&startTime, &currentTime);
 
     {
-        uint8_t data = (uint8_t)((dt / 8.0) * 255.0);
+        uint8_t data = (uint8_t)(dt * (255.0f / 2.0f));
         bo_update(&state->bo[0], state->cursor, 1, &data);
-        state->avg[0] += (dt / state->width) - (state->data[0][state->cursor] / state->width);
+        state->avg[0] += (dt / state->width) - ((double)state->data[0][state->cursor] / state->width);
         state->data[0][state->cursor] = dt;
     }
 
     {
-        uint8_t data = (uint8_t)((draws / 200.0) * 255.0);
+        uint8_t data = (uint8_t)(draws * (255.0f / 500.0f));
         bo_update(&state->bo[1], state->cursor, 1, &data);
         state->avg[1] += (draws / (double)state->width) - (state->data[1][state->cursor] / state->width);
         state->data[1][state->cursor] = draws;
