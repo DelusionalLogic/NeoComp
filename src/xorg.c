@@ -1008,7 +1008,16 @@ static void fillBuffer(struct X11Context* xctx) {
                 // DestroyWin expects the damage to already be freed.
                 Damage* damage;
                 JLG(damage, xctx->damage, ev->window);
-                XDamageDestroyH(xctx->display, *damage);
+                if(damage != NULL) {
+                    // @HACK @COMPLETENESS: We have some tests that reparent
+                    // windows from one subwindow to another. This doesn't
+                    // actually occur, since we don't subscribe to substructure
+                    // notify on anything but the root. That causes other
+                    // problems though, so we will have to fix that at some
+                    // point. For that reason i'm keeping the tests and keeping
+                    // this code even though it will never be hit.
+                    XDamageDestroyH(xctx->display, *damage);
+                }
 
                 createDestroyWin(xctx, ev->window);
                 Window frame = findRoot(xctx, ev->parent);
@@ -1252,15 +1261,18 @@ static void fillBuffer(struct X11Context* xctx) {
                 JLG(damage, xctx->damage, ev->drawable);
                 XDamageSubtractH(xctx->display, *damage, None, None);
 
-                Word_t rc;
-                J1T(rc, xctx->mapped, ev->drawable);
-                if(rc == 1) {
-                    struct Event event = {
-                        .type = ET_DAMAGE,
-                        .damage.xid = ev->drawable,
-                    };
-                    pushEvent(xctx, event);
-                }
+                if(isWindowBypassed(xctx, ev->drawable))
+                    break;
+
+                if(!isWindowMapped(xctx, ev->drawable))
+                    break;
+
+                struct Event event = {
+                    .type = ET_DAMAGE,
+                    .damage.xid = ev->drawable,
+                };
+                pushEvent(xctx, event);
+
                 break;
             } else if(xorgContext_version(&xctx->capabilities, PROTO_SHAPE) >= XVERSION_YES
                     && xorgContext_convertEvent(&xctx->capabilities, PROTO_SHAPE, raw.type) == ShapeNotify) {

@@ -3180,6 +3180,44 @@ struct TestResult xorg__emit_damage__mapped_window_is_damaged() {
     );
 }
 
+struct TestResult xorg__emit_nothing__bypassed_window_is_damaged() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    vector_putBack(&eventQ, &(XPropertyEvent){
+        .type = PropertyNotify,
+        .window = 1,
+        .atom = atoms.atom_bypass,
+        .state = PropertyNewValue,
+    });
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XDamageNotifyEvent){
+        .type = ctx.capabilities.event[PROTO_DAMAGE] - XDamageNotify,
+        .drawable = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+    );
+}
+
 struct TestResult xorg__set_event_mask__window_is_created() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -3536,6 +3574,7 @@ int main(int argc, char** argv) {
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
     TEST(xorg__emit_damage__mapped_window_is_damaged);
     TEST(xorg__emit_nothing__unmapped_window_is_damaged);
+    TEST(xorg__emit_nothing__bypassed_window_is_damaged);
 
     TEST(xorg__set_event_mask__window_is_created);
     TEST(xorg__set_event_mask__subwindow_is_created);
