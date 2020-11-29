@@ -2111,22 +2111,6 @@ static void remove_texture_invis_windows(Swiss* em) {
     }
 }
 
-DECLARE_ZONE(synchronize_opacity);
-
-static void syncronize_fade_opacity(Swiss* em) {
-    zone_scope(&ZONE_synchronize_opacity);
-
-    opacity_commit_fades(em);
-
-    for_components(it, em,
-            COMPONENT_DIM, COMPONENT_FADES_DIM, CQ_END) {
-        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
-        struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
-
-        dim->dim = fo->fade.value;
-    }
-}
-
 DECLARE_ZONE(update_focused);
 
 static void update_focused_state(Swiss* em, session_t* ps) {
@@ -2459,7 +2443,6 @@ void session_run(session_t *ps) {
         xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
-        commit_opacity_change(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time);
         physics_tick(&ps->win_list);
         zone_leave(&ZONE_input_react);
 
@@ -2494,13 +2477,23 @@ void session_run(session_t *ps) {
         texturesystem_tick(&ps->win_list, &ps->xcontext);
 
         update_focused_state(&ps->win_list, ps);
-        calculate_window_opacity(ps, &ps->win_list);
+
+        opacity_tick(&ps->win_list, ps);
 
         zone_enter(&ZONE_update_fade);
 
-        syncronize_fade_opacity(&ps->win_list);
         if(do_win_fade(&ps->curve, dt, &ps->win_list)) {
             ps->skip_poll = true;
+        }
+
+        opacity_afterFade(em);
+
+        for_components(it, em,
+                COMPONENT_DIM, COMPONENT_FADES_DIM, CQ_END) {
+            struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+            struct DimComponent* dim = swiss_getComponent(em, COMPONENT_DIM, it.id);
+
+            dim->dim = fo->fade.value;
         }
 
         for_components(it, em,
