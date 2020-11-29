@@ -2188,37 +2188,6 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 }
 
-void start_focus_fade(Swiss* em, double fade_time, double bg_fade_time, double dim_fade_time) {
-    for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        fade_keyframe(&fo->fade, f->newOpacity, fade_time);
-    }
-    for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        fade_keyframe(&fo->fade, f->newOpacity, bg_fade_time);
-    }
-    for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, COMPONENT_FADES_DIM, CQ_END) {
-        struct FocusChangedComponent* f = swiss_getComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
-        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
-        fade_keyframe(&fo->fade, f->newDim, dim_fade_time);
-    }
-
-    swiss_removeComponentWhere(em, COMPONENT_TRANSITIONING,
-            (enum ComponentType[]){COMPONENT_FOCUS_CHANGE, CQ_END});
-
-    for_components(it, em,
-            COMPONENT_FOCUS_CHANGE, CQ_END) {
-        struct TransitioningComponent* t = swiss_addComponent(em, COMPONENT_TRANSITIONING, it.id);
-        t->time = 0;
-        t->duration = fmax(dim_fade_time, fmax(fade_time, bg_fade_time));
-    }
-}
-
 void commit_destroy(Swiss* em) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_DESTROY, CQ_END) {
@@ -2526,7 +2495,6 @@ void session_run(session_t *ps) {
 
         update_focused_state(&ps->win_list, ps);
         calculate_window_opacity(ps, &ps->win_list);
-        start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time, ps->o.dim_fade_time);
 
         zone_enter(&ZONE_update_fade);
 
