@@ -1482,8 +1482,7 @@ static void ev_bypass(session_t* ps, struct Bypass* ev) {
 /**
  * Main loop.
  */
-static bool
-mainloop(session_t *ps) {
+static bool pumpEvents(session_t *ps) {
     while(true) {
         // Don't miss timeouts even when we have a LOT of other events!
         timeout_run(ps);
@@ -2420,7 +2419,7 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_input);
 
-        mainloop(ps);
+        pumpEvents(ps);
 
         assets_hotload();
 
