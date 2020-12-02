@@ -89,6 +89,13 @@ void zone_start(struct ProgramZone* zone) {
     stream.rootZone = zone;
 }
 
+void zone_render() {
+    if(clock_gettime(CLOCK_TYPE, &stream.render) != 0) {
+        printf("Failed setting start for the stream %s\n", stream.rootZone->name);
+        return;
+    }
+}
+
 struct ZoneEventStream* zone_package(struct ProgramZone* zone) {
     stream.events_num = event_cursor;
     event_cursor = 0;

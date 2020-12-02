@@ -2391,6 +2391,7 @@ void session_run(session_t *ps) {
         }
 
         double dt = timeDiff(&lastTime, &currentTime);
+        zone_render(&ZONE_global);
 
         ps->skip_poll = false;
 
@@ -2625,18 +2626,16 @@ void session_run(session_t *ps) {
 
         swiss_resetComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED);
 
+        struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef FRAMERATE_DISPLAY
-        update_debug_graph(&ps->debug_graph, currentTime, &ps->xcontext);
+        update_debug_graph(&ps->debug_graph, event_stream, &ps->xcontext);
         draw_debug_graph(&ps->debug_graph, &(Vector2){{20, ps->root_size.y - 20}});
 #endif
 
         // Finish the profiling before the vsync, since we don't want that to drag out the time
 #ifdef DEBUG_PROFILE
-        struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
         /* profiler_render(event_stream); */
         profilerWriter_emitFrame(&profSess, event_stream);
-#else
-        zone_package(&ZONE_global);
 #endif
 
         glXSwapBuffers(ps->dpy, get_tgt_window(ps));

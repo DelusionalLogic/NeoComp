@@ -6,6 +6,7 @@
 #include "vmath.h"
 #include "swiss.h"
 #include "timer.h"
+#include "profiler/zone.h"
 
 #include "texture.h"
 #include "buffer.h"
@@ -30,5 +31,5 @@ struct DebugGraphState {
 
 void init_debug_graph(struct DebugGraphState* state);
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos);
-void update_debug_graph(struct DebugGraphState* state, timestamp startTime, struct X11Context* xctx);
+void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx);
 void debug_mark_draw();

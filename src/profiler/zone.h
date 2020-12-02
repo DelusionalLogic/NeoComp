@@ -30,6 +30,7 @@ struct ZoneEventStream {
     struct ProgramZone* rootZone;
 
     struct timespec start;
+    struct timespec render;
     struct timespec end;
 
     size_t events_num;
@@ -92,4 +93,5 @@ void zone_leave_raw(struct ProgramZone* zone, char* location);
 void zone_leave_extra_raw(struct ProgramZone* zone, char* location, char* format, ...);
 
 void zone_start(struct ProgramZone* zone);
+void zone_render();
 struct ZoneEventStream* zone_package(struct ProgramZone* zone);

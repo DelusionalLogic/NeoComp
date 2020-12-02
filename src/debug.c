@@ -6,6 +6,7 @@
 #include "shaders/shaderinfo.h"
 #include "assets/assets.h"
 #include "assets/shader.h"
+#include "profiler/zone.h"
 
 #include "intercept/xorg.h"
 
@@ -769,19 +770,14 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 }
 
 static int draws = 0;
-void update_debug_graph(struct DebugGraphState* state, timestamp startTime, struct X11Context* xctx) {
-    timestamp currentTime;
-    if(!getTime(&currentTime)) {
-        printf_errf("Failed getting time");
-        exit(1);
-    }
-    double dt = timeDiff(&startTime, &currentTime);
+void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx) {
+    double renderTime = timeDiff(&stream->render, &stream->end);
 
     {
-        uint8_t data = (uint8_t)(dt * (255.0f / 2.0f));
+        uint8_t data = (uint8_t)(renderTime * (255.0f / 2.0f));
         bo_update(&state->bo[0], state->cursor, 1, &data);
-        state->avg[0] += (dt / state->width) - ((double)state->data[0][state->cursor] / state->width);
-        state->data[0][state->cursor] = dt;
+        state->avg[0] += (renderTime / state->width) - ((double)state->data[0][state->cursor] / state->width);
+        state->data[0][state->cursor] = renderTime;
     }
 
     {
