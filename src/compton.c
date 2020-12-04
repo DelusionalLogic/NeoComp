@@ -209,10 +209,6 @@ static Window ev_window(session_t *ps, XEvent *ev);
 static bool ev_window_name(session_t *ps, Window wid, char **name);
 #endif
 
-static bool vsync_opengl_swc_init(session_t *ps);
-
-static void vsync_opengl_swc_deinit(session_t *ps);
-
 static void redir_start(session_t *ps);
 
 static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
