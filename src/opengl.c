@@ -18,7 +18,6 @@
 #include "assets/assets.h"
 #include "assets/shader.h"
 #include "assets/face.h"
-#include "shaders/shaderinfo.h"
 
 #include "systems/blur.h"
 

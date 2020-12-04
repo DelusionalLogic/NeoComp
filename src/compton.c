@@ -43,8 +43,6 @@
 
 #include "renderutil.h"
 
-#include "shaders/shaderinfo.h"
-
 #include "logging.h"
 
 #include "profiler/zone.h"
@@ -1708,19 +1706,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   init_overlay(ps);
   // @CLEANUP @HACK This probably shouldn't be done here.
   ps->xcontext.overlay = ps->overlay;
-
-  add_shader_type(&global_info);
-  add_shader_type(&downsample_info);
-  add_shader_type(&upsample_info);
-  add_shader_type(&passthough_info);
-  add_shader_type(&profiler_info);
-  add_shader_type(&text_info);
-  add_shader_type(&shadow_info);
-  add_shader_type(&stencil_info);
-  add_shader_type(&colored_info);
-  add_shader_type(&graph_info);
-  add_shader_type(&bgblit_info);
-  add_shader_type(&postshadow_info);
 
   assets_init();
 

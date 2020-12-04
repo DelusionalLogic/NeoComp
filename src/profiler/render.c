@@ -7,7 +7,6 @@
 #include "../assets/assets.h"
 #include "../assets/face.h"
 #include "../assets/shader.h"
-#include "../shaders/shaderinfo.h"
 #include "../renderutil.h"
 
 #define NS_PER_MS  1000000L

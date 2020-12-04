@@ -7,8 +7,6 @@
 
 #include "systems/blur.h"
 
-#include "shaders/shaderinfo.h"
-
 #include "textureeffects.h"
 
 #include "window.h"

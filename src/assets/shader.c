@@ -10,7 +10,7 @@
 #include "logging.h"
 
 #include "assets.h"
-#include "../shaders/shaderinfo.h"
+#include "gen/shaders/include.h"
 
 static struct shader* shader_load_file(const char* path, GLenum type) {
     FILE* file = fopen(path, "r");

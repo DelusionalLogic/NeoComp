@@ -143,6 +143,7 @@ int main(int argc, char **argv) {
 
             fprintf(out, "extern struct shader_type_info %s;\n", type[i].info);
         }
+        fprintf(out, "struct shader_type_info* get_shader_type_info(char* name);\n");
     } else if(mode == MODE_C) {
         fprintf(out, "#include \"shaders/include.h\"\n");
         fprintf(out, "#include <stddef.h>\n");
@@ -189,5 +190,15 @@ int main(int argc, char **argv) {
             fprintf(out, "    .create = &st_%s_ubind,\n", type[i].name);
             fprintf(out, "};\n");
         }
+
+        fprintf(out, "struct shader_type_info* get_shader_type_info(char* name) {\n");
+        for(int i = 0; i < num_types; i++) {
+            fprintf(out, "    if(strcmp(\"%s\", name) == 0) {\n", type[i].name);
+            fprintf(out, "        return &%s;\n", type[i].info);
+            fprintf(out, "    }\n");
+        }
+        fprintf(out, "    printf(\"Shader type %%s not found\", name);\n");
+        fprintf(out, "    return NULL;\n");
+        fprintf(out, "}\n");
     }
 }

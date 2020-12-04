@@ -11,7 +11,6 @@
 #include "assets/assets.h"
 #include "profiler/zone.h"
 #include "assets/shader.h"
-#include "shaders/shaderinfo.h"
 #include "xtexture.h"
 #include "textureeffects.h"
 #include "renderutil.h"

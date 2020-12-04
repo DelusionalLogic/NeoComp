@@ -2,7 +2,6 @@
 
 #include "assets/assets.h"
 #include "assets/shader.h"
-#include "shaders/shaderinfo.h"
 #include "common.h"
 
 #include "debug.h"
