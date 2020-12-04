@@ -40,12 +40,6 @@ void usage(int ret) {
     "-G\n"
     "  Don't draw shadows on DND windows\n"
     "\n"
-    "-b\n"
-    "  Daemonize process.\n"
-    "\n"
-    "--show-all-xerrors\n"
-    "  Show all X errors (for debugging).\n"
-    "\n"
 #undef WARNING
 #ifndef CONFIG_LIBCONFIG
 #define WARNING WARNING_DISABLED

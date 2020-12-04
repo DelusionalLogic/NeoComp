@@ -995,7 +995,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "benchmark", required_argument, NULL, 293 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
     { "blur-level", required_argument, NULL, 301 },
-    { "show-all-xerrors", no_argument, NULL, 314 },
     { "version", no_argument, NULL, 318 },
     // Must terminate with a NULL entry
     { NULL, 0, NULL, 0 },
@@ -1015,8 +1014,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         ps->o.config_file = mstrcpy(optarg);
       else if ('d' == o)
         ps->o.display = mstrcpy(optarg);
-      else if (314 == o)
-        ps->o.show_all_xerrors = true;
       else if (318 == o) {
         printf("%s\n", COMPTON_VERSION);
         exit(0);
@@ -1637,8 +1634,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
     .time_start = { 0, 0 },
     .idling = false,
-    .ignore_head = NULL,
-    .ignore_tail = NULL,
     .reset = false,
 
     .win_list = {0},
@@ -1649,7 +1644,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   session_t *ps = malloc(sizeof(session_t));
   memcpy(ps, &s_def, sizeof(session_t));
   ps_g = ps;
-  ps->ignore_tail = &ps->ignore_head;
   gettimeofday(&ps->time_start, NULL);
 
   wintype_arr_enable(ps->o.wintype_focus);
@@ -1870,20 +1864,6 @@ void session_destroy(session_t *ps) {
 
   // Free tracked atom list
   atoms_kill(&ps->atoms);
-
-  // Free ignore linked list
-  {
-    ignore_t *next = NULL;
-    for (ignore_t *ign = ps->ignore_head; ign; ign = next) {
-      next = ign->next;
-
-      free(ign);
-    }
-
-    // Reset head and tail
-    ps->ignore_head = NULL;
-    ps->ignore_tail = &ps->ignore_head;
-  }
 
   xtexture_delete(&ps->root_texture);
 
