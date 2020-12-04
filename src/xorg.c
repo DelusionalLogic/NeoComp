@@ -1307,11 +1307,11 @@ void xorg_nextEvent(struct X11Context* xctx, struct Event* event) {
             return;
         }
 
-        if(xctx->readCursor >= vector_size(&xctx->eventBuf)) {
-            xctx->readCursor = 0;
-            vector_clear(&xctx->eventBuf);
-            fillBuffer(xctx);
-        }
+        assert(xctx->readCursor >= vector_size(&xctx->eventBuf));
+
+        xctx->readCursor = 0;
+        vector_clear(&xctx->eventBuf);
+        fillBuffer(xctx);
     }
 }
 

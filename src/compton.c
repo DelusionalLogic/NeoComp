@@ -1484,18 +1484,20 @@ static void ev_bypass(session_t* ps, struct Bypass* ev) {
  */
 static bool pumpEvents(session_t *ps) {
     while(true) {
+        // This might be called multiple times per frame, but only if we did
+        // a sleep on Xorg. In that case we're ok with losing that time.
+        zone_render();
+
         // Don't miss timeouts even when we have a LOT of other events!
         timeout_run(ps);
 
         // Process existing events
-        // Sometimes poll() returns 1 but no events are actually read,
-        // causing XNextEvent() to block, I have no idea what's wrong, so we
-        // check for the number of events here.
         bool done = false;
         bool processed = false;
         while(!done) {
             struct Event event;
 
+            // This doesn't block.
             xorg_nextEvent(&ps->xcontext, &event);
             switch(event.type) {
                 case ET_ADD:
@@ -1589,7 +1591,9 @@ static bool pumpEvents(session_t *ps) {
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_NONE:
+                    zone_enter_extra(&ZONE_one_event, "NONE");
                     done = true;
+                    zone_leave(&ZONE_one_event);
                     break;
                 default:
                     printf_errf("Unknown event type, ignoring");
@@ -1607,6 +1611,8 @@ static bool pumpEvents(session_t *ps) {
         if (ps->skip_poll || ps->o.benchmark) {
             return false;
         }
+
+        // This is where we block if we don't have any events to handle
 
         // Calculate timeout
         struct timeval tv;
@@ -2391,7 +2397,6 @@ void session_run(session_t *ps) {
         }
 
         double dt = timeDiff(&lastTime, &currentTime);
-        zone_render(&ZONE_global);
 
         ps->skip_poll = false;
 

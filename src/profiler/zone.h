@@ -30,8 +30,8 @@ struct ZoneEventStream {
     struct ProgramZone* rootZone;
 
     struct timespec start;
-    struct timespec render;
     struct timespec end;
+    struct timespec render;
 
     size_t events_num;
     struct ZoneEvent events[ZONE_STREAM_LENGTH];
