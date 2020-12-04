@@ -216,7 +216,6 @@ static bool vsync_opengl_swc_init(session_t *ps);
 static void vsync_opengl_swc_deinit(session_t *ps);
 
 static void redir_start(session_t *ps);
-static void redir_stop(session_t *ps);
 
 static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
     long a = (ptmout->lastrun + (time_ms_t) (ptmout->interval * TIMEOUT_RUN_TOLERANCE) - ptmout->firstrun) / ptmout->interval;
@@ -1356,23 +1355,6 @@ timeout_reset(session_t *ps, timeout_t *ptmout) {
   ptmout->firstrun = ptmout->lastrun = get_time_ms();
 }
 
-/**
- * Unredirect all windows.
- */
-static void redir_stop(session_t *ps) {
-#ifdef DEBUG_REDIR
-    print_timestamp(ps);
-    printf_dbgf("(): Screen unredirected.\n");
-#endif
-    XCompositeUnredirectSubwindows(ps->dpy, ps->root, CompositeRedirectManual);
-    // Unmap overlay window
-    if (ps->overlay)
-        XUnmapWindow(ps->dpy, ps->overlay);
-
-    // Must call XSync() here -- Why?
-    XSync(ps->dpy, False);
-}
-
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
     win *w = find_win(ps, ev->xid);
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
@@ -1803,6 +1785,20 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   return ps;
 }
+
+DECLARE_ZONE(unredir);
+
+static void redir_stop(session_t *ps) {
+    zone_scope(&ZONE_unredir);
+
+    // Unmap overlay window
+    if (ps->overlay)
+        XUnmapWindow(ps->dpy, ps->overlay);
+
+    // Must call XSync() here -- Why?
+    XSync(ps->dpy, False);
+}
+
 
 /**
  * Destroy a session.

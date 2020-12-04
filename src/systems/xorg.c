@@ -7,15 +7,6 @@
 
 DECLARE_ZONE(fetch_xprop);
 
-static void free_winprop(winprop_t *pprop) {
-    // Empty the whole structure to avoid possible issues
-    if (pprop->data.p8) {
-        XFree(pprop->data.p8);
-        pprop->data.p8 = NULL;
-    }
-    pprop->nitems = 0;
-}
-
 static void unredirect(Swiss* em, struct X11Context* xcontext, enum ComponentType* query) {
     for_componentsArr(it, em, query) {
         struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
@@ -63,12 +54,10 @@ static void doUnmap(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms)
 static void doMap(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
     // Mapping a window causes us to start redirecting it
     {
-        zone_enter(&ZONE_fetch_xprop);
         for_components(it, em,
-                COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, CQ_END) {
+                COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, CQ_NOT, COMPONENT_BYPASS, CQ_END) {
             swiss_ensureComponent(em, COMPONENT_REDIRECTED, it.id);
         }
-        zone_leave(&ZONE_fetch_xprop);
 
         for_components(it, em,
                 COMPONENT_MAP, COMPONENT_TRACKS_WINDOW, COMPONENT_REDIRECTED, CQ_END) {
