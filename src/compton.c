@@ -1715,7 +1715,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   add_xdg_asset_paths();
 
   // Initialize OpenGL as early as possible
-  if (!glx_init(ps, true))
+  if (!glx_init(ps))
     exit(1);
 
   if(xorgContext_ensure_capabilities(&ps->xcontext.capabilities)) {

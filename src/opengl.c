@@ -87,7 +87,7 @@ static bool glx_hasglxext(session_t *ps, const char *ext) {
  * Initialize OpenGL.
  */
 bool
-glx_init(session_t *ps, bool need_render) {
+glx_init(session_t *ps) {
   bool success = false;
   XVisualInfo *pvis = NULL;
 
@@ -99,22 +99,20 @@ glx_init(session_t *ps, bool need_render) {
   }
 
   // Ensure the visual is double-buffered
-  if (need_render) {
-    int value = 0;
-    if (Success != glXGetConfig(ps->dpy, pvis, GLX_USE_GL, &value) || !value) {
+  int value = 0;
+  if (Success != glXGetConfig(ps->dpy, pvis, GLX_USE_GL, &value) || !value) {
       printf_errf("(): Root visual is not a GL visual.");
       goto glx_init_end;
-    }
+  }
 
-    if (Success != glXGetConfig(ps->dpy, pvis, GLX_DOUBLEBUFFER, &value)
-        || !value) {
+  if (Success != glXGetConfig(ps->dpy, pvis, GLX_DOUBLEBUFFER, &value)
+          || !value) {
       printf_errf("(): Root visual is not a double buffered GL visual.");
       goto glx_init_end;
-    }
   }
 
   // Ensure GLX_EXT_texture_from_pixmap exists
-  if (need_render && !glx_hasglxext(ps, "GLX_EXT_texture_from_pixmap"))
+  if (!glx_hasglxext(ps, "GLX_EXT_texture_from_pixmap"))
     goto glx_init_end;
 
   // Initialize GLX data structure
@@ -172,33 +170,28 @@ glx_init(session_t *ps, bool need_render) {
   // Ensure we have a stencil buffer. X Fixes does not guarantee rectangles
   // in regions don't overlap, so we must use stencil buffer to make sure
   // we don't paint a region for more than one time, I think?
-  if (need_render) {
-    GLint val = 0;
-    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &val);
-    // @INCOMPLETE: We'd still be able to render to an offscreen buffer, and
-    // then later draw that to the default buffer. For now we'll just fail
-    // though
-    if (!val) {
+  GLint val = 0;
+  glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &val);
+  // @INCOMPLETE: We'd still be able to render to an offscreen buffer, and
+  // then later draw that to the default buffer. For now we'll just fail
+  // though
+  if (!val) {
       printf_errf("(): Target window doesn't have stencil buffer.");
       goto glx_init_end;
-    }
   }
 
   // Check GL_ARB_texture_non_power_of_two, requires a GLX context and
   // must precede FBConfig fetching
-  if (need_render)
-    psglx->has_texture_non_power_of_two = glx_hasglext(ps, "GL_ARB_texture_non_power_of_two");
+  psglx->has_texture_non_power_of_two = glx_hasglext(ps, "GL_ARB_texture_non_power_of_two");
 
   // Acquire function addresses
-  if (need_render) {
-    psglx->glXBindTexImageProc = (f_BindTexImageEXT)
-      glXGetProcAddress((const GLubyte *) "glXBindTexImageEXT");
-    psglx->glXReleaseTexImageProc = (f_ReleaseTexImageEXT)
-      glXGetProcAddress((const GLubyte *) "glXReleaseTexImageEXT");
-    if (!psglx->glXBindTexImageProc || !psglx->glXReleaseTexImageProc) {
-      printf_errf("(): Failed to acquire glXBindTexImageEXT() / glXReleaseTexImageEXT().");
-      goto glx_init_end;
-    }
+  psglx->glXBindTexImageProc = (f_BindTexImageEXT)
+    glXGetProcAddress((const GLubyte *) "glXBindTexImageEXT");
+  psglx->glXReleaseTexImageProc = (f_ReleaseTexImageEXT)
+    glXGetProcAddress((const GLubyte *) "glXReleaseTexImageEXT");
+  if (!psglx->glXBindTexImageProc || !psglx->glXReleaseTexImageProc) {
+    printf_errf("(): Failed to acquire glXBindTexImageEXT() / glXReleaseTexImageEXT().");
+    goto glx_init_end;
 
 #ifdef CONFIG_GLX_SYNC
     psglx->glFenceSyncProc = (f_FenceSync)
@@ -223,12 +216,10 @@ glx_init(session_t *ps, bool need_render) {
   }
 
   // Render preparations
-  if (need_render) {
-    glViewport(0, 0, ps->root_size.x, ps->root_size.y);
+  glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
-    ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
-    view = ps->psglx->view;
-  }
+  ps->psglx->view = mat4_orthogonal(0, ps->root_size.x, 0, ps->root_size.y, -.1, 1);
+  view = ps->psglx->view;
 
   success = true;
 

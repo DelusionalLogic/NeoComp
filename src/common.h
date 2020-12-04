@@ -944,7 +944,7 @@ xr_glx_sync(session_t *ps, Drawable d, XSyncFence *pfence);
 #endif
 
 bool
-glx_init(session_t *ps, bool need_render);
+glx_init(session_t *ps);
 
 void
 glx_destroy(session_t *ps);
