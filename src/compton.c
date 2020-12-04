@@ -991,7 +991,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "dim-fade-time", required_argument, NULL, 264 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
     { "blur-background", no_argument, NULL, 283 },
-    { "opengl", no_argument, NULL, 289 },
     { "benchmark", required_argument, NULL, 293 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
     { "blur-level", required_argument, NULL, 301 },
@@ -1132,9 +1131,7 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
   }
 }
 
-static bool
-vsync_opengl_swc_init(session_t *ps) {
-
+bool vsync_init(session_t *ps) {
     if(!glx_hasglext(ps, "EXT_swap_control")) {
         printf_errf("No swap control extension, can't set the swap inteval. Expect no vsync");
         return false;
@@ -1154,67 +1151,47 @@ vsync_opengl_swc_init(session_t *ps) {
     return true;
 }
 
-static void
-vsync_opengl_swc_deinit(session_t *ps) {
-  // The standard says it doesn't accept 0, but in fact it probably does
-  if (glx_has_context(ps) && ps->psglx->glXSwapIntervalProc)
-      ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 0);
-}
-
-/**
- * Initialize current VSync method.
- */
-bool vsync_init(session_t *ps) {
-	if (!vsync_opengl_swc_init(ps)) {
-		return false;
-	}
-
-	return true;
-}
-
-/**
- * Deinitialize current VSync method.
- */
 void vsync_deinit(session_t *ps) {
-	vsync_opengl_swc_deinit(ps);
+    // The standard says it doesn't accept 0, but in fact it probably does
+    if (glx_has_context(ps) && ps->psglx->glXSwapIntervalProc)
+        ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 0);
 }
 
 /**
  * Initialize X composite overlay window.
  */
-static bool
-init_overlay(session_t *ps) {
-  ps->overlay = XCompositeGetOverlayWindow(ps->dpy, ps->root);
-  if (ps->overlay) {
-    // Set window region of the overlay window, code stolen from
-    // compiz-0.8.8
-    XserverRegion region = XFixesCreateRegion(ps->dpy, NULL, 0);
-    XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0);
-    XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeInput, 0, 0, region);
-    XFixesDestroyRegion(ps->dpy, region);
+static bool init_overlay(session_t *ps) {
+    ps->overlay = XCompositeGetOverlayWindow(ps->dpy, ps->root);
+    if (ps->overlay) {
+        // Set window region of the overlay window, code stolen from
+        // compiz-0.8.8
+        XserverRegion region = XFixesCreateRegion(ps->dpy, NULL, 0);
+        XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0);
+        XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeInput, 0, 0, region);
+        XFixesDestroyRegion(ps->dpy, region);
 
-    // Listen to Expose events on the overlay
-    XSelectInput(ps->dpy, ps->overlay, ExposureMask);
+        // Listen to Expose events on the overlay
+        XSelectInput(ps->dpy, ps->overlay, ExposureMask);
 
-    // Retrieve DamageNotify on root window if we are painting on an
-    // overlay
-    // root_damage = XDamageCreate(ps->dpy, root, XDamageReportNonEmpty);
+        // Retrieve DamageNotify on root window if we are painting on an
+        // overlay
+        // root_damage = XDamageCreate(ps->dpy, root, XDamageReportNonEmpty);
 
-    // Unmap overlay, firstly. But this typically does not work because
-    // the window isn't created yet.
-    // XUnmapWindow(ps->dpy, ps->overlay);
-    // XFlush(ps->dpy);
-  }
-  else {
-    fprintf(stderr, "Cannot get X Composite overlay window. Falling "
-        "back to painting on root window.\n");
-    exit(1);
-  }
+        // Unmap overlay, firstly. But this typically does not work because
+        // the window isn't created yet.
+        // XUnmapWindow(ps->dpy, ps->overlay);
+        // XFlush(ps->dpy);
+    }
+    else {
+        fprintf(stderr, "Cannot get X Composite overlay window. Falling "
+                "back to painting on root window.\n");
+        exit(1);
+    }
 #ifdef DEBUG_REDIR
-  printf_dbgf("(): overlay = %#010lx\n", ps->overlay);
+    printf_dbgf("(): overlay = %#010lx\n", ps->overlay);
 #endif
 
-  return ps->overlay;
+    return ps->overlay;
 }
 
 /**
