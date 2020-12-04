@@ -949,65 +949,6 @@ static void ev_shape_notify(session_t *ps, struct Shape *ev) {
 // === Main ===
 
 /**
- * Reopen streams for logging.
- */
-static bool
-ostream_reopen(session_t *ps, const char *path) {
-  if (!path)
-    path = ps->o.logpath;
-  if (!path)
-    path = "/dev/null";
-
-  bool success = freopen(path, "a", stdout);
-  success = freopen(path, "a", stderr) && success;
-  if (!success)
-    printf_errfq(1, "(%s): freopen() failed.", path);
-
-  return success;
-}
-
-/**
- * Fork program to background and disable all I/O streams.
- */
-static bool
-fork_after(session_t *ps) {
-  if (getppid() == 1)
-    return true;
-
-  // GLX context must be released and reattached on fork
-  if (glx_has_context(ps) && !glXMakeCurrent(ps->dpy, None, NULL)) {
-      printf_errf("(): Failed to detach GLx context.");
-      return false;
-  }
-
-  int pid = fork();
-
-  if (-1 == pid) {
-    printf_errf("(): fork() failed.");
-    return false;
-  }
-
-  if (pid > 0) _exit(0);
-
-  setsid();
-
-  if (glx_has_context(ps)
-          && !glXMakeCurrent(ps->dpy, get_tgt_window(ps), ps->psglx->context)) {
-      printf_errf("(): Failed to make GLX context current.");
-      return false;
-  }
-
-  // Mainly to suppress the _FORTIFY_SOURCE warning
-  bool success = freopen("/dev/null", "r", stdin);
-  if (!success) {
-    printf_errf("(): freopen() failed.");
-    return false;
-  }
-
-  return success;
-}
-
-/**
  * Parse a long number.
  */
 static bool
@@ -1050,7 +991,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
     { "dim-fade-time", required_argument, NULL, 264 },
     { "shadow-ignore-shaped", no_argument, NULL, 266 },
     { "blur-background", no_argument, NULL, 283 },
-    { "logpath", required_argument, NULL, 287 },
     { "opengl", no_argument, NULL, 289 },
     { "benchmark", required_argument, NULL, 293 },
     { "glx-use-copysubbuffermesa", no_argument, NULL, 295 },
@@ -1158,7 +1098,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
       case 's':
         printf_errfq(1, "(): -n, -a, and -s have been removed.");
         break;
-      P_CASEBOOL('b', fork_after_register);
       // Long options
       case 256:
         // --config
@@ -1172,10 +1111,6 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
         ps->o.dim_fade_time = atof(optarg);
         break;
       P_CASEBOOL(283, blur_background);
-      case 287:
-        // --logpath
-        ps->o.logpath = mstrcpy(optarg);
-        break;
       P_CASELONG(293, benchmark);
       P_CASELONG(301, blur_level);
       default:
@@ -1674,10 +1609,8 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .o = {
       .config_file = NULL,
       .display = NULL,
-      .fork_after_register = false,
       .blur_level = 0,
       .benchmark = 0,
-      .logpath = NULL,
 
       .wintype_opacity = { -1.0 },
       .inactive_opacity = 100.0,
@@ -1889,18 +1822,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   // ALWAYS flush after XUngrabServer()!
   XFlush(ps->dpy);
 
-  // Fork to background, if asked
-  if (ps->o.fork_after_register) {
-      if (!fork_after(ps)) {
-      session_destroy(ps);
-      return NULL;
-    }
-  }
-
-  // Redirect output stream
-  if (ps->o.fork_after_register || ps->o.logpath)
-    ostream_reopen(ps, NULL);
-
 #ifdef FRAMERATE_DISPLAY
   init_debug_graph(&ps->debug_graph);
 #endif
@@ -1969,7 +1890,6 @@ void session_destroy(session_t *ps) {
   free(ps->o.config_file);
   free(ps->o.display);
   free(ps->o.display_repr);
-  free(ps->o.logpath);
   free(ps->pfds_read);
   free(ps->pfds_write);
   free(ps->pfds_except);

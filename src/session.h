@@ -92,12 +92,8 @@ typedef struct _options_t {
   char *display;
   /// Safe representation of display name.
   char *display_repr;
-  /// Whether to fork to background.
-  bool fork_after_register;
   /// Blur Level
   int blur_level;
-  /// Path to log file.
-  char *logpath;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.
   int benchmark;
   /// Whether to show all X errors.
