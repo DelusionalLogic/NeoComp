@@ -295,7 +295,6 @@ typedef enum {
   WIN_EVMODE_CLIENT
 } win_evmode_t;
 
-extern const char * const VSYNC_STRS[NUM_VSYNC + 1];
 extern session_t *ps_g;
 
 // == Debugging code ==

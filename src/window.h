@@ -202,12 +202,6 @@ typedef struct _win {
     // Blacklist related members
     /// Name of the window.
     char *name;
-    /// Window instance class of the window.
-    char *class_instance;
-    /// Window general class of the window.
-    char *class_general;
-    /// <code>WM_WINDOW_ROLE</code> value of the window.
-    char *role;
 
     bool fade;
     bool shadow;

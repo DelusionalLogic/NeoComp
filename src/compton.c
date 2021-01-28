@@ -25,7 +25,6 @@
 #include "xtexture.h"
 #include "buffer.h"
 #include "timer.h"
-#include "timeout.h"
 #include "paths.h"
 #include "debug.h"
 
@@ -210,12 +209,6 @@ static bool ev_window_name(session_t *ps, Window wid, char **name);
 #endif
 
 static void redir_start(session_t *ps);
-
-static time_ms_t timeout_get_newrun(const timeout_t *ptmout) {
-    long a = (ptmout->lastrun + (time_ms_t) (ptmout->interval * TIMEOUT_RUN_TOLERANCE) - ptmout->firstrun) / ptmout->interval;
-    long b = (ptmout->lastrun + (time_ms_t) (ptmout->interval * (1 - TIMEOUT_RUN_TOLERANCE)) - ptmout->firstrun) / ptmout->interval;
-  return ptmout->firstrun + (max_l(a, b) + 1) * ptmout->interval;
-}
 
 // }}}
 
@@ -481,9 +474,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
     .window_type = WINTYPE_UNKNOWN,
 
     .name = NULL,
-    .class_instance = NULL,
-    .class_general = NULL,
-    .role = NULL,
 
     .fade = true,
     .shadow = true,
@@ -1165,24 +1155,11 @@ static bool init_overlay(session_t *ps) {
 
         // Listen to Expose events on the overlay
         XSelectInput(ps->dpy, ps->overlay, ExposureMask);
-
-        // Retrieve DamageNotify on root window if we are painting on an
-        // overlay
-        // root_damage = XDamageCreate(ps->dpy, root, XDamageReportNonEmpty);
-
-        // Unmap overlay, firstly. But this typically does not work because
-        // the window isn't created yet.
-        // XUnmapWindow(ps->dpy, ps->overlay);
-        // XFlush(ps->dpy);
-    }
-    else {
-        fprintf(stderr, "Cannot get X Composite overlay window. Falling "
-                "back to painting on root window.\n");
+    } else {
+        printf_errf("Cannot get X Composite overlay window. Falling back to"
+                "painting on root window.\n");
         exit(1);
     }
-#ifdef DEBUG_REDIR
-    printf_dbgf("(): overlay = %#010lx\n", ps->overlay);
-#endif
 
     return ps->overlay;
 }
@@ -1191,11 +1168,6 @@ static bool init_overlay(session_t *ps) {
  * Redirect all windows.
  */
 static void redir_start(session_t *ps) {
-#ifdef DEBUG_REDIR
-    print_timestamp(ps);
-    printf_dbgf("(): Screen redirected.\n");
-#endif
-
     // Map overlay window. Done firstly according to this:
     // https://bugzilla.gnome.org/show_bug.cgi?id=597014
     if (ps->overlay)
@@ -1203,150 +1175,6 @@ static void redir_start(session_t *ps) {
 
     // Must call XSync() here -- Why?
     XSync(ps->dpy, False);
-}
-
-/**
- * Get the poll time.
- */
-static time_ms_t
-timeout_get_poll_time(session_t *ps) {
-  const time_ms_t now = get_time_ms();
-  time_ms_t wait = TIME_MS_MAX;
-
-  // Traverse throught the timeout linked list
-  for (timeout_t *ptmout = ps->tmout_lst; ptmout; ptmout = ptmout->next) {
-    if (ptmout->enabled) {
-      time_ms_t newrun = timeout_get_newrun(ptmout);
-      if (newrun <= now) {
-        wait = 0;
-        break;
-      }
-      else {
-        time_ms_t newwait = newrun - now;
-        if (newwait < wait)
-          wait = newwait;
-      }
-    }
-  }
-
-  return wait;
-}
-
-/**
- * Insert a new timeout.
- */
-timeout_t *
-timeout_insert(session_t *ps, time_ms_t interval,
-    bool (*callback)(session_t *ps, timeout_t *ptmout), void *data) {
-  const static timeout_t tmout_def = {
-    .enabled = true,
-    .data = NULL,
-    .callback = NULL,
-    .firstrun = 0L,
-    .lastrun = 0L,
-    .interval = 0L,
-  };
-
-  const time_ms_t now = get_time_ms();
-  timeout_t *ptmout = malloc(sizeof(timeout_t));
-  if (!ptmout)
-    printf_errfq(1, "(): Failed to allocate memory for timeout.");
-  memcpy(ptmout, &tmout_def, sizeof(timeout_t));
-
-  ptmout->interval = interval;
-  ptmout->firstrun = now;
-  ptmout->lastrun = now;
-  ptmout->data = data;
-  ptmout->callback = callback;
-  ptmout->next = ps->tmout_lst;
-  ps->tmout_lst = ptmout;
-
-  return ptmout;
-}
-
-/**
- * Drop a timeout.
- *
- * @return true if we have found the timeout and removed it, false
- *         otherwise
- */
-bool
-timeout_drop(session_t *ps, timeout_t *prm) {
-  timeout_t **pplast = &ps->tmout_lst;
-
-  for (timeout_t *ptmout = ps->tmout_lst; ptmout;
-      pplast = &ptmout->next, ptmout = ptmout->next) {
-    if (prm == ptmout) {
-      *pplast = ptmout->next;
-      free(ptmout);
-
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Clear all timeouts.
- */
-static void
-timeout_clear(session_t *ps) {
-  timeout_t *ptmout = ps->tmout_lst;
-  timeout_t *next = NULL;
-  while (ptmout) {
-    next = ptmout->next;
-    free(ptmout);
-    ptmout = next;
-  }
-}
-
-/**
- * Run timeouts.
- *
- * @return true if we have ran a timeout, false otherwise
- */
-static bool
-timeout_run(session_t *ps) {
-  const time_ms_t now = get_time_ms();
-  bool ret = false;
-  timeout_t *pnext = NULL;
-
-  for (timeout_t *ptmout = ps->tmout_lst; ptmout; ptmout = pnext) {
-    pnext = ptmout->next;
-    if (ptmout->enabled) {
-      const time_ms_t max = now +
-        (time_ms_t) (ptmout->interval * TIMEOUT_RUN_TOLERANCE);
-      time_ms_t newrun = timeout_get_newrun(ptmout);
-      if (newrun <= max) {
-        ret = true;
-        timeout_invoke(ps, ptmout);
-      }
-    }
-  }
-
-  return ret;
-}
-
-/**
- * Invoke a timeout.
- */
-void
-timeout_invoke(session_t *ps, timeout_t *ptmout) {
-  const time_ms_t now = get_time_ms();
-  ptmout->lastrun = now;
-  // Avoid modifying the timeout structure after running timeout, to
-  // make it possible to remove timeout in callback
-  if (ptmout->callback)
-    ptmout->callback(ps, ptmout);
-}
-
-/**
- * Reset a timeout to initial state.
- */
-void
-timeout_reset(session_t *ps, timeout_t *ptmout) {
-  ptmout->firstrun = ptmout->lastrun = get_time_ms();
 }
 
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
@@ -1372,9 +1200,6 @@ static bool pumpEvents(session_t *ps) {
         // This might be called multiple times per frame, but only if we did
         // a sleep on Xorg. In that case we're ok with losing that time.
         zone_render();
-
-        // Don't miss timeouts even when we have a LOT of other events!
-        timeout_run(ps);
 
         // Process existing events
         bool done = false;
@@ -1500,15 +1325,9 @@ static bool pumpEvents(session_t *ps) {
         // This is where we block if we don't have any events to handle
 
         // Calculate timeout
+        time_ms_t tmout_ms = TIME_MS_MAX;
         struct timeval tv;
-
-        time_ms_t tmout_ms = min_l(timeout_get_poll_time(ps), TIME_MS_MAX);
         tv = ms_to_tv(tmout_ms);
-
-        // If we don't have a timeout skip the poll
-        if (timeval_isempty(&tv)) {
-            return false;
-        }
 
         fds_poll(ps, &tv);
     }
@@ -1583,7 +1402,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .pfds_write = NULL,
     .pfds_except = NULL,
     .nfds_max = 0,
-    .tmout_lst = NULL,
 
     .time_start = { 0, 0 },
     .idling = false,
@@ -1848,9 +1666,6 @@ void session_destroy(session_t *ps) {
 
   // Flush all events -- Why?
   XSync(ps->dpy, True);
-
-  // Free timeouts
-  timeout_clear(ps);
 
   if (ps == ps_g)
     ps_g = NULL;
@@ -2279,14 +2094,6 @@ void session_run(session_t *ps) {
         // might have changed
         for_components(it, em, COMPONENT_WINTYPE_CHANGE, CQ_END) {
             swiss_ensureComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
-        }
-
-        // Update legacy fields in the mud structure
-        for_components(it, em, COMPONENT_MUD, COMPONENT_CLASS_CHANGE, CQ_END) {
-            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-            struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
-            w->class_general = class->general;
-            w->class_instance = class->instance;
         }
 
         for_components(it, em,

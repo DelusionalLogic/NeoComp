@@ -59,14 +59,6 @@ typedef struct {
   int y;
 } geometry_t;
 
-/// VSync modes.
-typedef enum {
-  VSYNC_NONE,
-  VSYNC_OPENGL_SWC,
-  VSYNC_OPENGL,
-  NUM_VSYNC,
-} vsync_t;
-
 /// @brief Wrapper of a GLX FBConfig.
 typedef struct {
   GLXFBConfig cfg;
@@ -226,8 +218,6 @@ typedef struct _session_t {
     fd_set *pfds_except;
     /// Largest file descriptor in fd_set-s above.
     int nfds_max;
-    /// Linked list of all timeouts.
-    struct _timeout_t *tmout_lst;
     /// Whether we have received an event in this cycle.
     bool skip_poll;
     /// Whether the program is idling. I.e. no fading, no potential window
