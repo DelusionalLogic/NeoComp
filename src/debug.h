@@ -21,6 +21,7 @@ struct DebugGraphState {
     struct Texture tex[GRAPHS];
 
     double avg[GRAPHS];
+    double max[GRAPHS];
     double *data[GRAPHS];
 
     size_t cursor;

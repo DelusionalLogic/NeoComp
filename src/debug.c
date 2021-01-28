@@ -654,7 +654,7 @@ void init_debug_graph(struct DebugGraphState* state) {
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
     const static float winWidth = 200;
     Vector2 bigSize = {{winWidth, 65}};
-    Vector2 smallSize = {{winWidth, 20}};
+    Vector2 smallSize = {{winWidth, 16}};
 
     Vector2 winSize = {{winWidth, 0}};
     winSize.y += bigSize.y;
@@ -693,7 +693,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         }
         {
             static char buffer[128];
-            snprintf(buffer, 128, "%.2f ms", state->avg[0]);
+            snprintf(buffer, 128, "%.2f | %.2f ms", state->avg[0], state->max[0]);
 
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
@@ -711,7 +711,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         }
         {
             static char buffer[128];
-            snprintf(buffer, 128, "%.0f", state->avg[1]);
+            snprintf(buffer, 128, "%.2f | %.2f ms", state->avg[1], state->max[1]);
 
             text_size(&debug_font, buffer, &scale, &size);
             Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
@@ -777,6 +777,12 @@ void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* s
         bo_update(&state->bo[0], state->cursor, 1, &data);
         state->avg[0] += (renderTime / state->width) - ((double)state->data[0][state->cursor] / state->width);
         state->data[0][state->cursor] = renderTime;
+
+        state->max[0] = 0;
+        for(int i = 0; i < state->width; i++) {
+            double val = state->data[0][i];
+            state->max[0] = val > state->max[0] ? val : state->max[0];
+        }
     }
 
     {
@@ -785,6 +791,12 @@ void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* s
         state->avg[1] += (draws / (double)state->width) - (state->data[1][state->cursor] / state->width);
         state->data[1][state->cursor] = draws;
         draws = 0;
+
+        state->max[1] = 0;
+        for(int i = 0; i < state->width; i++) {
+            double val = state->data[1][i];
+            state->max[1] = val > state->max[1] ? val : state->max[1];
+        }
     }
 
     xorg_resource(xctx, &state->xdata);
