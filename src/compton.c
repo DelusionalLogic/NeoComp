@@ -957,7 +957,7 @@ parse_long(const char *s, long *dest) {
  * Process arguments and configuration files.
  */
 static void
-get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
+get_cfg(session_t *ps, int argc, char *const *argv) {
   const static char *shortopts = "D:I:O:d:r:o:m:l:t:i:e:hscnfFCaSzGb";
   const static struct option longopts[] = {
     { "help", no_argument, NULL, 'h' },
@@ -985,32 +985,25 @@ get_cfg(session_t *ps, int argc, char *const *argv, bool first_pass) {
 
   int o = 0, longopt_idx = -1, i = 0;
 
-  if (first_pass) {
-    // Pre-parse the commandline arguments to check for --config and invalid
-    // switches
-    // Must reset optind to 0 here in case we reread the commandline
-    // arguments
-    optind = 1;
-    while (-1 !=
-        (o = getopt_long(argc, argv, shortopts, longopts, &longopt_idx))) {
-      if (256 == o)
-        ps->o.config_file = mstrcpy(optarg);
-      else if ('d' == o)
-        ps->o.display = mstrcpy(optarg);
-      else if (318 == o) {
-        printf("%s\n", COMPTON_VERSION);
-        exit(0);
-      }
-      else if ('?' == o || ':' == o)
-        usage(1);
+  optind = 1;
+  while (-1 !=
+      (o = getopt_long(argc, argv, shortopts, longopts, &longopt_idx))) {
+    if (256 == o)
+      ps->o.config_file = mstrcpy(optarg);
+    else if ('d' == o)
+      ps->o.display = mstrcpy(optarg);
+    else if (318 == o) {
+      printf("%s\n", COMPTON_VERSION);
+      exit(0);
     }
-
-    // Check for abundant positional arguments
-    if (optind < argc)
-      printf_errfq(1, "neocomp doesn't accept positional arguments.");
-
-    return;
+    else if ('?' == o || ':' == o)
+      usage(1);
   }
+
+  // Check for abundant positional arguments
+  if (optind < argc)
+    printf_errfq(1, "neocomp doesn't accept positional arguments.");
+
 
   struct options_tmp cfgtmp = {
   };
@@ -1427,7 +1420,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   ps->o.wintype_focus[WINTYPE_UTILITY] = false;
 
   // First pass
-  get_cfg(ps, argc, argv, true);
+  get_cfg(ps, argc, argv);
 
   swiss_clearComponentSizes(&ps->win_list);
   swiss_enableAllAutoRemove(&ps->win_list);
@@ -1515,9 +1508,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     printf_errf("Failed initializing the xorg context");
     exit(1);
   }
-
-  // Second pass
-  get_cfg(ps, argc, argv, false);
 
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
