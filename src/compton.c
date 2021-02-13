@@ -2182,21 +2182,16 @@ void session_run(session_t *ps) {
 
         Vector opaque;
         vector_init(&opaque, sizeof(win_id), ps->order.size);
-        for_components(it, &ps->win_list,
-                COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BGOPACITY, COMPONENT_PHYSICAL, CQ_END) {
-            vector_putBack(&opaque, &it.id);
-        }
-        vector_qsort(&opaque, window_zcmp, &ps->win_list);
+        fetchSortedWindowsWith(&ps->win_list, &opaque,
+                COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BGOPACITY, COMPONENT_PHYSICAL, CQ_END);
+
         Vector transparent;
         vector_init(&transparent, sizeof(win_id), ps->order.size);
         // Even non-opaque windows have some transparent elements (shadow).
         // Trying to draw something as transparent when it only has opaque
         // elements isn't a problem, so we just include everything.
-        for_components(it, &ps->win_list,
-                COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END) {
-            vector_putBack(&transparent, &it.id);
-        }
-        vector_qsort(&transparent, window_zcmp, &ps->win_list);
+        fetchSortedWindowsWith(&ps->win_list, &transparent, 
+                COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END);
 
         Vector opaque_shadow;
         vector_init(&opaque_shadow, sizeof(win_id), ps->order.size);
@@ -2208,7 +2203,7 @@ void session_run(session_t *ps) {
         shadowsystem_updateShadow(ps, &transparent);
 
         if(ps->o.blur_background)
-            blursystem_updateBlur(&ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, ps);
+            blursystem_updateBlur(&ps->win_list, &ps->root_size, &ps->root_texture.texture, ps->o.blur_level, &opaque, &transparent, ps);
 
         zone_leave(&ZONE_effect_textures);
 

@@ -52,9 +52,6 @@ void blursystem_init() {
         }
     }
     vector_init(&context.to_blur, sizeof(win_id), 128);
-    vector_init(&context.opaque_renderable, sizeof(win_id), 128);
-    vector_init(&context.shadow_renderable, sizeof(win_id), 128);
-    vector_init(&context.transparent_renderable, sizeof(win_id), 128);
 
 	vector_init(&context.opaque_behind, sizeof(win_id), 16);
 	vector_init(&context.transparent_behind, sizeof(win_id), 16);
@@ -70,9 +67,6 @@ void blursystem_delete(Swiss* em) {
 
     glDeleteVertexArrays(1, &context.array);
     vector_kill(&context.to_blur);
-    vector_kill(&context.opaque_renderable);
-    vector_kill(&context.shadow_renderable);
-    vector_kill(&context.transparent_renderable);
 
 	vector_kill(&context.opaque_behind);
 	vector_kill(&context.transparent_behind);
@@ -238,7 +232,7 @@ void blursystem_tick(Swiss* em, Vector* order) {
 }
 
 void blursystem_updateBlur(Swiss* em, Vector2* root_size,
-        struct Texture* texture, int level, struct _session_t* ps) {
+        struct Texture* texture, int level, Vector* opaque, Vector* transparent, struct _session_t* ps) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
@@ -268,24 +262,6 @@ void blursystem_updateBlur(Swiss* em, Vector2* root_size,
         fetchSortedWindowsWith(em, &context.to_blur, 
                 COMPONENT_MUD, COMPONENT_BLUR, COMPONENT_BLUR_DAMAGED, COMPONENT_Z,
                 COMPONENT_PHYSICAL, CQ_END);
-
-        vector_clear(&context.opaque_renderable);
-        fetchSortedWindowsWith(em, &context.opaque_renderable, 
-                COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_Z, COMPONENT_PHYSICAL,
-                CQ_NOT, COMPONENT_OPACITY, CQ_END);
-
-        vector_clear(&context.shadow_renderable);
-        fetchSortedWindowsWith(em, &context.shadow_renderable, 
-                COMPONENT_MUD, COMPONENT_SHADOW, COMPONENT_Z, COMPONENT_PHYSICAL,
-                CQ_NOT, COMPONENT_OPACITY, CQ_END);
-
-        // @PERFORMANCE: We should probably restrict these windows to only those
-        // that could possibly do something in drawTransparent. for that we need
-        // some way to merge vectors.
-        vector_clear(&context.transparent_renderable);
-        fetchSortedWindowsWith(em, &context.transparent_renderable, 
-                COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL,
-                /* COMPONENT_OPACITY, */ CQ_END);
     }
 
     framebuffer_resetTarget(&context.fbo);
@@ -329,9 +305,9 @@ void blursystem_updateBlur(Swiss* em, Vector2* root_size,
 
         // Find the drawables behind this one
         vector_clear(&context.opaque_behind);
-        windowlist_findbehind(em, &context.opaque_renderable, *w_id, &context.opaque_behind);
+        windowlist_findbehind(em, opaque, *w_id, &context.opaque_behind);
         vector_clear(&context.transparent_behind);
-        windowlist_findbehind(em, &context.transparent_renderable, *w_id, &context.transparent_behind);
+        windowlist_findbehind(em, transparent, *w_id, &context.transparent_behind);
 
         windowlist_drawBackground(ps, &context.opaque_behind);
         windowlist_draw(ps, &context.opaque_behind);

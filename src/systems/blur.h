@@ -17,9 +17,6 @@ struct blur {
 
     // Per pools
     Vector to_blur;
-    Vector opaque_renderable;
-    Vector shadow_renderable;
-    Vector transparent_renderable;
 
     // Multiple use per frame
     Vector opaque_behind;
@@ -41,7 +38,7 @@ typedef struct glx_blur_cache {
 
 void blursystem_init();
 void blursystem_updateBlur(Swiss* em, Vector2* root_size,
-        struct Texture* texture, int level, struct _session_t* ps);
+        struct Texture* texture, int level, Vector* opaque, Vector* opaque_shadow, struct _session_t* ps);
 void blursystem_delete(Swiss* em);
 void blursystem_tick(Swiss* em, Vector* order);
 
