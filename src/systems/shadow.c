@@ -156,9 +156,6 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
 
     zone_scope(&ZONE_update_shadow);
 
-    Vector shadow_updates;
-    vector_init(&shadow_updates, sizeof(win_id), paints->size);
-
     struct Framebuffer framebuffer;
     if(!framebuffer_init(&framebuffer)) {
         printf("Couldn't create framebuffer for shadow\n");
@@ -311,6 +308,5 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
 
     swiss_resetComponent(&ps->win_list, COMPONENT_SHADOW_DAMAGED);
 
-    vector_kill(&shadow_updates);
     framebuffer_delete(&framebuffer);
 }
