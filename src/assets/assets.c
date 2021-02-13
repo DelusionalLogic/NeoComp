@@ -258,7 +258,7 @@ static void hotload_asset(struct asset_handle* handle) {
     struct asset_handle *reload[MAX_DEPS];
     size_t num_reload = 0;
 
-    find_users(handle, &reload, &num_reload);
+    find_users(handle, reload, &num_reload);
 
     current = handle;
     handle->num_depends = 0;
