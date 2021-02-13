@@ -58,6 +58,7 @@ DECLARE_ZONE(preprocess);
 DECLARE_ZONE(handle_event);
 
 DECLARE_ZONE(one_event);
+DECLARE_ZONE(sleep);
 
 DECLARE_ZONE(update);
 DECLARE_ZONE(update_z);
@@ -1329,7 +1330,10 @@ static bool pumpEvents(session_t *ps) {
         struct timeval tv;
         tv = ms_to_tv(tmout_ms);
 
-        fds_poll(ps, &tv);
+        {
+            zone_scope(&ZONE_sleep);
+            fds_poll(ps, &tv);
+        }
     }
 
     return false;
@@ -2043,7 +2047,7 @@ void session_run(session_t *ps) {
 
         zone_start(&ZONE_global);
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        /* glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); */
 
         zone_enter(&ZONE_input);
 
@@ -2230,7 +2234,7 @@ void session_run(session_t *ps) {
             glViewport(0, 0, ps->root_size.x, ps->root_size.y);
 
             glClearDepth(1.0);
-            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+            glClear(GL_DEPTH_BUFFER_BIT);
             glDepthFunc(GL_LESS);
 
             windowlist_drawBackground(ps, &opaque);

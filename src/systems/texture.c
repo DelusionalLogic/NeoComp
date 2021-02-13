@@ -29,6 +29,7 @@ void texturesystem_delete() {
 }
 
 static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
+    zone_scope(&ZONE_update_textures);
     static const enum ComponentType req_types[] = {
         COMPONENT_BINDS_TEXTURE,
         COMPONENT_TEXTURED,
@@ -48,8 +49,8 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
     glDisable(GL_BLEND);
 
     glStencilMask(0xFF);
-    glStencilFunc(GL_ALWAYS, 0, 0);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glStencilOp(GL_ZERO, GL_ZERO, GL_REPLACE);
 
     struct shader_program* program = assets_load("stencil.shader");
     if(program->shader_type_info != &stencil_info) {
@@ -121,7 +122,6 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
         Matrix old_view = view;
         view = mat4_orthogonal(0, textured->texture.size.x, 0, textured->texture.size.y, -1, 1);
         glViewport(0, 0, textured->texture.size.x, textured->texture.size.y);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // If the texture didn't bind, we just clear the window without rendering on top.
         if(bindsTexture->drawable.bound) {
@@ -204,7 +204,5 @@ void texturesystem_tick(Swiss* em, struct X11Context* xcontext) {
         swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
     }
 
-    zone_enter(&ZONE_update_textures);
     update_window_textures(em, xcontext);
-    zone_leave(&ZONE_update_textures);
 }
