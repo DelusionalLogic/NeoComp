@@ -493,13 +493,9 @@ static void damage_win(session_t *ps, struct Damage *ev) {
 
     win_id wid = find_win(ps, ev->xid);
 
-    if (wid == -1) {
-        return;
-    }
-
-
-    if (!win_mapped(&ps->win_list, wid))
-        return;
+    assert(wid != -1);
+    // We better not get damage for unmapped windows
+    assert(win_mapped(&ps->win_list, wid));
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
 }
