@@ -464,17 +464,6 @@ configure_win(session_t *ps, struct MandR* ev) {
   physics_move_window(&ps->win_list, wid, &ev->pos, &ev->size);
 }
 
-static void finish_destroy_win(session_t *ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-    if (w == ps->active_win)
-        ps->active_win = NULL;
-
-    size_t order_index = vector_find_uint64(&ps->order, wid);
-    vector_remove(&ps->order, order_index);
-
-    swiss_remove(&ps->win_list, wid);
-}
-
 static void destroy_win(session_t *ps, win_id wid) {
     struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
 
@@ -1537,7 +1526,14 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
         struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
 
         if(stateful->state == STATE_DESTROYED) {
-            finish_destroy_win(ps, it.id);
+            struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
+            if (w == ps->active_win)
+                ps->active_win = NULL;
+
+            size_t order_index = vector_find_uint64(&ps->order, it.id);
+            vector_remove(&ps->order, order_index);
+
+            swiss_remove(&ps->win_list, it.id);
         }
     }
 }
@@ -1883,7 +1879,6 @@ void session_run(session_t *ps) {
         texturesystem_tick(&ps->win_list, &ps->xcontext);
 
         update_focused_state(&ps->win_list, ps);
-
         opacity_tick(&ps->win_list, ps);
 
         zone_enter(&ZONE_update_fade);
