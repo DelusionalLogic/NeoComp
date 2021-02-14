@@ -53,10 +53,6 @@ struct TracksWindowComponent {
     Window id;
 };
 
-struct HasClientComponent {
-    Window id;
-};
-
 struct TintComponent {
     Vector4 color;
 };

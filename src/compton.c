@@ -134,38 +134,11 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-/**
- * Find out the WM frame of a client window using existing data.
- *
- * @param id window ID
- * @return struct _win object of the found window, NULL if not found
- */
-static win_id find_toplevel(session_t *ps, Window id) {
-    if (!id)
-        return -1;
-
-    for_components(it, &ps->win_list,
-            COMPONENT_STATEFUL, COMPONENT_HAS_CLIENT, CQ_END) {
-        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, it.id);
-
-        if (client->id == id && stateful->state != STATE_DESTROYING)
-            return it.id;
-    }
-
-    return -1;
-}
-
 static win * find_win_all(session_t *ps, const Window wid) {
     if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
         return NULL;
 
     win *w = find_win(ps, wid);
-    if (!w) {
-        win_id fid = find_toplevel(ps, wid);
-        if(fid != -1)
-            w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, fid);
-    }
     return w;
 }
 
@@ -314,8 +287,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     assert(w != NULL);
 
-    assert(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid));
-
     // Add a map event
     swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
 
@@ -357,9 +328,6 @@ static void unmap_win(session_t *ps, win *w) {
 static void
 win_mark_client(session_t *ps, win *parent, Window client) {
   win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, parent);
-  struct HasClientComponent* clientComponent = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid);
-
-  clientComponent->id = client;
 
   // If the window isn't mapped yet, stop here, as the function will be
   // called in map_win()
@@ -428,11 +396,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   {
       struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
       window->id = ev->xid;
-  }
-  {
-      // Windows frame themselves until they get a client
-      struct HasClientComponent* cli = swiss_addComponent(&ps->win_list, COMPONENT_HAS_CLIENT, slot);
-      cli->id = ev->xid;
   }
 
   memcpy(new, &win_def, sizeof(win_def));
@@ -769,9 +732,6 @@ static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
 }
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
-    // The new client shouldn't be the client of any other window
-    assert(find_toplevel(ps, event->client_xid) == -1);
-
     // Find our new frame
     win *w_frame = find_win(ps, event->xid);
 
@@ -781,25 +741,8 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
         return;
     }
 
-    win_id wid_frame = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_frame);
-    struct TracksWindowComponent* window_frame = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid_frame);
-
-    // If the frame already has a client window, then we are done
-    if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
-        // The client ID might be set to our id, in which case we don't
-        // ACTUALLY have a client. So the client id has to be different from
-        // our id before we are done
-        struct HasClientComponent* client = swiss_getComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
-        if(client->id != window_frame->id)
-            return;
-    }
-
     // If it has WM_STATE, mark it the client window
     if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
-        if(swiss_hasComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame)) {
-            swiss_removeComponent(&ps->win_list, COMPONENT_HAS_CLIENT, wid_frame);
-        }
-
         win_mark_client(ps, w_frame, event->client_xid);
     }
 }
@@ -1344,7 +1287,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_MOVE, sizeof(struct MoveComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_RESIZE, sizeof(struct ResizeComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TRACKS_WINDOW, sizeof(struct TracksWindowComponent));
-  swiss_setComponentSize(&ps->win_list, COMPONENT_HAS_CLIENT, sizeof(struct HasClientComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_FOCUS_CHANGE, sizeof(struct FocusChangedComponent));
   swiss_setComponentSize(&ps->win_list, COMPONENT_TINT, sizeof(struct TintComponent));
 
@@ -1778,7 +1720,6 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
         // @HACK If we are being destroyed, we don't want to stop doing that
         if(stateful->state == STATE_DESTROYING) {
             swiss_removeComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-            swiss_removeComponent(em, COMPONENT_HAS_CLIENT, it.id);
             stateful->state = STATE_HIDING;
         }
     }
@@ -1809,16 +1750,17 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
 void fill_class_changes(Swiss* em, session_t* ps) {
     // Fetch the new class
     for_components(it, em,
-            COMPONENT_CLASS_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+            COMPONENT_CLASS_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
         struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
-        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+        Window cid = xorg_get_client(&ps->xcontext, t->id);
 
         memset(class, 0, sizeof(struct ClassChangedComponent));
 
         char **strlst = NULL;
         int nstr = 0;
 
-        if (!wid_get_text_prop(ps, client->id, ps->atoms.atom_class, &strlst, &nstr)) {
+        if (!wid_get_text_prop(ps, cid, ps->atoms.atom_class, &strlst, &nstr)) {
             printf_dbgf("Failed fetching class property");
             swiss_removeComponent(em, COMPONENT_CLASS_CHANGE, it.id);
             continue;
@@ -1837,12 +1779,13 @@ void fill_class_changes(Swiss* em, session_t* ps) {
 void fill_wintype_changes(Swiss* em, session_t* ps) {
     // Fetch the new window type
     for_components(it, em,
-            COMPONENT_WINTYPE_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+            COMPONENT_WINTYPE_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
         struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+        Window cid = xorg_get_client(&ps->xcontext, t->id);
 
         // Detect window type here
-        winprop_t prop = wid_get_prop(&ps->xcontext, client->id, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
+        winprop_t prop = wid_get_prop(&ps->xcontext, cid, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
 
         wintypeChanged->newType = WINTYPE_UNKNOWN;
 
@@ -1859,16 +1802,17 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
 
     // Guess the window type if not provided
     for_components(it, em,
-            COMPONENT_WINTYPE_CHANGE, COMPONENT_HAS_CLIENT, CQ_END) {
+            COMPONENT_WINTYPE_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
         struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct HasClientComponent* client = swiss_getComponent(em, COMPONENT_HAS_CLIENT, it.id);
+        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+        Window cid = xorg_get_client(&ps->xcontext, t->id);
 
         // Conform to EWMH standard, if _NET_WM_WINDOW_TYPE is not present, take
         // override-redirect windows or windows without WM_TRANSIENT_FOR as
         // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
         if (wintypeChanged->newType == WINTYPE_UNKNOWN) {
-            if (w->override_redirect || !wid_has_prop(ps, client->id, ps->atoms.atom_transient))
+            if (w->override_redirect || !wid_has_prop(ps, cid, ps->atoms.atom_transient))
                 w->window_type = WINTYPE_NORMAL;
             else
                 w->window_type = WINTYPE_DIALOG;

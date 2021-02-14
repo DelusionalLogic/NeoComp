@@ -236,6 +236,8 @@ void ev_handle(struct _session_t *ps, struct X11Capabilities* capabilities, XEve
 void xorg_nextEvent(struct X11Context* xcontext, struct Event* event);
 void xorg_beginEvents(struct X11Context* xcontext);
 
+Window xorg_get_client(struct X11Context* xctx, Window frame);
+
 struct AtomEntry {
     Atom atom;
     size_t index;

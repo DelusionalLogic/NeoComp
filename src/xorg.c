@@ -769,6 +769,18 @@ static bool findAffectedWindow(const struct X11Context* xctx, const Window win, 
     return true;
 }
 
+// @HACK @CLEANUP: calling this mans the caller is doing some Xorg stuff, which
+// we really don't want them to. We should wrap the individual call instead, but
+// this seems like a good transition
+Window xorg_get_client(struct X11Context* xctx, Window frame) {
+    Window client;
+    bool found = findClosestClient(xctx, frame, &client);
+    // If we don't find a client we must be our own client
+    if(!found) return frame;
+
+    return client;
+}
+
 static void refreshFocus(struct X11Context* xctx) {
     Atom actual_type;
     int actual_format;
