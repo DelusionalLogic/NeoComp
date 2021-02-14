@@ -103,14 +103,6 @@ static void wintype_arr_enable(bool arr[]) {
     }
 }
 
-static time_ms_t get_time_ms(void) {
-    struct timeval tv;
-
-    gettimeofday(&tv, NULL);
-
-    return tv.tv_sec % SEC_WRAP * 1000 + tv.tv_usec / 1000;
-}
-
 static struct timeval ms_to_tv(int timeout) {
     return (struct timeval) {
         .tv_sec = timeout / MS_PER_SEC,
@@ -118,6 +110,7 @@ static struct timeval ms_to_tv(int timeout) {
     };
 }
 
+// @X11
 static XTextProperty * make_text_prop(session_t *ps, char *str) {
     XTextProperty *pprop = ccalloc(1, XTextProperty);
 
@@ -128,20 +121,6 @@ static XTextProperty * make_text_prop(session_t *ps, char *str) {
     }
 
     return pprop;
-}
-
-static bool wid_set_text_prop(session_t *ps, Window wid, Atom prop_atom, char *str) {
-    XTextProperty *pprop = make_text_prop(ps, str);
-    if (!pprop) {
-        printf_errf("(\"%s\"): Failed to make text property.", str);
-        return false;
-    }
-
-    XSetTextProperty(ps->dpy, wid, pprop, prop_atom);
-    cxfree(pprop->value);
-    cxfree(pprop);
-
-    return true;
 }
 
 // @X11
@@ -298,44 +277,6 @@ wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, 
     .format = 0
   };
 }
-
-/*
-static void fetch_shaped_window_face(session_t* ps, win_id wid) {
-    struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
-    if(w->face != NULL)
-        face_unload_file(w->face);
-
-    struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, wid);
-
-    Vector2 extents = physical->size;
-    // X has some insane notion that borders aren't part of the window.
-    // Therefore a window with a border will have a bounding shape with
-    // a negative upper left corner. This offset corrects for that, so we don't
-    // have to deal with it downstream
-    Vector2 offset = {{-w->border_size, -w->border_size}};
-
-    struct TracksWindowComponent* window = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
-    XserverRegion window_region = XFixesCreateRegionFromWindow(ps->dpy, window->id, ShapeBounding);
-
-    int rect_count;
-    XRectangle* rects = XFixesFetchRegion(ps->dpy, window_region, &rect_count);
-
-    XFixesDestroyRegion(ps->dpy, window_region);
-
-    Vector mrects;
-    vector_init(&mrects, sizeof(struct Rect), rect_count);
-
-    convert_xrects_to_relative_rect(rects, rect_count, &extents, &offset, &mrects);
-
-    struct face* face = malloc(sizeof(struct face));
-    // Triangulate the rectangles into a triangle vertex stream
-    face_init_rects(face, &mrects);
-    vector_kill(&mrects);
-    face_upload(face);
-
-    w->face = face;
-}
-*/
 
 /**
  * Find out the WM frame of a client window by querying X.

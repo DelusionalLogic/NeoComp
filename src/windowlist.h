@@ -4,7 +4,6 @@
 #include "swiss.h"
 
 void windowlist_drawBackground(session_t* ps, Vector* opaque);
-void windowlist_drawShadow(session_t* ps);
 void windowlist_drawTransparent(session_t* ps, Vector* transparent);
 void windowlist_drawTint(session_t* ps);
 void windowlist_draw(session_t* ps, Vector* order);

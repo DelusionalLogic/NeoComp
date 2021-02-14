@@ -331,7 +331,7 @@ void blursystem_updateBlur(Swiss* em, Vector2* root_size,
 
         // @PERFORMANCE: I think we could do some batching here as long as the
         // windows don't overlap
-        if(!texture_blur(&blurData, &context.fbo, level, false)) {
+        if(!texture_blur(&blurData, &context.fbo, 0, false)) {
             printf_errf("Failed blurring the background texture\n");
             return;
         }
