@@ -80,27 +80,19 @@ DECLARE_ZONE(update_fade);
 
 // From the header {{{
 //
-static win * find_win(session_t *ps, Window id) {
-  if (!id)
-    return NULL;
-
-  for_components(it, &ps->win_list,
-      COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, CQ_END) {
-      struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
-
-      if (w->id == id)
-          return swiss_getComponent(&ps->win_list, COMPONENT_MUD, it.id);
-  }
-
-  return NULL;
-}
-
-static win_id find_win2(session_t *ps, Window id) {
-    win *w = find_win(ps, id);
-    if(w == NULL)
+static win_id find_win(session_t *ps, Window id) {
+    if (!id)
         return -1;
 
-    return swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    for_components(it, &ps->win_list,
+            COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, CQ_END) {
+        struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
+
+        if (w->id == id)
+            return it.id;
+    }
+
+    return -1;
 }
 
 static void wintype_arr_enable(bool arr[]) {
@@ -146,7 +138,7 @@ static win * find_win_all(session_t *ps, const Window wid) {
     if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
         return NULL;
 
-    win_id swissWid = find_win2(ps, wid);
+    win_id swissWid = find_win(ps, wid);
     if(wid == -1)
         return NULL;
     return swiss_getComponent(&ps->win_list, COMPONENT_MUD, swissWid);
@@ -288,7 +280,7 @@ static void assign_depth(Swiss* em, Vector* order) {
 }
 
 static void map_win(session_t *ps, struct MapWin* ev) {
-    win_id wid = find_win2(ps, ev->xid);
+    win_id wid = find_win(ps, ev->xid);
 	if(wid == -1) {
         return;
     }
@@ -398,14 +390,14 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 
 static void
 restack_win(session_t *ps, struct Restack* ev) {
-    win_id w_id = find_win2(ps, ev->xid);
+    win_id w_id = find_win(ps, ev->xid);
     if(w_id == -1)
         return;
 
     size_t w_loc;
     size_t new_loc;
     if(ev->loc == LOC_BELOW) {
-        win_id above_id = find_win2(ps, ev->above);
+        win_id above_id = find_win(ps, ev->above);
 
         // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
         // ConfigureNotify above value for a window that doesn't even exist
@@ -466,7 +458,7 @@ configure_win(session_t *ps, struct MandR* ev) {
   assert(ev->xid != ps->root);
 
   // Other window changes
-  win_id wid = find_win2(ps, ev->xid);
+  win_id wid = find_win(ps, ev->xid);
 
   if(wid == -1)
     return;
@@ -555,7 +547,7 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     // know how to detect if a damage is caused by a move at this time.
     // - Delusional 16/11-2018
 
-    win_id wid = find_win2(ps, ev->xid);
+    win_id wid = find_win(ps, ev->xid);
 
     if (wid == -1) {
         return;
@@ -696,7 +688,7 @@ ev_focus_report(XFocusChangeEvent* ev) {
 // === Events ===
 
 static void ev_destroy_notify(session_t *ps, Window window) {
-    win_id wid = find_win2(ps, window);
+    win_id wid = find_win(ps, window);
     if(wid == -1)
         return;
 
@@ -704,7 +696,7 @@ static void ev_destroy_notify(session_t *ps, Window window) {
 }
 
 static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
-  win_id wid = find_win2(ps, ev->xid);
+  win_id wid = find_win(ps, ev->xid);
   win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
 
   if (w)
@@ -713,7 +705,7 @@ static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
     // Find our new frame
-    win_id frame = find_win2(ps, event->xid);
+    win_id frame = find_win(ps, event->xid);
 
     assert(frame != -1);
     if(frame == -1) {
@@ -1005,7 +997,7 @@ static void redir_start(session_t *ps) {
 }
 
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
-    win_id wid = find_win2(ps, ev->xid);
+    win_id wid = find_win(ps, ev->xid);
 
     if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
@@ -1105,13 +1097,13 @@ static bool pumpEvents(session_t *ps) {
                 case ET_WINTYPE:
                     zone_enter_extra(&ZONE_one_event, "WINTYPE");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_win2(ps, event.wintype.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_win(ps, event.wintype.xid));
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_WINCLASS:
                     zone_enter_extra(&ZONE_one_event, "WINCLASS");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_win2(ps, event.wintype.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_win(ps, event.wintype.xid));
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_DAMAGE:
