@@ -156,8 +156,6 @@ static win_id find_toplevel(session_t *ps, Window id) {
     return -1;
 }
 
-static win * find_toplevel2(session_t *ps, Window wid);
-
 static win * find_win_all(session_t *ps, const Window wid) {
     if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
         return NULL;
@@ -168,7 +166,6 @@ static win * find_win_all(session_t *ps, const Window wid) {
         if(fid != -1)
             w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, fid);
     }
-    if (!w) w = find_toplevel2(ps, wid);
     return w;
 }
 
@@ -276,39 +273,6 @@ wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, 
     .type = AnyPropertyType,
     .format = 0
   };
-}
-
-/**
- * Find out the WM frame of a client window by querying X.
- *
- * @return struct _win object of the found window, NULL if not found
- */
-static win * find_toplevel2(session_t *ps, Window wid) {
-    struct _win* w = find_win(ps, wid);
-
-    // We traverse through its ancestors to find out the frame
-    while (wid && wid != ps->root && w == NULL) {
-        Window troot;
-        Window parent;
-        Window *tchildren;
-        unsigned tnchildren;
-
-        // XQueryTree probably fails if you run compton when X is somehow
-        // initializing (like add it in .xinitrc). In this case just leave it
-        // alone.
-        if (!XQueryTree(ps->dpy, wid, &troot, &parent, &tchildren,
-                    &tnchildren)) {
-            wid = 0;
-            break;
-        }
-
-        cxfree(tchildren);
-
-        wid = parent;
-        w = find_win(ps, wid);
-    }
-
-    return w;
 }
 
 /**

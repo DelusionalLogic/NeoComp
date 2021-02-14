@@ -3044,7 +3044,7 @@ struct TestResult xorg__emit_wintype_and_winclass__class_atom_changes() {
     );
 }
 
-struct TestResult xorg__emit_wintype__name_atom_changes_on_client() {
+struct TestResult xorg__emit_wintype_for_parent__name_atom_changes_on_client() {
     struct X11Context ctx;
     struct Atoms atoms;
     Display* dpy = (void*)0x01;
@@ -3570,7 +3570,7 @@ int main(int argc, char** argv) {
 
     TEST(xorg__emit_wintype__name_atom_changes);
     TEST(xorg__emit_wintype_and_winclass__class_atom_changes);
-    TEST(xorg__emit_wintype__name_atom_changes_on_client);
+    TEST(xorg__emit_wintype_for_parent__name_atom_changes_on_client);
     TEST(xorg__not_emit_wintype__name_atom_changes_on_filler);
     TEST(xorg__emit_damage__mapped_window_is_damaged);
     TEST(xorg__emit_nothing__unmapped_window_is_damaged);

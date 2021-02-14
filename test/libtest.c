@@ -188,6 +188,9 @@ struct TestResult assertEvents_internal(Vector* events, struct Event matchers[],
                 RET_IF_FAIL(assertEq_internal("window", false, ev->restack.xid, matchers[i].restack.xid));
                 RET_IF_FAIL(assertEq_internal("restack location", false, ev->restack.loc, matchers[i].restack.loc));
                 break;
+            case ET_WINTYPE:
+                RET_IF_FAIL(assertEq_internal("xid", false, ev->wintype.xid, matchers[i].wintype.xid));
+                break;
         }
     }
 
