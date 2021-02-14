@@ -1213,8 +1213,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_DEBUGGED, sizeof(struct DebuggedComponent));
   swiss_init(&ps->win_list, 512);
 
-  ordersystem_init(&ps->order);
-
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
     ps->dpy = ps_old->dpy;
@@ -1299,6 +1297,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   bezier_init(&ps->curve, 0.29, 0.1, 0.29, 1);
 
   // Initialize filters, must be preceded by OpenGL context creation
+  ordersystem_init(&ps->order);
   blursystem_init();
   texturesystem_init();
   glx_check_err(ps);
