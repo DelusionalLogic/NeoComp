@@ -134,8 +134,6 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-static void win_set_focused(session_t *ps, win *w);
-
 #ifdef DEBUG_EVENTS
 static int ev_serial(XEvent *ev);
 
@@ -550,27 +548,6 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
 }
 
-/**
- * Set real focused state of a window.
- */
-static void win_set_focused(session_t *ps, win *w) {
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-
-    // Unmapped windows will have their focused state reset on map
-    if (!win_mapped(&ps->win_list, wid))
-        return;
-
-    if (ps->active_win == w) return;
-
-    if (ps->active_win) {
-        assert(win_mapped(&ps->win_list, wid));
-    }
-
-    ps->active_win = w;
-
-    assert(ps->active_win == w);
-}
-
 bool wid_get_text_prop(session_t *ps, Window wid, Atom prop,
     char ***pstrlst, int *pnstr) {
   XTextProperty text_prop = { NULL, None, 0, 0 };
@@ -725,10 +702,14 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
         return;
     }
 
-    win *w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    // This can happen if windows are un-/remapped chaotically
+    if(!win_mapped(&ps->win_list, wid)) {
+        printf_dbgf("Focused window was not mapped, ignoring event");
+        return;
+    }
 
-    // Mark the window focused. No need to unfocus the previous one.
-    win_set_focused(ps, w);
+    win *w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    ps->active_win = w;
 }
 
 static void ev_shape_notify(session_t *ps, struct Shape *ev) {
@@ -1671,40 +1652,14 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
         if(stateful->state != STATE_DESTROYING)
             stateful->state = STATE_HIDING;
     }
-
-    // Unmapping a window causes us to stop redirecting it
-    for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
-        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-
-        // Fading out
-        // @HACK If we are being destroyed, we don't want to stop doing that
-        if(stateful->state == STATE_DESTROYING) {
-            swiss_removeComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-            stateful->state = STATE_HIDING;
-        }
-    }
 }
 
 static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
-
-    // Texture init handled in system
-
-    // When we map a window, and blur/shadow isn't there, we want to add them.
-    // Blur and shadow have been migrated to the system
 
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
         struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
         tint->color = (Vector4){{1, 1, 1, 1}};
-    }
-
-    // Blur and shadow have been migrated to the system
-
-    // After a map we'd like to immediately bind the window.
-    for_components(it, em,
-            COMPONENT_MAP, COMPONENT_BINDS_TEXTURE, CQ_END) {
-        swiss_ensureComponent(em, COMPONENT_CONTENTS_DAMAGED, it.id);
     }
 }
 
