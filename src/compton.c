@@ -1211,18 +1211,22 @@ static bool pumpEvents(session_t *ps) {
                     root_damaged(ps, &event.newRoot);
                     zone_leave(&ZONE_one_event);
                     break;
-                case ET_WINTYPE:
+                case ET_WINTYPE: {
                     zone_enter_extra(&ZONE_one_event, "WINTYPE");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, event.wintype.xid);
+                    win_id evwid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, find_win(ps, event.wintype.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, evwid);
                     zone_leave(&ZONE_one_event);
                     break;
-                case ET_WINCLASS:
+                }
+                case ET_WINCLASS: {
                     zone_enter_extra(&ZONE_one_event, "WINCLASS");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, event.winclass.xid);
+                    win_id evwid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, find_win(ps, event.wintype.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, evwid);
                     zone_leave(&ZONE_one_event);
                     break;
+                }
                 case ET_DAMAGE:
                     zone_enter_extra(&ZONE_one_event, "DAMAGE");
                     processed = true;

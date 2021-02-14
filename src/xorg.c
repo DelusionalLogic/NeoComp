@@ -734,6 +734,41 @@ static void createMandr(struct X11Context* xctx, Window xid, float x, float y, f
     pushEvent(xctx, restack);
 }
 
+static bool findAffectedWindow(const struct X11Context* xctx, const Window win, Window* affected) {
+    Word_t rc;
+
+    Window frame = findRoot(xctx, win);
+    // If the frame isn't active dont emit
+    if(!isWindowActive(xctx, frame)) {
+        return false;
+    }
+
+    // If we are the toplevel, emit. If not, we have to
+    // check if we are the current client
+    if(frame == win) {
+        *affected = frame;
+        return true;
+    }
+
+    // If the window isn't a client it can't affect the
+    // frame
+    J1T(rc, xctx->client, win);
+    if(rc == 0) {
+        return false;
+    }
+
+    Window client;
+    bool found = findClosestClient(xctx, frame, &client);
+    assert(found);
+    // If the window with this event isn't the client, we
+    // dont care
+    if(client != win)
+        return false;
+
+    *affected = frame;
+    return true;
+}
+
 static void refreshFocus(struct X11Context* xctx) {
     Atom actual_type;
     int actual_format;
@@ -768,9 +803,14 @@ static void refreshFocus(struct X11Context* xctx) {
 
     XFree(data);
 
+    Window affected;
+    if(!findAffectedWindow(xctx, xid, &affected)) {
+        return;
+    }
+
     struct Event event = {
         .type = ET_FOCUS,
-        .focus.xid = xid,
+        .focus.xid = affected,
     };
     pushEvent(xctx, event);
 }
@@ -882,42 +922,6 @@ static int32_t xBypassState(const struct X11Context* xctx, const Window win) {
 
     return bypass;
 }
-
-static bool findAffectedWindow(const struct X11Context* xctx, const Window win, Window* affected) {
-    Word_t rc;
-
-    Window frame = findRoot(xctx, win);
-    // If the frame isn't active dont emit
-    if(!isWindowActive(xctx, frame)) {
-        return false;
-    }
-
-    // If we are the toplevel, emit. If not, we have to
-    // check if we are the current client
-    if(frame == win) {
-        *affected = frame;
-        return true;
-    }
-
-    // If the window isn't a client it can't affect the
-    // frame
-    J1T(rc, xctx->client, win);
-    if(rc == 0) {
-        return false;
-    }
-
-    Window client;
-    bool found = findClosestClient(xctx, frame, &client);
-    assert(found);
-    // If the window with this event isn't the client, we
-    // dont care
-    if(client != win)
-        return false;
-
-    *affected = frame;
-    return true;
-}
-
 
 static void fillBuffer(struct X11Context* xctx) {
     XEvent raw = {};
