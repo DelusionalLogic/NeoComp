@@ -1177,7 +1177,7 @@ static void fillBuffer(struct X11Context* xctx) {
 
                     struct Event event = {
                         .type = ET_WINTYPE,
-                        .wintype.xid = ev->window,
+                        .wintype.xid = affected,
                     };
                     pushEvent(xctx, event);
                 } else if(ev->atom == xctx->atoms->atom_class) {

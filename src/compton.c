@@ -1214,13 +1214,13 @@ static bool pumpEvents(session_t *ps) {
                 case ET_WINTYPE:
                     zone_enter_extra(&ZONE_one_event, "WINTYPE");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_toplevel(ps, event.wintype.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, event.wintype.xid);
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_WINCLASS:
                     zone_enter_extra(&ZONE_one_event, "WINCLASS");
                     processed = true;
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_toplevel(ps, event.winclass.xid));
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, event.winclass.xid);
                     zone_leave(&ZONE_one_event);
                     break;
                 case ET_DAMAGE:
