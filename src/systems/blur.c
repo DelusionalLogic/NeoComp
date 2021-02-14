@@ -159,6 +159,25 @@ static void damage_blur_over_fade(Swiss* em) {
     vector_kill(&order);
 }
 
+void damage_blur_over_damaged(Swiss* em, Vector* order) {
+    zone_scope(&ZONE_prop_blur_damage);
+    // Damage the blur of windows on top of damaged windows
+    for_components(it, em,
+            COMPONENT_CONTENTS_DAMAGED, CQ_END) {
+
+        size_t order_slot = vector_find_uint64(order, it.id);
+
+        win_id* other_id = vector_getNext(order, &order_slot);
+        while(other_id != NULL) {
+
+            if(win_overlap(em, it.id, *other_id)) {
+                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+            }
+
+            other_id = vector_getNext(order, &order_slot);
+        }
+    }
+}
 
 void blursystem_tick(Swiss* em, Vector* order) {
     for_components(it, em,
@@ -185,6 +204,7 @@ void blursystem_tick(Swiss* em, Vector* order) {
     }
 
     damage_blur_over_fade(em);
+    damage_blur_over_damaged(em, order);
 
     // Damage all windows on top of windows that resize
     for_components(it, em, COMPONENT_RESIZE, CQ_END) {

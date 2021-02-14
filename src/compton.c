@@ -1655,7 +1655,6 @@ static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
 }
 
 static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
-
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
         struct TintComponent* tint = swiss_addComponent(em, COMPONENT_TINT, it.id);
@@ -1744,25 +1743,6 @@ void fill_wintype_changes(Swiss* em, session_t* ps) {
         if(w->window_type == wintypeChanged->newType) {
             swiss_removeComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
             continue;
-        }
-    }
-}
-
-void damage_blur_over_damaged(Swiss* em, Vector* order) {
-    // Damage the blur of windows on top of damaged windows
-    for_components(it, em,
-            COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-
-        size_t order_slot = vector_find_uint64(order, it.id);
-
-        win_id* other_id = vector_getNext(order, &order_slot);
-        while(other_id != NULL) {
-
-            if(win_overlap(em, it.id, *other_id)) {
-                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
-            }
-
-            other_id = vector_getNext(order, &order_slot);
         }
     }
 }
@@ -1899,10 +1879,6 @@ void session_run(session_t *ps) {
             XFixesSetWindowShapeRegionH(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
             XFixesDestroyRegionH(ps->xcontext.display, newShape);
         }
-
-        zone_enter(&ZONE_prop_blur_damage);
-        damage_blur_over_damaged(&ps->win_list, &ps->order);
-        zone_leave(&ZONE_prop_blur_damage);
 
         texturesystem_tick(&ps->win_list, &ps->xcontext);
 
