@@ -13,6 +13,7 @@
 #include "winprop.h"
 
 #include "systems/blur.h"
+#include "systems/order.h"
 
 #include <X11/extensions/Xinerama.h>
 #include <stdbool.h>
@@ -236,9 +237,7 @@ typedef struct _session_t {
     // === Window related ===
     // Swiss of windows
     Swiss win_list;
-    // Window order vector. Since most activity involves the topmost window, the
-    // vector will be ordered with the topmost window last
-    Vector order;
+    struct Order order;
     /// Pointer to <code>win</code> of current active window. Used by
     /// EWMH <code>_NET_ACTIVE_WINDOW</code> focus detection. In theory,
     /// it's more reliable to store the window ID directly here, just in

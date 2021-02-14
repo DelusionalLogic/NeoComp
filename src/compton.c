@@ -36,6 +36,7 @@
 #include "systems/physical.h"
 #include "systems/xorg.h"
 #include "systems/opacity.h"
+#include "systems/order.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -363,6 +364,8 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
       window->id = ev->xid;
   }
 
+  ordersystem_add(&ps->order, slot);
+
   memcpy(new, &win_def, sizeof(win_def));
 
   new->border_size = ev->border_size;
@@ -370,8 +373,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
   z->z = 0;
-
-  vector_putBack(&ps->order, &slot);
 
   return true;
 }
@@ -382,52 +383,18 @@ restack_win(session_t *ps, struct Restack* ev) {
     if(w_id == -1)
         return;
 
-    size_t w_loc;
-    size_t new_loc;
+    win_id above_id = -1;
     if(ev->loc == LOC_BELOW) {
-        win_id above_id = find_win(ps, ev->above);
-
+        above_id = find_win(ps, ev->above);
         // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
         // ConfigureNotify above value for a window that doesn't even exist
         // (badwindow from X11). For now we will just not restack anything then,
         // but it seems like a hack
         if(above_id == -1)
             return;
-
-        size_t above_loc = 0;
-
-        size_t index;
-        win_id* t = vector_getFirst(&ps->order, &index);
-        while(t != NULL) {
-            if(*t == w_id)
-                w_loc = index;
-
-            if(*t == above_id)
-                above_loc = index;
-            t = vector_getNext(&ps->order, &index);
-        }
-
-        // Circulate moves the windows between the src and target, so we
-        // have to move one after the target when we are moving backwards
-        if(above_loc < w_loc) {
-            new_loc = above_loc + 1;
-        } else {
-            new_loc = above_loc;
-        }
-    } else {
-        w_loc = vector_find_uint64(&ps->order, w_id);
-
-        if (ev->loc == LOC_HIGHEST) {
-            new_loc = vector_size(&ps->order) - 1;
-        } else {
-            new_loc = 0;
-        }
     }
 
-    if(w_loc == new_loc)
-        return;
-
-    vector_circulate(&ps->order, w_loc, new_loc);
+    ordersystem_restack(&ps->order, ev->loc, w_id, above_id);
 }
 
 static void canvas_change(session_t* ps, struct CanvasChange* ev) {
@@ -1246,7 +1213,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   swiss_setComponentSize(&ps->win_list, COMPONENT_DEBUGGED, sizeof(struct DebuggedComponent));
   swiss_init(&ps->win_list, 512);
 
-  vector_init(&ps->order, sizeof(win_id), 512);
+  ordersystem_init(&ps->order);
 
   // Inherit old Display if possible, primarily for resource leak checking
   if (ps_old && ps_old->dpy)
@@ -1405,6 +1372,7 @@ void session_destroy(session_t *ps) {
       wd_delete(&bindsTexture->drawable);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
+  ordersystem_delete(&ps->win_list);
   shadowsystem_delete(&ps->win_list);
   blursystem_delete(&ps->win_list);
   texturesystem_delete();
@@ -1530,9 +1498,6 @@ static void finish_destroyed_windows(Swiss* em, session_t* ps) {
             if (w == ps->active_win)
                 ps->active_win = NULL;
 
-            size_t order_index = vector_find_uint64(&ps->order, it.id);
-            vector_remove(&ps->order, order_index);
-
             swiss_remove(&ps->win_list, it.id);
         }
     }
@@ -1552,19 +1517,6 @@ static void transition_faded_entities(Swiss* em) {
             stateful->state = STATE_INVISIBLE;
         } else if(stateful->state == STATE_DESTROYING) {
             stateful->state = STATE_DESTROYED;
-        }
-    }
-}
-
-static void remove_texture_invis_windows(Swiss* em) {
-    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_TEXTURED, CQ_END) {
-        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
-        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-
-        if(stateful->state == STATE_INVISIBLE || stateful->state == STATE_DESTROYED) {
-            texture_delete(&textured->texture);
-            renderbuffer_delete(&textured->stencil);
-            swiss_removeComponent(em, COMPONENT_TEXTURED, it.id);
         }
     }
 }
@@ -1772,7 +1724,7 @@ void session_run(session_t *ps) {
         exit(1);
     }
 
-    assign_depth(&ps->win_list, &ps->order);
+    assign_depth(&ps->win_list, &ps->order.order);
 
     // Initialize idling
     ps->idling = false;
@@ -1821,7 +1773,7 @@ void session_run(session_t *ps) {
         zone_enter(&ZONE_update);
 
         zone_enter(&ZONE_update_z);
-        assign_depth(&ps->win_list, &ps->order);
+        assign_depth(&ps->win_list, &ps->order.order);
         zone_leave(&ZONE_update_z);
 
         zone_enter(&ZONE_update_wintype);
@@ -1876,7 +1828,6 @@ void session_run(session_t *ps) {
             XFixesDestroyRegionH(ps->xcontext.display, newShape);
         }
 
-        texturesystem_tick(&ps->win_list, &ps->xcontext);
 
         update_focused_state(&ps->win_list, ps);
         opacity_tick(&ps->win_list, ps);
@@ -1913,20 +1864,21 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_fade);
 
         transition_faded_entities(&ps->win_list);
+        texturesystem_tick(&ps->win_list, &ps->xcontext);
         shadowsystem_tick(em);
-        blursystem_tick(em, &ps->order);
-        remove_texture_invis_windows(&ps->win_list);
+        ordersystem_tick(&ps->win_list, &ps->order);
+        blursystem_tick(em, &ps->order.order);
         shapesystem_finish(&ps->win_list);
         finish_destroyed_windows(&ps->win_list, ps);
         zone_leave(&ZONE_update);
 
         Vector opaque;
-        vector_init(&opaque, sizeof(win_id), ps->order.size);
+        vector_init(&opaque, sizeof(win_id), ps->order.order.size);
         fetchSortedWindowsWith(&ps->win_list, &opaque,
                 COMPONENT_MUD, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BGOPACITY, COMPONENT_PHYSICAL, CQ_END);
 
         Vector transparent;
-        vector_init(&transparent, sizeof(win_id), ps->order.size);
+        vector_init(&transparent, sizeof(win_id), ps->order.order.size);
         // Even non-opaque windows have some transparent elements (shadow).
         // Trying to draw something as transparent when it only has opaque
         // elements isn't a problem, so we just include everything.
@@ -1934,7 +1886,7 @@ void session_run(session_t *ps) {
                 COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END);
 
         Vector opaque_shadow;
-        vector_init(&opaque_shadow, sizeof(win_id), ps->order.size);
+        vector_init(&opaque_shadow, sizeof(win_id), ps->order.order.size);
         fetchSortedWindowsWith(&ps->win_list, &opaque_shadow,
                 COMPONENT_MUD, COMPONENT_Z, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_OPACITY, COMPONENT_SHADOW, CQ_END);
 

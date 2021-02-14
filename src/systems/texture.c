@@ -183,6 +183,18 @@ void texturesystem_tick(Swiss* em, struct X11Context* xcontext) {
         }
     }
 
+    // Invisible/destroyed windows don't have any textures.
+    for_components(it, em, COMPONENT_STATEFUL, COMPONENT_TEXTURED, CQ_END) {
+        struct TexturedComponent* textured = swiss_getComponent(em, COMPONENT_TEXTURED, it.id);
+        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+
+        if(stateful->state == STATE_INVISIBLE || stateful->state == STATE_DESTROYED) {
+            texture_delete(&textured->texture);
+            renderbuffer_delete(&textured->stencil);
+            swiss_removeComponent(em, COMPONENT_TEXTURED, it.id);
+        }
+    }
+
     // We just added a texture, that means we have to refill it
     for_components(it, em,
             COMPONENT_MAP, COMPONENT_TEXTURED, COMPONENT_BINDS_TEXTURE, CQ_END) {
