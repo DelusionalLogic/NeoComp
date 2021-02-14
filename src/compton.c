@@ -134,16 +134,6 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-static win * find_win_all(session_t *ps, const Window wid) {
-    if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
-        return NULL;
-
-    win_id swissWid = find_win(ps, wid);
-    if(wid == -1)
-        return NULL;
-    return swiss_getComponent(&ps->win_list, COMPONENT_MUD, swissWid);
-}
-
 static void win_set_focused(session_t *ps, win *w);
 
 #ifdef DEBUG_EVENTS
@@ -729,12 +719,13 @@ static void set_active_window(session_t* ps, struct Focus* ev) {
         ps->active_win = NULL;
         return;
     }
-    win *w = find_win_all(ps, ev->xid);
-
-    if(w == NULL) {
+    win_id wid = find_win(ps, ev->xid);
+    if(wid == -1) {
         printf_errf("Window with the id %zu was not found", ev->xid);
         return;
     }
+
+    win *w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
 
     // Mark the window focused. No need to unfocus the previous one.
     win_set_focused(ps, w);
@@ -745,10 +736,8 @@ static void ev_shape_notify(session_t *ps, struct Shape *ev) {
         return;
     }
 
-    win *w = find_win_all(ps, ev->xid);
-    assert(w != NULL);
-
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    win_id wid = find_win(ps, ev->xid);
+    assert(wid != -1);
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
     // We need to mark some damage
