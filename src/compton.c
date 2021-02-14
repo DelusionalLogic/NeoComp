@@ -809,7 +809,7 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
     assert(find_toplevel(ps, event->client_xid) == -1);
 
     // Find our new frame
-    win *w_frame = find_toplevel2(ps, event->xid);
+    win *w_frame = find_win(ps, event->xid);
 
     assert(w_frame != NULL);
     if(w_frame == NULL) {
