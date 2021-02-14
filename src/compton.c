@@ -1788,35 +1788,11 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_input_react);
         commit_destroy(&ps->win_list);
-        xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms);
+        xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms, &ps->root_size);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
         commit_unmap(&ps->win_list, &ps->xcontext);
         physics_tick(&ps->win_list);
         zone_leave(&ZONE_input_react);
-
-        {
-            zone_scope(&ZONE_make_cutout);
-            XserverRegion newShape = XFixesCreateRegionH(ps->dpy, NULL, 0);
-            for_components(it, em,
-                    COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
-                struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-                struct _win* win = swiss_getComponent(em, COMPONENT_MUD, it.id);
-                struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
-
-                if(win_mapped(em, it.id)) {
-                    XserverRegion windowRegion = XFixesCreateRegionFromWindow(ps->xcontext.display, tracksWindow->id, ShapeBounding);
-                    // @HACK: I'm not quite sure why I need to add 2 times the
-                    // border here. One makes sense since i'm subtracting that
-                    // from the positioin in the X11 layer.
-                    XFixesTranslateRegionH(ps->dpy, windowRegion, physical->position.x + win->border_size*2, physical->position.y + win->border_size*2);
-                    XFixesUnionRegionH(ps->xcontext.display, newShape, newShape, windowRegion);
-                    XFixesDestroyRegionH(ps->xcontext.display, windowRegion);
-                }
-            }
-            XFixesInvertRegionH(ps->dpy, newShape, &(XRectangle){0, 0, ps->root_size.x, ps->root_size.y}, newShape);
-            XFixesSetWindowShapeRegionH(ps->dpy, ps->overlay, ShapeBounding, 0, 0, newShape);
-            XFixesDestroyRegionH(ps->xcontext.display, newShape);
-        }
 
 
         update_focused_state(&ps->win_list, ps);

@@ -46,7 +46,31 @@ static void doMap(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
     }
 }
 
-void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
+void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms, Vector2* canvas_size) {
     doMap(em, xcontext, atoms);
     doUnmap(em, xcontext, atoms);
+
+    {
+        zone_scope(&ZONE_make_cutout);
+        XserverRegion newShape = XFixesCreateRegionH(xcontext->display, NULL, 0);
+        for_components(it, em,
+                COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
+            struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+            struct _win* win = swiss_getComponent(em, COMPONENT_MUD, it.id);
+            struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+
+            if(win_mapped(em, it.id)) {
+                XserverRegion windowRegion = XFixesCreateRegionFromWindow(xcontext->display, tracksWindow->id, ShapeBounding);
+                // @HACK: I'm not quite sure why I need to add 2 times the
+                // border here. One makes sense since i'm subtracting that
+                // from the positioin in the X11 layer.
+                XFixesTranslateRegionH(xcontext->display, windowRegion, physical->position.x + win->border_size*2, physical->position.y + win->border_size*2);
+                XFixesUnionRegionH(xcontext->display, newShape, newShape, windowRegion);
+                XFixesDestroyRegionH(xcontext->display, windowRegion);
+            }
+        }
+        XFixesInvertRegionH(xcontext->display, newShape, &(XRectangle){0, 0, canvas_size->x, canvas_size->y}, newShape);
+        XFixesSetWindowShapeRegionH(xcontext->display, xcontext->overlay, ShapeBounding, 0, 0, newShape);
+        XFixesDestroyRegionH(xcontext->display, newShape);
+    }
 }

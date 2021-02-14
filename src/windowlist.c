@@ -23,9 +23,9 @@ DECLARE_ZONE(paint_debug);
 DECLARE_ZONE(paint_debugFaders);
 DECLARE_ZONE(paint_debugProps);
 
-Vector2 X11_rectpos_to_gl(session_t *ps, const Vector2* xpos, const Vector2* size) {
+Vector2 X11_rectpos_to_gl(Vector2 *canvas, const Vector2* xpos, const Vector2* size) {
     Vector2 glpos = {{
-        xpos->x, ps->root_size.y - xpos->y - size->y
+        xpos->x, canvas->y - xpos->y - size->y
     }};
     return glpos;
 }
@@ -63,7 +63,7 @@ void windowlist_drawBackground(session_t* ps, Vector* opaque) {
             struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
             struct glx_blur_cache* blur = swiss_getComponent(&ps->win_list, COMPONENT_BLUR, *w_id);
 
-            Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+            Vector2 glPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &physical->size);
             Vector3 dglPos = vec3_from_vec2(&glPos, z->z + 0.000001);
 
             shader_set_uniform_bool(shader_type->flip, blur->texture[0].flipped);
@@ -122,7 +122,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
-        Vector2 glPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+        Vector2 glPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &physical->size);
 
         struct TexturedComponent* textured = swiss_godComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
         if(textured != NULL) {
@@ -214,7 +214,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             shader_use(tint_shader);
 
             {
-                Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+                Vector2 glRectPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &physical->size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
                 draw_rect(shaped->face, tint_shader_type->mvp, winpos, physical->size);
@@ -238,7 +238,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             // Texture is already bound
 
             {
-                Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
+                Vector2 glRectPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &textured->texture.size);
                 Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
                 /* Vector4 color = {{0.0, 1.0, 0.4, opacity->opacity/100}}; */
@@ -294,7 +294,7 @@ void windowlist_drawTint(session_t* ps) {
         shader_set_uniform_vec3(shader_type->color, &tint->color.rgb);
 
         {
-            Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &physical->size);
+            Vector2 glRectPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &physical->size);
             Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
             /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
@@ -353,7 +353,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
         texture_bind(&textured->texture, GL_TEXTURE0);
 
         {
-            Vector2 glRectPos = X11_rectpos_to_gl(ps, &physical->position, &textured->texture.size);
+            Vector2 glRectPos = X11_rectpos_to_gl(&ps->root_size, &physical->position, &textured->texture.size);
             Vector3 winpos = vec3_from_vec2(&glRectPos, z->z);
 
             /* Vector4 color = {{0.0, 1.0, 0.4, 1.0}}; */
