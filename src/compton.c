@@ -79,7 +79,7 @@ DECLARE_ZONE(fetch_prop);
 DECLARE_ZONE(update_fade);
 
 // From the header {{{
-
+//
 static win * find_win(session_t *ps, Window id) {
   if (!id)
     return NULL;
@@ -93,6 +93,14 @@ static win * find_win(session_t *ps, Window id) {
   }
 
   return NULL;
+}
+
+static win_id find_win2(session_t *ps, Window id) {
+    win *w = find_win(ps, id);
+    if(w == NULL)
+        return -1;
+
+    return swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 }
 
 static void wintype_arr_enable(bool arr[]) {
@@ -138,13 +146,13 @@ static win * find_win_all(session_t *ps, const Window wid) {
     if (!wid || PointerRoot == wid || wid == ps->root || wid == ps->overlay)
         return NULL;
 
-    win *w = find_win(ps, wid);
-    return w;
+    win_id swissWid = find_win2(ps, wid);
+    if(wid == -1)
+        return NULL;
+    return swiss_getComponent(&ps->win_list, COMPONENT_MUD, swissWid);
 }
 
 static void win_set_focused(session_t *ps, win *w);
-
-static void win_mark_client(session_t *ps, win *w, Window client);
 
 #ifdef DEBUG_EVENTS
 static int ev_serial(XEvent *ev);
@@ -280,12 +288,11 @@ static void assign_depth(Swiss* em, Vector* order) {
 }
 
 static void map_win(session_t *ps, struct MapWin* ev) {
-    win *w = find_win(ps, ev->xid);
-	if(w == NULL) {
+    win_id wid = find_win2(ps, ev->xid);
+	if(wid == -1) {
         return;
     }
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-    assert(w != NULL);
+    assert(wid != -1);
 
     // Add a map event
     swiss_ensureComponent(&ps->win_list, COMPONENT_MAP, wid);
@@ -316,28 +323,6 @@ static void unmap_win(session_t *ps, win *w) {
     if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
     }
-}
-
-/**
- * Mark a window as the client window of another.
- *
- * @param ps current session
- * @param w struct _win of the parent window
- * @param client window ID of the client window
- */
-static void
-win_mark_client(session_t *ps, win *parent, Window client) {
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, parent);
-
-  // If the window isn't mapped yet, stop here, as the function will be
-  // called in map_win()
-  if (!win_mapped(&ps->win_list, wid))
-    return;
-
-  swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, wid);
-
-  // Update everything related to conditions
-  /* win_on_factor_change(ps, w); */
 }
 
 static bool add_win(session_t *ps, struct AddWin* ev) {
@@ -413,24 +398,21 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 
 static void
 restack_win(session_t *ps, struct Restack* ev) {
-    win *w = find_win(ps, ev->xid);
-    if(w == NULL)
+    win_id w_id = find_win2(ps, ev->xid);
+    if(w_id == -1)
         return;
-    win_id w_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     size_t w_loc;
     size_t new_loc;
     if(ev->loc == LOC_BELOW) {
-        struct _win* w_above = find_win(ps, ev->above);
+        win_id above_id = find_win2(ps, ev->above);
 
         // @INSPECT @RESEARCH @UNDERSTAND @HACK: Sometimes we get a bogus
         // ConfigureNotify above value for a window that doesn't even exist
         // (badwindow from X11). For now we will just not restack anything then,
         // but it seems like a hack
-        if(w_above == NULL)
+        if(above_id == -1)
             return;
-
-        win_id above_id = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w_above);
 
         size_t above_loc = 0;
 
@@ -484,12 +466,12 @@ configure_win(session_t *ps, struct MandR* ev) {
   assert(ev->xid != ps->root);
 
   // Other window changes
-  win *w = find_win(ps, ev->xid);
+  win_id wid = find_win2(ps, ev->xid);
 
-  if(w == NULL)
+  if(wid == -1)
     return;
 
-  win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+  win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
 
   if(w->border_size != ev->border_size) {
     w->border_size = ev->border_size;
@@ -573,14 +555,13 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     // know how to detect if a damage is caused by a move at this time.
     // - Delusional 16/11-2018
 
-    win *w = find_win(ps, ev->xid);
+    win_id wid = find_win2(ps, ev->xid);
 
-    if (!w) {
+    if (wid == -1) {
         return;
     }
 
 
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
     if (!win_mapped(&ps->win_list, wid))
         return;
 
@@ -715,17 +696,16 @@ ev_focus_report(XFocusChangeEvent* ev) {
 // === Events ===
 
 static void ev_destroy_notify(session_t *ps, Window window) {
-    win *w = find_win(ps, window);
-    if(w == NULL)
+    win_id wid = find_win2(ps, window);
+    if(wid == -1)
         return;
-
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
 
     destroy_win(ps, wid);
 }
 
 static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
-  win *w = find_win(ps, ev->xid);
+  win_id wid = find_win2(ps, ev->xid);
+  win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
 
   if (w)
     unmap_win(ps, w);
@@ -733,17 +713,22 @@ static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
     // Find our new frame
-    win *w_frame = find_win(ps, event->xid);
+    win_id frame = find_win2(ps, event->xid);
 
-    assert(w_frame != NULL);
-    if(w_frame == NULL) {
+    assert(frame != -1);
+    if(frame == -1) {
         printf_errf("New parent for %lu doesn't have a parent frame", event->client_xid);
         return;
     }
 
     // If it has WM_STATE, mark it the client window
     if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
-        win_mark_client(ps, w_frame, event->client_xid);
+        // If the window isn't mapped yet, stop here, as the function will be
+        // called in map_win()
+        if (!win_mapped(&ps->win_list, frame))
+            return;
+
+        swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, frame);
     }
 }
 
@@ -1020,8 +1005,7 @@ static void redir_start(session_t *ps) {
 }
 
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
-    win *w = find_win(ps, ev->xid);
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
+    win_id wid = find_win2(ps, ev->xid);
 
     if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
@@ -1118,22 +1102,18 @@ static bool pumpEvents(session_t *ps) {
                     root_damaged(ps, &event.newRoot);
                     zone_leave(&ZONE_one_event);
                     break;
-                case ET_WINTYPE: {
+                case ET_WINTYPE:
                     zone_enter_extra(&ZONE_one_event, "WINTYPE");
                     processed = true;
-                    win_id evwid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, find_win(ps, event.wintype.xid));
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, evwid);
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, find_win2(ps, event.wintype.xid));
                     zone_leave(&ZONE_one_event);
                     break;
-                }
-                case ET_WINCLASS: {
+                case ET_WINCLASS:
                     zone_enter_extra(&ZONE_one_event, "WINCLASS");
                     processed = true;
-                    win_id evwid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, find_win(ps, event.wintype.xid));
-                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, evwid);
+                    swiss_ensureComponent(&ps->win_list, COMPONENT_CLASS_CHANGE, find_win2(ps, event.wintype.xid));
                     zone_leave(&ZONE_one_event);
                     break;
-                }
                 case ET_DAMAGE:
                     zone_enter_extra(&ZONE_one_event, "DAMAGE");
                     processed = true;
