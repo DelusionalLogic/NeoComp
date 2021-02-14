@@ -1301,17 +1301,12 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   blursystem_init();
   texturesystem_init();
   glx_check_err(ps);
-
-  XGrabServer(ps->xcontext.display);
-
   xtexture_init(&ps->root_texture, &ps->xcontext);
 
+  XGrabServer(ps->xcontext.display);
   redir_start(ps);
-
   xorg_beginEvents(&ps->xcontext);
-
   fds_insert(ps, ConnectionNumber(ps->xcontext.display), POLLIN);
-
   XUngrabServer(ps->xcontext.display);
   // ALWAYS flush after XUngrabServer()!
   XFlush(ps->dpy);
