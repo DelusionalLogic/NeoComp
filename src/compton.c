@@ -1362,7 +1362,7 @@ void session_destroy(session_t *ps) {
       wd_delete(&bindsTexture->drawable);
   }
   swiss_resetComponent(&ps->win_list, COMPONENT_BINDS_TEXTURE);
-  ordersystem_delete(&ps->win_list);
+  ordersystem_delete(&ps->order);
   shadowsystem_delete(&ps->win_list);
   blursystem_delete(&ps->win_list);
   texturesystem_delete();
