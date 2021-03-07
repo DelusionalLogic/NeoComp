@@ -326,6 +326,28 @@ int swiss_size(Swiss* index) {
     return index->size;
 }
 
+int swiss_count_holes(Swiss* vector) {
+    assert(vector->capacity != 0);
+
+    size_t holes = vector->capacity;
+    size_t highwater = 0;
+    for(int i = 0; i < freelist_numBuckets(vector->capacity); i++) {
+        uint64_t value = makeBucket(vector, (CType[]){COMPONENT_META, CQ_END}, i);
+
+        size_t localHighwater = SWISS_FREELIST_BUCKET_SIZE - __builtin_ctzll(value);
+        if(localHighwater > 0) {
+            // There's at least one set in this bucket. Calculate the new
+            // highwater mark
+            highwater = i * SWISS_FREELIST_BUCKET_SIZE + localHighwater;
+        }
+
+        holes -= __builtin_popcountll(value);
+    }
+
+    // Everything between the highwater mark and the capacity is not fragmentation
+    return holes - (vector->capacity - highwater);
+}
+
 size_t swiss_indexOfPointer(Swiss* vector, enum ComponentType type, void* data) {
     assert(data >= (void*)vector->data[type]);
     assert(data <= (void*)(vector->data[type] + vector->componentSize[type] * vector->capacity));

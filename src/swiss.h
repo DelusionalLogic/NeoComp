@@ -125,6 +125,7 @@ void* swiss_godComponent(const Swiss* index, const enum ComponentType type, win_
 
 void swiss_clear(Swiss* vector);
 int swiss_size(Swiss* vector);
+int swiss_count_holes(Swiss* vector);
 
 size_t swiss_indexOfPointer(Swiss* vector, const enum ComponentType type, void* data);
 

@@ -1941,7 +1941,7 @@ void session_run(session_t *ps) {
 
         struct ZoneEventStream* event_stream = zone_package(&ZONE_global);
 #ifdef FRAMERATE_DISPLAY
-        update_debug_graph(&ps->debug_graph, event_stream, &ps->xcontext);
+        update_debug_graph(&ps->debug_graph, event_stream, &ps->xcontext, &ps->win_list);
         draw_debug_graph(&ps->debug_graph, &(Vector2){{20, ps->root_size.y - 20}});
 #endif
 

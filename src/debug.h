@@ -27,10 +27,13 @@ struct DebugGraphState {
     size_t cursor;
     size_t width;
 
+	size_t windows;
+	size_t fragmentation;
+
     struct XResourceUsage xdata;
 };
 
 void init_debug_graph(struct DebugGraphState* state);
 void draw_debug_graph(struct DebugGraphState* state, Vector2* pos);
-void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx);
+void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx, Swiss* win_list);
 void debug_mark_draw();

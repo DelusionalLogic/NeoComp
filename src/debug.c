@@ -658,6 +658,8 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 
     Vector2 winSize = {{winWidth, 0}};
     winSize.y += bigSize.y;
+    winSize.y += smallSize.y;
+    winSize.y += smallSize.y;
     winSize.y += smallSize.y * vector_size(&state->xdata.values);
 
 
@@ -721,6 +723,46 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
         pen.y = savedY - bigSize.y;
     }
 
+    {
+        char* buffer = "Windows";
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{pen.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
+
+    {
+        static char buffer[128];
+        snprintf(buffer, 128, "%ld", state->windows);
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
+    pen.y -= smallSize.y;
+
+    {
+        char* buffer = "Fragmentation";
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{pen.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
+
+    {
+        static char buffer[128];
+        snprintf(buffer, 128, "%ld", state->fragmentation);
+
+        text_size(&debug_font, buffer, &scale, &size);
+        Vector2 pos = {{winPos.x + winSize.x - size.x, pen.y - size.y}};
+
+        text_draw_colored(&debug_font, buffer, &pos, &scale, &(Vector3){{1.0, 1.0, 1.0}});
+    }
+    pen.y -= smallSize.y;
+
     for(size_t i = 0; i < vector_size(&state->xdata.values); i++) {
         char* buffer = state->xdata.names[i];
 
@@ -769,7 +811,7 @@ void draw_debug_graph(struct DebugGraphState* state, Vector2* pos) {
 }
 
 static int draws = 0;
-void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx) {
+void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* stream, struct X11Context* xctx, Swiss* win_list) {
     double renderTime = timeDiff(&stream->render, &stream->end);
 
     {
@@ -800,6 +842,9 @@ void update_debug_graph(struct DebugGraphState* state, struct ZoneEventStream* s
     }
 
     xorg_resource(xctx, &state->xdata);
+
+    state->windows = swiss_size(win_list);
+    state->fragmentation = swiss_count_holes(win_list);
 
     state->cursor++;
     if(state->cursor >= state->width)
