@@ -45,7 +45,3 @@ void blursystem_tick(Swiss* em, Vector* order);
 bool blur_backbuffer(struct _session_t* ps, const Vector2* pos,
         const Vector2* size, float z, GLfloat factor_center,
         glx_blur_cache_t* pbc, struct _win* w);
-
-int blur_cache_init(glx_blur_cache_t* cache);
-void blur_cache_delete(glx_blur_cache_t* cache);
-bool blur_cache_resize(glx_blur_cache_t* cache, const Vector2* size);

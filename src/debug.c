@@ -27,7 +27,6 @@ char *component_names[NUM_COMPONENT_TYPES] = {
     "[Binds Texture]",
     "[Textured]",
     "[Tracks Window]",
-    "[Has Client]",
     "[Shadow]",
     "[Blur]",
     "[Tint]",
@@ -59,10 +58,13 @@ char *component_names[NUM_COMPONENT_TYPES] = {
     "[Class Changed]",
 };
 
-static void draw_generic_component(Swiss* em, enum ComponentType ctype) {
+static void draw_headers(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
+    // @CLEANUP @PERFORMANCE: We are doing snprintf twice here for the same
+    // strings
+    // Calculate the header height
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
@@ -71,28 +73,47 @@ static void draw_generic_component(Swiss* em, enum ComponentType ctype) {
 
         Vector2 size = {{0}};
         text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
 
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
+        debug->currentHeight = size.y + 10;
     }
+
+    // Draw the header background
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        Vector2 size = {{200, debug->currentHeight}};
+        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
+
+        struct face* face = assets_load("window.face");
+        draw_colored_rect(face, &pos, &size, &header_bg);
+    }
+
+    // Draw the header text
+    for_components(it, em,
+            COMPONENT_DEBUGGED, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+
+        snprintf(buffer, 128, "%s", component_names[ctype]);
+
+        debug->pen.y -= debug->currentHeight;
+
+        text_draw(&debug_font, buffer, &(Vector2){{debug->pen.x, debug->pen.y + 5}}, &scale);
+    }
+}
+
+static void draw_generic_component(Swiss* em, enum ComponentType ctype) {
+    Vector2 scale = {{1, 1}};
+    char buffer[128];
+
+    draw_headers(em, ctype);
 }
 
 static void draw_state_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, COMPONENT_STATEFUL, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, COMPONENT_STATEFUL, CQ_END) {
@@ -113,18 +134,7 @@ static void draw_dim_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -145,18 +155,7 @@ static void draw_opacity_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -177,18 +176,7 @@ static void draw_mud_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -209,18 +197,7 @@ static void draw_transitioning_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -255,18 +232,7 @@ static void draw_focus_change_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -287,18 +253,7 @@ static void draw_physical_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-        debug->pen.y -= size.y;
-
-        text_draw(&debug_font, buffer, &debug->pen, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, ctype, CQ_END) {
@@ -319,41 +274,7 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
     Vector2 scale = {{1, 1}};
     char buffer[128];
 
-    // @CLEANUP @PERFORMANCE: We are doing snprintf twice here for the same
-    // strings
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
-
-        debug->currentHeight = size.y + 10;
-    }
-
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        Vector2 size = {{200, debug->currentHeight}};
-        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
-
-        struct face* face = assets_load("window.face");
-        draw_colored_rect(face, &pos, &size, &header_bg);
-    }
-
-    for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
-        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
-
-        snprintf(buffer, 128, "%s", component_names[ctype]);
-
-        debug->pen.y -= debug->currentHeight;
-
-        text_draw(&debug_font, buffer, &(Vector2){{debug->pen.x, debug->pen.y + 5}}, &scale);
-    }
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, CQ_END) {
@@ -455,22 +376,39 @@ static void draw_shaped_component(Swiss* em, enum ComponentType ctype) {
     }
 }
 
-static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
-    Vector2 scale = {{1, 1}};
-    char buffer[128];
+static void draw_textured_component(Swiss* em, enum ComponentType ctype) {
 
-    // @CLEANUP @PERFORMANCE: We are doing snprintf twice here for the same
-    // strings
+    draw_headers(em, ctype);
+
     for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
+            COMPONENT_DEBUGGED, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        debug->currentHeight = 0;
+    }
 
-        snprintf(buffer, 128, "%s", component_names[ctype]);
+    float maxWidth = 200;
+    float maxHeight = 200;
 
-        Vector2 size = {{0}};
-        text_size(&debug_font, buffer, &scale, &size);
+    for_components(it, em,
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
+        struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
-        debug->currentHeight = size.y + 10;
+        // @CLEANUP: For whatever reason, I've implemented these debug things
+        // to draw from the bottom left instead of the top left.
+        Vector2 size = {{p->size.x, p->size.y}};
+        float wRatio = maxWidth / p->size.x;
+        float hRatio = maxHeight / p->size.y;
+        // Screens are generally wider, so we are probably more likely to have
+        // a wide window than a tall one. Therefore placing the equal height
+        // window in the wide branch probably helps the branch predictor. What
+        // an speedup!
+        if(wRatio <= hRatio) {
+            vec2_imul(&size, wRatio);
+        } else {
+            vec2_imul(&size, hRatio);
+        }
+        debug->currentHeight += size.y + 20;
     }
 
     for_components(it, em,
@@ -481,19 +419,57 @@ static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
         Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
 
         struct face* face = assets_load("window.face");
-        draw_colored_rect(face, &pos, &size, &header_bg);
+        draw_colored_rect(face, &pos, &size, &content_bg);
     }
 
     for_components(it, em,
-            COMPONENT_DEBUGGED, ctype, CQ_END) {
+            COMPONENT_DEBUGGED, COMPONENT_PHYSICAL, ctype, CQ_END) {
         struct DebuggedComponent* debug = swiss_getComponent(em, COMPONENT_DEBUGGED, it.id);
+        struct PhysicalComponent* p = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
+        struct ShapedComponent* shape = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
+        struct TexturedComponent* s = swiss_getComponent(em, ctype, it.id);
 
-        snprintf(buffer, 128, "%s", component_names[ctype]);
+        debug->pen.y -= 10;
 
-        debug->pen.y -= debug->currentHeight;
+        // @CLEANUP: For whatever reason, I've implemented these debug things
+        // to draw from the bottom left instead of the top left.
+        Vector2 size = {{p->size.x, p->size.y}};
+        float wRatio = maxWidth / p->size.x;
+        float hRatio = maxHeight / p->size.y;
+        // Screens are generally wider, so we are probably more likely to have
+        // a wide window than a tall one. Therefore placing the equal height
+        // window in the wide branch probably helps the branch predictor. What
+        // an speedup!
+        if(wRatio <= hRatio) {
+            vec2_imul(&size, wRatio);
+        } else {
+            vec2_imul(&size, hRatio);
+        }
+        Vector3 pos = {{debug->pen.x, debug->pen.y - size.y, 0}};
 
-        text_draw(&debug_font, buffer, &(Vector2){{debug->pen.x, debug->pen.y + 5}}, &scale);
+
+        struct shader_program* program = assets_load("passthough.shader");
+        if(program->shader_type_info != &passthough_info) {
+            printf_errf("Shader was not a passthrough shader");
+            return;
+        }
+        struct Passthough* shader_type = program->shader_type;
+
+        shader_set_future_uniform_bool(shader_type->flip, s->texture.flipped);
+        shader_set_future_uniform_sampler(shader_type->tex_scr, 0);
+        shader_set_future_uniform_float(shader_type->opacity, 1.0);
+        shader_use(program);
+
+        texture_bind(&s->texture, GL_TEXTURE0);
+
+        draw_rect(shape->face, shader_type->mvp, pos, size);
+        debug->pen.y -= size.y + 10;
     }
+}
+
+static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
+
+    draw_headers(em, ctype);
 
     for_components(it, em,
             COMPONENT_DEBUGGED, CQ_END) {
@@ -581,6 +557,7 @@ static void draw_shadow_component(Swiss* em, enum ComponentType ctype) {
         debug->pen.y -= size.y + 10;
     }
 }
+
 typedef void (*debug_component_renderer)(Swiss* em, enum ComponentType ctype);
 debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     0,
@@ -594,6 +571,7 @@ debug_component_renderer component_renderer[NUM_COMPONENT_TYPES] = {
     [COMPONENT_PHYSICAL] = draw_physical_component,
     [COMPONENT_SHAPED] = draw_shaped_component,
     [COMPONENT_SHADOW] = draw_shadow_component,
+    [COMPONENT_TEXTURED] = draw_textured_component,
 };
 
 void draw_component_debug(Swiss* em, Vector2* rootSize) {
