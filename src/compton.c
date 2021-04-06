@@ -37,6 +37,7 @@
 #include "systems/xorg.h"
 #include "systems/opacity.h"
 #include "systems/order.h"
+#include "systems/state.h"
 
 #include "assets/assets.h"
 #include "assets/shader.h"
@@ -1572,26 +1573,6 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     }
 }
 
-void commit_destroy(Swiss* em) {
-    for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_DESTROY, CQ_END) {
-        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        stateful->state = STATE_DESTROYING;
-    }
-}
-
-static void commit_unmap(Swiss* em, struct X11Context* xcontext) {
-    for_components(it, em,
-            COMPONENT_STATEFUL, COMPONENT_UNMAP, CQ_END) {
-        struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-
-        // Fading out
-        // @HACK If we are being destroyed, we don't want to stop doing that
-        if(stateful->state != STATE_DESTROYING)
-            stateful->state = STATE_HIDING;
-    }
-}
-
 static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xcontext) {
     for_components(it, em,
             COMPONENT_MUD, COMPONENT_MAP, CQ_NOT, COMPONENT_TINT, CQ_END) {
@@ -1787,10 +1768,9 @@ void session_run(session_t *ps) {
         zone_leave(&ZONE_update_wintype);
 
         zone_enter(&ZONE_input_react);
-        commit_destroy(&ps->win_list);
-        xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms, &ps->root_size);
+        statesystem_tick(&ps->win_list);
         commit_map(&ps->win_list, &ps->atoms, &ps->xcontext);
-        commit_unmap(&ps->win_list, &ps->xcontext);
+        xorgsystem_tick(&ps->win_list, &ps->xcontext, &ps->atoms, &ps->root_size);
         physics_tick(&ps->win_list);
         zone_leave(&ZONE_input_react);
 

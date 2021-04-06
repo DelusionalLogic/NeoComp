@@ -7,6 +7,7 @@
 #include "assets/face.h"
 
 #include "systems/physical.h"
+#include "systems/state.h"
 #include "windowlist.h"
 
 #include <string.h>
@@ -1022,7 +1023,7 @@ struct TestResult commit_unmap__transition_state_to_destroying__has_destroy_even
     stateful->state = STATE_HIDING;
     swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
 
-    commit_destroy(&swiss);
+    statesystem_tick(&swiss);
 
     assertEq((uint64_t)stateful->state, (uint64_t)STATE_DESTROYING);
 }
@@ -1038,7 +1039,7 @@ struct TestResult commit_unmap__not_transision__has_no_destroy_event() {
     stateful->state = STATE_HIDING;
     enum WindowState beforeState = stateful->state;
 
-    commit_destroy(&swiss);
+    statesystem_tick(&swiss);
 
     assertEq((uint64_t)stateful->state, (uint64_t)beforeState);
 }
@@ -1057,7 +1058,7 @@ struct TestResult commit_unmap__transision_last_window__has_multiple_windows_and
     stateful->state = STATE_HIDING;
     swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
 
-    commit_destroy(&swiss);
+    statesystem_tick(&swiss);
 
     assertEq((uint64_t)stateful->state, (uint64_t)STATE_DESTROYING);
 }
@@ -1071,7 +1072,7 @@ struct TestResult commit_unmap__not_crash__window_with_destroy_event_has_no_stat
     win_id wid = swiss_allocate(&swiss);
     swiss_ensureComponent(&swiss, COMPONENT_DESTROY, wid);
 
-    commit_destroy(&swiss);
+    statesystem_tick(&swiss);
 
     assertYes();
 }
