@@ -1103,6 +1103,9 @@ static void fillBuffer(struct X11Context* xctx) {
             if(ev->send_event == true)
                 break;
 
+            if(!isWindowActive(xctx, ev->window))
+                break;
+
             Word_t rc;
             J1U(rc, xctx->mapped, ev->window);
             assert(rc == 1);

@@ -3284,9 +3284,8 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_bypass__bypassed_window_becomes_client);
     TEST(xorg__emit_nothing__bypassed_unmapped_window_requests_compositing);
 
-    // These don't work yet
-    /* TEST(xorg__not_emit_map__subwindow_is_mapped); */
-    /* TEST(xorg__not_emit_unmap__subwindow_is_unmapped); */
+    TEST(xorg__not_emit_map__subwindow_is_mapped);
+    TEST(xorg__not_emit_unmap__subwindow_is_unmapped);
     TEST(xorg__emit_map__mapped_subwindow_becomes_frame);
 
     TEST(xorg__emit_wintype__name_atom_changes);
