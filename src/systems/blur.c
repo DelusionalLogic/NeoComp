@@ -242,14 +242,27 @@ void blursystem_tick(Swiss* em, Vector* order) {
     }
 
     // Damage all windows on top of windows that move
-    for_components(it, em, COMPONENT_MOVE, CQ_END) {
-        size_t order_slot = vector_find_uint64(order, it.id);
-        assert(order_slot >= 0);
+    {
+        // Find the lowest (in z order) window that has moved
+        ssize_t lowest_slot = -1;
+        for_components(it, em, COMPONENT_MOVE, CQ_END) {
+            size_t order_slot = vector_find_uint64(order, it.id);
+            assert(order_slot >= 0);
 
-        win_id* other_id = vector_getNext(order, &order_slot);
-        while(other_id != NULL) {
-            swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
-            other_id = vector_getNext(order, &order_slot);
+            if(lowest_slot == -1 || order_slot < lowest_slot)
+                lowest_slot = order_slot;
+
+        }
+
+        printf_dbgf("Lowest is now %ld", lowest_slot);
+        // Damage the blur of all windows over that one
+        if(lowest_slot != -1) {
+            size_t cur = lowest_slot;
+            win_id* other_id = vector_getNext(order, &cur);
+            while(other_id != NULL) {
+                swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, *other_id);
+                other_id = vector_getNext(order, &cur);
+            }
         }
     }
 

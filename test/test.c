@@ -7,7 +7,9 @@
 #include "assets/face.h"
 
 #include "systems/physical.h"
+#include "systems/fullscreen.h"
 #include "systems/state.h"
+#include "systems/blur.h"
 #include "windowlist.h"
 
 #include <string.h>
@@ -3129,6 +3131,114 @@ struct TestResult xorg__emit_nothing__subwindow_changes_shape() {
     );
 }
 
+struct TestResult blursystem__damage_blur__window_below_moved() {
+    Swiss em;
+    swiss_clearComponentSizes(&em);
+    swiss_init(&em, 2);
+
+    win_id below = swiss_allocate(&em);
+    win_id above = swiss_allocate(&em);
+    swiss_addComponent(&em, COMPONENT_BLUR, above);
+
+    swiss_addComponent(&em, COMPONENT_MOVE, below);
+
+    Vector order;
+    vector_init(&order, sizeof(uint64_t), 2);
+    vector_putBack(&order, &below);
+    vector_putBack(&order, &above);
+
+    blursystem_tick(&em, &order);
+
+    assertEq(swiss_hasComponent(&em, COMPONENT_BLUR_DAMAGED, above), true);
+}
+
+struct TestResult blursystem__not_damage_blur__window_above_moved() {
+    Swiss em;
+    swiss_clearComponentSizes(&em);
+    swiss_init(&em, 2);
+
+    win_id below = swiss_allocate(&em);
+    swiss_addComponent(&em, COMPONENT_BLUR, below);
+    win_id above = swiss_allocate(&em);
+
+    swiss_addComponent(&em, COMPONENT_MOVE, above);
+
+    Vector order;
+    vector_init(&order, sizeof(uint64_t), 2);
+    vector_putBack(&order, &below);
+    vector_putBack(&order, &above);
+
+    blursystem_tick(&em, &order);
+
+    assertEq(swiss_hasComponent(&em, COMPONENT_BLUR_DAMAGED, below), false);
+}
+
+struct TestResult blursystem__damage_blur__window_moved() {
+    Swiss em;
+    swiss_clearComponentSizes(&em);
+    swiss_init(&em, 2);
+
+    win_id win = swiss_allocate(&em);
+
+    swiss_addComponent(&em, COMPONENT_BLUR, win);
+    swiss_addComponent(&em, COMPONENT_MOVE, win);
+
+    Vector order;
+    vector_init(&order, sizeof(uint64_t), 2);
+    vector_putBack(&order, &win);
+
+    blursystem_tick(&em, &order);
+
+    assertEq(swiss_hasComponent(&em, COMPONENT_BLUR_DAMAGED, win), true);
+}
+
+struct TestResult blursystem__damage_blur__window_below_is_fading() {
+    Swiss em;
+    swiss_clearComponentSizes(&em);
+    // @CLEANUP @HACK: Apprently the blursystem does it's own window sorting
+    // when we calculate fading, so we have to initialize a bunch of extra
+    // stuff
+    swiss_setComponentSize(&em, COMPONENT_MUD, sizeof(win));
+    swiss_setComponentSize(&em, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
+    swiss_setComponentSize(&em, COMPONENT_Z, sizeof(struct ZComponent));
+    swiss_setComponentSize(&em, COMPONENT_FADES_OPACITY, sizeof(struct FadesOpacityComponent));
+    swiss_init(&em, 2);
+
+    win_id below = swiss_allocate(&em);
+    {
+        swiss_addComponent(&em, COMPONENT_MUD, below);
+        struct PhysicalComponent* p = swiss_addComponent(&em, COMPONENT_PHYSICAL, below);
+        p->position = (Vector2){{0, 0}};
+        p->size = (Vector2){{100, 100}};
+        struct ZComponent* z = swiss_addComponent(&em, COMPONENT_Z, below);
+        z->z = 1.0;
+    }
+    win_id above = swiss_allocate(&em);
+    {
+        swiss_addComponent(&em, COMPONENT_BLUR, above);
+        struct PhysicalComponent* p = swiss_addComponent(&em, COMPONENT_PHYSICAL, above);
+        p->position = (Vector2){{0, 0}};
+        p->size = (Vector2){{100, 100}};
+        swiss_addComponent(&em, COMPONENT_MUD, above);
+        struct ZComponent* z = swiss_addComponent(&em, COMPONENT_Z, above);
+        z->z = 0.0; // Lower Z is above
+    }
+
+    struct FadesOpacityComponent *fo = swiss_addComponent(&em, COMPONENT_FADES_OPACITY, below);
+    fade_init(&fo->fade, 0);
+    fade_keyframe(&fo->fade, 10, 10); // Just make sure it's in progress
+    assert(!fade_done(&fo->fade));
+
+    Vector order;
+    vector_init(&order, sizeof(uint64_t), 2);
+    vector_putBack(&order, &below);
+    vector_putBack(&order, &above);
+
+    blursystem_tick(&em, &order);
+
+    assertEq(swiss_hasComponent(&em, COMPONENT_BLUR_DAMAGED, above), true);
+}
+
 int main(int argc, char** argv) {
     test_select(argc, argv);
 
@@ -3303,6 +3413,11 @@ int main(int argc, char** argv) {
 
     TEST(xorg__emit_shape_damage__unmapped_window_changes_shape);
     TEST(xorg__emit_nothing__subwindow_changes_shape);
+
+    TEST(blursystem__damage_blur__window_below_moved);
+    TEST(blursystem__not_damage_blur__window_above_moved);
+    TEST(blursystem__damage_blur__window_moved);
+    TEST(blursystem__damage_blur__window_below_is_fading);
 
     return test_end();
 }
