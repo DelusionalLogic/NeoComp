@@ -231,6 +231,16 @@ void damage_blur_over_damaged(Swiss* em, Vector* order) {
 
 void blursystem_tick(Swiss* em, Vector* order) {
     for_components(it, em,
+            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
+        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
+
+        if(blur_cache_init(blur) != 0) {
+            printf_errf("Failed initializing window blur");
+            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
+        }
+    }
+
+    for_components(it, em,
             COMPONENT_BLUR, COMPONENT_NEW, CQ_NOT, COMPONENT_BLUR_DAMAGED, CQ_END) {
         swiss_addComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
@@ -254,7 +264,6 @@ void blursystem_tick(Swiss* em, Vector* order) {
 
         }
 
-        printf_dbgf("Lowest is now %ld", lowest_slot);
         // Damage the blur of all windows over that one
         if(lowest_slot != -1) {
             size_t cur = lowest_slot;
@@ -267,8 +276,6 @@ void blursystem_tick(Swiss* em, Vector* order) {
     }
 
     damage_blur_over_fade(em);
-    damage_blur_over_damaged(em, order);
-
     // Damage all windows on top of windows that resize
     for_components(it, em, COMPONENT_RESIZE, CQ_END) {
         size_t order_slot = vector_find_uint64(order, it.id);
@@ -288,6 +295,8 @@ void blursystem_tick(Swiss* em, Vector* order) {
             other_id = vector_getNext(order, &order_slot);
         }
     }
+
+    damage_blur_over_damaged(em, order);
 
     for_components(it, em, COMPONENT_STATEFUL, COMPONENT_BLUR, CQ_END) {
         struct glx_blur_cache* blur = swiss_getComponent(em, COMPONENT_BLUR, it.id);
@@ -312,19 +321,6 @@ void blursystem_tick(Swiss* em, Vector* order) {
         }
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
-}
-
-void blursystem_updateBlur(Swiss* em, Vector2* root_size,
-        struct Texture* texture, int level, Vector* opaque, Vector* transparent, struct _session_t* ps) {
-    for_components(it, em,
-            COMPONENT_MUD, COMPONENT_MAP, COMPONENT_TEXTURED, CQ_NOT, COMPONENT_BLUR, CQ_END) {
-        struct glx_blur_cache* blur = swiss_addComponent(em, COMPONENT_BLUR, it.id);
-
-        if(blur_cache_init(blur) != 0) {
-            printf_errf("Failed initializing window blur");
-            swiss_removeComponent(em, COMPONENT_BLUR, it.id);
-        }
-    }
 
     for_components(it, em,
             COMPONENT_MAP, COMPONENT_BLUR, CQ_END) {
@@ -336,9 +332,12 @@ void blursystem_updateBlur(Swiss* em, Vector2* root_size,
         }
         swiss_ensureComponent(em, COMPONENT_BLUR_DAMAGED, it.id);
     }
+}
+
+void blursystem_updateBlur(Swiss* em, Vector2* root_size,
+        struct Texture* texture, int level, Vector* opaque, Vector* transparent, struct _session_t* ps) {
 
     zone_scope(&ZONE_update_blur);
-
     {
         zone_scope(&ZONE_fetch_candidates);
         vector_clear(&context.to_blur);
