@@ -67,9 +67,7 @@ DECLARE_ZONE(update_z);
 DECLARE_ZONE(update_wintype);
 DECLARE_ZONE(update_invert_list);
 DECLARE_ZONE(input_react);
-DECLARE_ZONE(make_cutout);
 DECLARE_ZONE(remove_input);
-DECLARE_ZONE(prop_blur_damage);
 
 DECLARE_ZONE(commit_resize);
 
@@ -437,6 +435,10 @@ static void destroy_win(session_t *ps, win_id wid) {
 
     stateful->state = STATE_DESTROYING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_DESTROY, wid);
+    // Immediatly remove the tracked window to make sure that if X reuses the
+    // window id we don't mistakenly find this one. We can't use the window id
+    // anyway.
+    swiss_removeComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
 }
 
 static void

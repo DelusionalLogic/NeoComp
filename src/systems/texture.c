@@ -160,11 +160,7 @@ static void delete_textures(Swiss* em, enum ComponentType* query) {
 
         wd_delete(&b->drawable);
     }
-    swiss_removeComponentWhere(
-        em,
-        COMPONENT_BINDS_TEXTURE,
-        query
-    );
+    swiss_removeComponentWhere(em, COMPONENT_BINDS_TEXTURE, query);
 }
 
 void texturesystem_tick(Swiss* em, struct X11Context* xcontext) {
@@ -179,6 +175,17 @@ void texturesystem_tick(Swiss* em, struct X11Context* xcontext) {
         if(!wd_init(&bindsTexture->drawable, xcontext, tracksWindow->id)) {
             printf_errf("Failed initializing window drawable on map");
         }
+    }
+
+    // Remove where the window is destroyed
+    for_components(it, em, COMPONENT_BINDS_TEXTURE, COMPONENT_STATEFUL) {
+        struct StatefulComponent* s = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
+        if(s->state != STATE_DESTROYED) continue;
+
+        struct BindsTextureComponent* b = swiss_getComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
+
+        wd_delete(&b->drawable);
+        swiss_removeComponent(em, COMPONENT_BINDS_TEXTURE, it.id);
     }
 
     delete_textures(em, (enum ComponentType[]) {

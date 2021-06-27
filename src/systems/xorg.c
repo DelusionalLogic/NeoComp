@@ -5,6 +5,8 @@
 #include "logging.h"
 #include "window.h"
 
+DECLARE_ZONE(make_cutout);
+
 static void unredirect(Swiss* em, struct X11Context* xcontext, enum ComponentType* query) {
     for_componentsArr(it, em, query) {
         struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);

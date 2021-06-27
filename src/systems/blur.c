@@ -19,6 +19,7 @@ DECLARE_ZONE(update_blur);
 DECLARE_ZONE(detect_changes);
 DECLARE_ZONE(mark_dirty);
 DECLARE_ZONE(fetch_candidates);
+DECLARE_ZONE(prop_blur_damage);
 
 struct blur context;
 
