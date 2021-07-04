@@ -37,6 +37,13 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
         swiss_ensureComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
     }
 
+    // If we don't have a window, we can't fetch the shape. Ignore the damage
+    swiss_removeComponentWhere(
+        em,
+        COMPONENT_SHAPE_DAMAGED,
+        (enum ComponentType[]) {CQ_NOT, COMPONENT_TRACKS_WINDOW, CQ_END}
+    );
+
     {
         zone_scope(&ZONE_fetch_shape);
         for_components(it, em,
@@ -86,6 +93,7 @@ void shapesystem_updateShapes(Swiss* em, struct X11Context* xcontext) {
                 COMPONENT_SHAPED, COMPONENT_SHAPE_DAMAGED, CQ_END) {
             struct ShapedComponent* shaped = swiss_getComponent(em, COMPONENT_SHAPED, it.id);
             struct ShapeDamagedEvent* shapeDamaged = swiss_getComponent(em, COMPONENT_SHAPE_DAMAGED, it.id);
+            assert(shapeDamaged->rects.elementSize != 0);
 
             if(shaped->face != NULL) {
                 face_unload_file(shaped->face);
