@@ -76,6 +76,8 @@ DECLARE_ZONE(effect_textures);
 DECLARE_ZONE(blur_background);
 DECLARE_ZONE(fetch_prop);
 
+DECLARE_ZONE(collect_fade);
+DECLARE_ZONE(calculate_fade);
 DECLARE_ZONE(update_fade);
 
 // From the header {{{
@@ -1416,56 +1418,62 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     vector_init(&fadeable, sizeof(struct Fading*), 128);
 
     // Collect everything fadeable
-    opacity_collect_fades(em, &fadeable);
-    for_components(it, em,
-        COMPONENT_FADES_DIM, CQ_END) {
-        struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
-        struct Fading* fade = &fo->fade;
-        vector_putBack(&fadeable, &fade);
+    {
+        zone_scope(&ZONE_collect_fade);
+        opacity_collect_fades(em, &fadeable);
+        for_components(it, em,
+            COMPONENT_FADES_DIM, CQ_END) {
+            struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
+            struct Fading* fade = &fo->fade;
+            vector_putBack(&fadeable, &fade);
+        }
     }
 
-    // Actually fade them
-    size_t index = 0;
-    struct Fading** fade_ptr = vector_getFirst(&fadeable, &index);
-    while(fade_ptr != NULL) {
-        struct Fading* fade = *fade_ptr;
-        fade->value = fade->keyframes[fade->head].target;
+    {
+        zone_scope(&ZONE_calculate_fade);
+        // Actually fade them
+        size_t index = 0;
+        struct Fading** fade_ptr = vector_getFirst(&fadeable, &index);
+        while(fade_ptr != NULL) {
+            struct Fading* fade = *fade_ptr;
+            fade->value = fade->keyframes[fade->head].target;
 
-        if(!fade_done(fade)) {
-            // @CLEANUP: Maybe a while loop?
-            for(size_t i = fade->head; i != fade->tail; ) {
-                // Increment before the body to skip head and process tail
-                i = (i+1) % FADE_KEYFRAMES;
+            if(!fade_done(fade)) {
+                // @CLEANUP: Maybe a while loop?
+                for(size_t i = fade->head; i != fade->tail; ) {
+                    // Increment before the body to skip head and process tail
+                    i = (i+1) % FADE_KEYFRAMES;
 
-                struct FadeKeyframe* keyframe = &fade->keyframes[i];
-                if(!keyframe->ignore){
-                    keyframe->time += dt;
-                } else {
-                    keyframe->ignore = false;
+                    struct FadeKeyframe* keyframe = &fade->keyframes[i];
+                    if(!keyframe->ignore){
+                        keyframe->time += dt;
+                    } else {
+                        keyframe->ignore = false;
+                    }
+
+                    double time = fmax(keyframe->time - keyframe->lead, 0);
+                    double x = time / (keyframe->duration - keyframe->lead);
+                    if(x >= 1.0) {
+                        // We're done, clean out the time and set this as the head
+                        keyframe->time = 0.0;
+                        keyframe->duration = -1;
+                        fade->head = i;
+
+                        // Force the value. We are still going to blend it with stuff
+                        // on top of this
+                        fade->value = keyframe->target;
+                    } else {
+                        double t = bezier_getSplineValue(curve, x);
+                        fade->value = lerp(fade->value, keyframe->target, t);
+                    }
                 }
 
-                double time = fmax(keyframe->time - keyframe->lead, 0);
-                double x = time / (keyframe->duration - keyframe->lead);
-                if(x >= 1.0) {
-                    // We're done, clean out the time and set this as the head
-                    keyframe->time = 0.0;
-                    keyframe->duration = -1;
-                    fade->head = i;
-
-                    // Force the value. We are still going to blend it with stuff
-                    // on top of this
-                    fade->value = keyframe->target;
-                } else {
-                    double t = bezier_getSplineValue(curve, x);
-                    fade->value = lerp(fade->value, keyframe->target, t);
-                }
+                // We had a least one fade that did something
+                skip_poll = true;
             }
 
-            // We had a least one fade that did something
-            skip_poll = true;
+            fade_ptr = vector_getNext(&fadeable, &index);
         }
-
-        fade_ptr = vector_getNext(&fadeable, &index);
     }
 
     vector_kill(&fadeable);
