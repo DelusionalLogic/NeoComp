@@ -87,7 +87,7 @@ static win_id find_win(session_t *ps, Window id) {
         return -1;
 
     for_components(it, &ps->win_list,
-            COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, CQ_END) {
+            COMPONENT_TRACKS_WINDOW, CQ_END) {
         struct TracksWindowComponent* w = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, it.id);
 
         if (w->id == id)
@@ -286,25 +286,6 @@ static void map_win(session_t *ps, struct MapWin* ev) {
     struct StatefulComponent* stateful = swiss_getComponent(&ps->win_list, COMPONENT_STATEFUL, wid);
     stateful->state = STATE_WAITING;
     swiss_ensureComponent(&ps->win_list, COMPONENT_FOCUS_CHANGE, wid);
-}
-
-static void unmap_win(session_t *ps, win *w) {
-    if(w == NULL)
-        return;
-
-    win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);
-
-    if (!win_mapped(&ps->win_list, wid))
-        return;
-
-    // Set focus out
-    if(ps->active_win == w)
-        ps->active_win = NULL;
-
-    swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
-    if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
-        swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
-    }
 }
 
 static bool add_win(session_t *ps, struct AddWin* ev) {
@@ -620,11 +601,23 @@ static void ev_destroy_notify(session_t *ps, Window window) {
 }
 
 static void ev_unmap_notify(session_t *ps, struct UnmapWin *ev) {
-  win_id wid = find_win(ps, ev->xid);
-  win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    win_id wid = find_win(ps, ev->xid);
 
-  if (w)
-    unmap_win(ps, w);
+    if(wid == -1)
+            return;
+
+    if (!win_mapped(&ps->win_list, wid))
+        return;
+
+    // Set focus out
+    win *w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+    if(ps->active_win == w)
+        ps->active_win = NULL;
+
+    swiss_ensureComponent(&ps->win_list, COMPONENT_UNMAP, wid);
+    if(swiss_hasComponent(&ps->win_list, COMPONENT_MAP, wid)) {
+        swiss_removeComponent(&ps->win_list, COMPONENT_MAP, wid);
+    }
 }
 
 static void getsclient(session_t* ps, struct GetsClient* event) {
