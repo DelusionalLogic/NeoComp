@@ -254,8 +254,5 @@ typedef struct _session_t {
     struct DebugGraphState debug_graph;
 } session_t;
 
-winprop_t
-wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat);
-
 void usage(int ret);
 void parse_config(session_t *ps, struct options_tmp *pcfgtmp);

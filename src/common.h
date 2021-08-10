@@ -853,63 +853,6 @@ rect_crop(XRectangle *pdst, const XRectangle *psrc, const XRectangle *pbound) {
 }
 
 /**
- * Determine if a window has a specific property.
- *
- * @param ps current session
- * @param w window to check
- * @param atom atom of property to check
- * @return 1 if it has the attribute, 0 otherwise
- */
-static inline bool
-wid_has_prop(const session_t *ps, Window w, Atom atom) {
-  Atom type = None;
-  int format;
-  unsigned long nitems, after;
-  unsigned char *data;
-
-  if (Success == XGetWindowProperty(ps->dpy, w, atom, 0, 0, False,
-        AnyPropertyType, &type, &format, &nitems, &after, &data)) {
-    cxfree(data);
-    if (type) return true;
-  }
-
-  return false;
-}
-
-/**
- * Wrapper of wid_get_prop_adv().
- */
-static inline winprop_t
-wid_get_prop(struct X11Context* xcontext, Window wid, Atom atom, long length, Atom rtype, int rformat) {
-    return wid_get_prop_adv(xcontext, wid, atom, 0L, length, rtype, rformat);
-}
-
-/**
- * Get the numeric property value from a win_prop_t.
- */
-static inline long
-winprop_get_int(winprop_t prop) {
-  long tgt = 0;
-
-  if (!prop.nitems)
-    return 0;
-
-  switch (prop.format) {
-    case 8:   tgt = *(prop.data.p8);    break;
-    case 16:  tgt = *(prop.data.p16);   break;
-    case 32:  tgt = *(prop.data.p32);   break;
-    default:  assert(0);
-              break;
-  }
-
-  return tgt;
-}
-
-bool
-wid_get_text_prop(session_t *ps, Window wid, Atom prop,
-    char ***pstrlst, int *pnstr);
-
-/**
  * Free a <code>winprop_t</code>.
  *
  * @param pprop pointer to the <code>winprop_t</code> to free.

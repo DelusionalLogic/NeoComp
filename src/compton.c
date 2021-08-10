@@ -193,52 +193,6 @@ session_t *ps_g = NULL;
 // === Windows ===
 
 /**
- * Get a specific attribute of a window.
- *
- * Returns a blank structure if the returned type and format does not
- * match the requested type and format.
- *
- * @param ps current session
- * @param w window
- * @param atom atom of attribute to fetch
- * @param length length to read
- * @param rtype atom of the requested type
- * @param rformat requested format
- * @return a <code>winprop_t</code> structure containing the attribute
- *    and number of items. A blank one on failure.
- */
-// @X11
-winprop_t
-wid_get_prop_adv(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat) {
-  Atom type = None;
-  int format = 0;
-  unsigned long nitems = 0, after = 0;
-  unsigned char *data = NULL;
-
-  if (Success == XGetWindowProperty(xcontext->display, w, atom, offset, length,
-        False, rtype, &type, &format, &nitems, &after, &data)
-      && nitems && (AnyPropertyType == type || type == rtype)
-      && (!rformat || format == rformat)
-      && (8 == format || 16 == format || 32 == format)) {
-      return (winprop_t) {
-        .data.p8 = data,
-        .nitems = nitems,
-        .type = type,
-        .format = format,
-      };
-  }
-
-  cxfree(data);
-
-  return (winprop_t) {
-    .data.p8 = NULL,
-    .nitems = 0,
-    .type = AnyPropertyType,
-    .format = 0
-  };
-}
-
-/**
  * Paint root window content.
  */
 static void paint_root(session_t *ps) {
@@ -630,15 +584,10 @@ static void getsclient(session_t* ps, struct GetsClient* event) {
         return;
     }
 
-    // If it has WM_STATE, mark it the client window
-    if (wid_has_prop(ps, event->client_xid, ps->atoms.atom_client)) {
-        // If the window isn't mapped yet, stop here, as the function will be
-        // called in map_win()
-        if (!win_mapped(&ps->win_list, frame))
-            return;
+    if (!win_mapped(&ps->win_list, frame))
+        return;
 
-        swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, frame);
-    }
+    swiss_ensureComponent(&ps->win_list, COMPONENT_WINTYPE_CHANGE, frame);
 }
 
 static void set_active_window(session_t* ps, struct Focus* ev) {
@@ -671,8 +620,6 @@ static void ev_shape_notify(session_t *ps, struct Shape *ev) {
     assert(wid != -1);
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_SHAPE_DAMAGED, wid);
-    // We need to mark some damage
-    // The blur isn't damaged, because it will be cut out by the new geometry
 }
 
 // === Main ===
@@ -1613,62 +1560,6 @@ void fill_class_changes(Swiss* em, session_t* ps) {
     }
 }
 
-void fill_wintype_changes(Swiss* em, session_t* ps) {
-    // Fetch the new window type
-    for_components(it, em,
-            COMPONENT_WINTYPE_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
-        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-        Window cid = xorg_get_client(&ps->xcontext, t->id);
-
-        // Detect window type here
-        winprop_t prop = wid_get_prop(&ps->xcontext, cid, ps->atoms.atom_win_type, 32L, XA_ATOM, 32);
-
-        wintypeChanged->newType = WINTYPE_UNKNOWN;
-
-        for (unsigned i = 0; i < prop.nitems; ++i) {
-            for (wintype_t j = 1; j < NUM_WINTYPES; ++j) {
-                if (ps->atoms.atoms_wintypes[j] == (Atom) prop.data.p32[i]) {
-                    wintypeChanged->newType = j;
-                }
-            }
-        }
-
-        free_winprop(&prop);
-    }
-
-    // Guess the window type if not provided
-    for_components(it, em,
-            COMPONENT_WINTYPE_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
-        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-        Window cid = xorg_get_client(&ps->xcontext, t->id);
-
-        // Conform to EWMH standard, if _NET_WM_WINDOW_TYPE is not present, take
-        // override-redirect windows or windows without WM_TRANSIENT_FOR as
-        // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
-        if (wintypeChanged->newType == WINTYPE_UNKNOWN) {
-            if (w->override_redirect || !wid_has_prop(ps, cid, ps->atoms.atom_transient))
-                w->window_type = WINTYPE_NORMAL;
-            else
-                w->window_type = WINTYPE_DIALOG;
-        }
-    }
-
-    // Remove the change if it's the same as the current
-    for_components(it, em,
-            COMPONENT_WINTYPE_CHANGE, CQ_END) {
-        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
-        if(w->window_type == wintypeChanged->newType) {
-            swiss_removeComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-            continue;
-        }
-    }
-}
-
 static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
     for_componentsArr(it, em, query) {
         vector_putBack(result, &it.id);
@@ -1753,7 +1644,7 @@ void session_run(session_t *ps) {
         zone_enter(&ZONE_update_wintype);
 
         fill_class_changes(&ps->win_list, ps);
-        fill_wintype_changes(&ps->win_list, ps);
+        xorgsystem_fill_wintype(&ps->win_list, ps);
 
         // If the wintype actually changed (is still there), then the focus
         // might have changed
@@ -1801,11 +1692,7 @@ void session_run(session_t *ps) {
                 COMPONENT_TRANSITIONING, CQ_END) {
             struct TransitioningComponent* t = swiss_getComponent(em, COMPONENT_TRANSITIONING, it.id);
             t->time += dt;
-        }
 
-        for_components(it, em,
-                COMPONENT_TRANSITIONING, CQ_END) {
-            struct TransitioningComponent* t = swiss_getComponent(em, COMPONENT_TRANSITIONING, it.id);
             if(t->time >= t->duration)
                 swiss_removeComponent(em, COMPONENT_TRANSITIONING, it.id);
         }
@@ -1819,6 +1706,7 @@ void session_run(session_t *ps) {
         blursystem_tick(em, &ps->order.order);
         shapesystem_finish(&ps->win_list);
         finish_destroyed_windows(&ps->win_list, ps);
+
         zone_leave(&ZONE_update);
 
         Vector opaque;
