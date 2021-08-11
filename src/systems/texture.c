@@ -116,6 +116,8 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
         framebuffer_targetRenderBuffer_stencil(&fbo, &textured->stencil);
         framebuffer_rebind(&fbo);
 
+        glClear(GL_COLOR_BUFFER_BIT);
+
         Vector2 offset = textured->texture.size;
         vec2_sub(&offset, &bindsTexture->drawable.texture.size);
 
