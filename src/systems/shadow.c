@@ -134,7 +134,7 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
         struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
 
         // Legacy value for disabling shadows
-        if(w->shadow && ps->o.wintype_shadow[w->window_type]) {
+        if(ps->o.wintype_shadow[w->window_type]) {
             struct glx_shadow_cache* shadow = swiss_addComponent(em, COMPONENT_SHADOW, it.id);
 
             if(shadow_cache_init(shadow) != 0) {

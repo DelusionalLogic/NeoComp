@@ -233,7 +233,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
             shader_set_future_uniform_float(global_shader_type->dim, dim->dim/100.0);
 
             shader_use(global_shader);
-            zone_enter_extra(&ZONE_paint_window, "%s", w->name);
+            zone_enter_extra(&ZONE_paint_window, "%s", "<unknown>");
 
             // Texture is already bound
 
@@ -343,7 +343,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
         struct DimComponent* dim = swiss_getComponent(&ps->win_list, COMPONENT_DIM, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
 
-        zone_enter_extra(&ZONE_paint_window, "%s", w->name);
+        zone_enter_extra(&ZONE_paint_window, "%s", "<unknown>");
 
         shader_set_uniform_bool(global_type->invert, w->invert_color);
         shader_set_uniform_bool(global_type->flip, textured->texture.flipped);

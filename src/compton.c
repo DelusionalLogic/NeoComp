@@ -31,7 +31,6 @@
 #include "systems/blur.h"
 #include "systems/shape.h"
 #include "systems/shadow.h"
-#include "systems/fullscreen.h"
 #include "systems/texture.h"
 #include "systems/physical.h"
 #include "systems/xorg.h"
@@ -249,11 +248,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 
     .window_type = WINTYPE_UNKNOWN,
 
-    .name = NULL,
-
-    .fade = true,
-    .shadow = true,
-    .dim = true,
     .invert_color = false,
   };
 
@@ -1580,8 +1574,6 @@ void session_run(session_t *ps) {
     profilerWriter_init(&profSess);
 #endif
 
-	fullscreensystem_determine(&ps->win_list, &ps->root_size);
-
     timestamp lastTime;
     if(!getTime(&lastTime)) {
         printf_errf("Failed getting time");
@@ -1631,7 +1623,6 @@ void session_run(session_t *ps) {
         zone_enter(&ZONE_preprocess);
 
         shapesystem_updateShapes(em, &ps->xcontext);
-        fullscreensystem_determine(&ps->win_list, &ps->root_size);
 
         zone_leave(&ZONE_preprocess);
 
