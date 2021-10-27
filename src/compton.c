@@ -112,19 +112,6 @@ static struct timeval ms_to_tv(int timeout) {
 }
 
 // @X11
-static XTextProperty * make_text_prop(session_t *ps, char *str) {
-    XTextProperty *pprop = ccalloc(1, XTextProperty);
-
-    if (XmbTextListToTextProperty(ps->dpy, &str, 1,  XStringStyle, pprop)) {
-        cxfree(pprop->value);
-        free(pprop);
-        pprop = NULL;
-    }
-
-    return pprop;
-}
-
-// @X11
 static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
     if (!pxmap) return false;
 
@@ -243,12 +230,8 @@ static void map_win(session_t *ps, struct MapWin* ev) {
 
 static bool add_win(session_t *ps, struct AddWin* ev) {
   const static win win_def = {
-    .border_size = 0,
     .override_redirect = false,
-
     .window_type = WINTYPE_UNKNOWN,
-
-    .invert_color = false,
   };
 
   // We don't add the overlay window
@@ -291,6 +274,7 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   }
   {
       struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
+	  window->border_size = ev->border_size;
       window->id = ev->xid;
   }
 
@@ -298,7 +282,6 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
 
   memcpy(new, &win_def, sizeof(win_def));
 
-  new->border_size = ev->border_size;
   new->override_redirect = ev->override_redirect;
 
   struct ZComponent* z = swiss_addComponent(&ps->win_list, COMPONENT_Z, slot);
@@ -349,9 +332,10 @@ configure_win(session_t *ps, struct MandR* ev) {
     return;
 
   win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, wid);
+  struct TracksWindowComponent* tracks = swiss_getComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, wid);
 
-  if(w->border_size != ev->border_size) {
-    w->border_size = ev->border_size;
+  if(tracks->border_size != ev->border_size) {
+    tracks->border_size = ev->border_size;
     // @HACK @CLEANUP: When the border size changes we have to offset the shape
     // of the window. Currently that's not handled anywhere, so we hack in
     // a full shape refresh when the border changes
@@ -432,27 +416,6 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     assert(win_mapped(&ps->win_list, wid));
 
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
-}
-
-bool wid_get_text_prop(session_t *ps, Window wid, Atom prop,
-    char ***pstrlst, int *pnstr) {
-  XTextProperty text_prop = { NULL, None, 0, 0 };
-
-  if (!(XGetTextProperty(ps->dpy, wid, &text_prop, prop) && text_prop.value))
-    return false;
-
-  if (Success !=
-      XmbTextPropertyToTextList(ps->dpy, &text_prop, pstrlst, pnstr)
-      || !*pnstr) {
-    *pnstr = 0;
-    if (*pstrlst)
-      XFreeStringList(*pstrlst);
-    cxfree(text_prop.value);
-    return false;
-  }
-
-  cxfree(text_prop.value);
-  return true;
 }
 
 #ifdef DEBUG_EVENTS
@@ -1525,35 +1488,6 @@ static void commit_map(Swiss* em, struct Atoms* atoms, struct X11Context* xconte
     }
 }
 
-void fill_class_changes(Swiss* em, session_t* ps) {
-    // Fetch the new class
-    for_components(it, em,
-            COMPONENT_CLASS_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
-        struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
-        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-        Window cid = xorg_get_client(&ps->xcontext, t->id);
-
-        memset(class, 0, sizeof(struct ClassChangedComponent));
-
-        char **strlst = NULL;
-        int nstr = 0;
-
-        if (!wid_get_text_prop(ps, cid, ps->atoms.atom_class, &strlst, &nstr)) {
-            printf_dbgf("Failed fetching class property");
-            swiss_removeComponent(em, COMPONENT_CLASS_CHANGE, it.id);
-            continue;
-        }
-
-        // Copy the strings if successful
-        class->instance = mstrcpy(strlst[0]);
-
-        if (nstr > 1)
-            class->general = mstrcpy(strlst[1]);
-
-        XFreeStringList(strlst);
-    }
-}
-
 static void fetchSortedWindowsWithArr(Swiss* em, Vector* result, CType* query) {
     for_componentsArr(it, em, query) {
         vector_putBack(result, &it.id);
@@ -1634,23 +1568,14 @@ void session_run(session_t *ps) {
 
         zone_enter(&ZONE_update_wintype);
 
-        fill_class_changes(&ps->win_list, ps);
         xorgsystem_fill_wintype(&ps->win_list, ps);
+        zone_leave(&ZONE_update_wintype);
 
         // If the wintype actually changed (is still there), then the focus
         // might have changed
         for_components(it, em, COMPONENT_WINTYPE_CHANGE, CQ_END) {
             swiss_ensureComponent(em, COMPONENT_FOCUS_CHANGE, it.id);
         }
-
-        for_components(it, em,
-                COMPONENT_WINTYPE_CHANGE, CQ_END) {
-            struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
-            struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
-
-            w->window_type = wintypeChanged->newType;
-        }
-        zone_leave(&ZONE_update_wintype);
 
         zone_enter(&ZONE_input_react);
         statesystem_tick(&ps->win_list);
