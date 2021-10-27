@@ -118,7 +118,6 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
     size_t index;
     win_id* w_id = vector_getLast(transparent, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
         struct ZComponent* z = swiss_getComponent(&ps->win_list, COMPONENT_Z, *w_id);
@@ -227,7 +226,7 @@ void windowlist_drawTransparent(session_t* ps, Vector* transparent) {
 
             shader_set_future_uniform_sampler(global_shader_type->tex_scr, 1);
 
-            shader_set_future_uniform_bool(global_shader_type->invert, w->invert_color);
+            shader_set_future_uniform_bool(global_shader_type->invert, false);
             shader_set_future_uniform_bool(global_shader_type->flip, textured->texture.flipped);
             shader_set_future_uniform_float(global_shader_type->opacity, (float)(effective_opacity / 100.0));
             shader_set_future_uniform_float(global_shader_type->dim, dim->dim/100.0);
@@ -336,7 +335,6 @@ void windowlist_draw(session_t* ps, Vector* order) {
     size_t index;
     win_id* w_id = vector_getFirst(order, &index);
     while(w_id != NULL) {
-        struct _win* w = swiss_getComponent(&ps->win_list, COMPONENT_MUD, *w_id);
         struct TexturedComponent* textured = swiss_getComponent(&ps->win_list, COMPONENT_TEXTURED, *w_id);
         struct ShapedComponent* shaped = swiss_getComponent(&ps->win_list, COMPONENT_SHAPED, *w_id);
         struct PhysicalComponent* physical = swiss_getComponent(&ps->win_list, COMPONENT_PHYSICAL, *w_id);
@@ -345,7 +343,7 @@ void windowlist_draw(session_t* ps, Vector* order) {
 
         zone_enter_extra(&ZONE_paint_window, "%s", "<unknown>");
 
-        shader_set_uniform_bool(global_type->invert, w->invert_color);
+        shader_set_uniform_bool(global_type->invert, false);
         shader_set_uniform_bool(global_type->flip, textured->texture.flipped);
         shader_set_uniform_float(global_type->dim, dim->dim/100.0);
 

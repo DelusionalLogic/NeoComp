@@ -5,6 +5,8 @@
 #include "logging.h"
 #include "window.h"
 
+#include <string.h>
+
 DECLARE_ZONE(make_cutout);
 
 static winprop_t wid_get_prop(struct X11Context* xcontext, Window w, Atom atom, long offset, long length, Atom rtype, int rformat) {
@@ -58,6 +60,23 @@ static winprop_t wid_get_prop(struct X11Context* xcontext, Window w, Atom atom, 
         .type = type,
         .format = format,
     };
+}
+
+static bool wid_get_text_prop(session_t *ps, Window wid, Atom prop, char ***pstrlst, int *pnstr) {
+    XTextProperty text_prop = { NULL, None, 0, 0 };
+
+    if(XGetTextProperty(ps->dpy, wid, &text_prop, prop) && text_prop.value == 0)
+        return false;
+
+    if(XmbTextPropertyToTextList(ps->dpy, &text_prop, pstrlst, pnstr) != Success || *pnstr == 0) {
+        *pnstr = 0;
+        if(*pstrlst != NULL) XFreeStringList(*pstrlst);
+        if(text_prop.value != NULL) XFree(text_prop.value);
+        return false;
+    }
+
+    if(text_prop.value != NULL) XFree(text_prop.value);
+    return true;
 }
 
 static inline bool wid_has_prop(const session_t *ps, Window w, Atom atom) {
@@ -134,6 +153,36 @@ static void doMap(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms) {
 }
 
 void xorgsystem_fill_wintype(Swiss* em, session_t* ps) {
+    // Fetch the new class
+    for_components(it, em,
+            COMPONENT_CLASS_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
+        struct ClassChangedComponent* class = swiss_getComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+        struct TracksWindowComponent* t = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
+        Window cid = xorg_get_client(&ps->xcontext, t->id);
+
+        memset(class, 0, sizeof(struct ClassChangedComponent));
+
+        char **strlst = NULL;
+        int nstr = 0;
+
+        if (!wid_get_text_prop(ps, cid, ps->atoms.atom_class, &strlst, &nstr)) {
+            printf_dbgf("Failed fetching class property");
+            swiss_removeComponent(em, COMPONENT_CLASS_CHANGE, it.id);
+            continue;
+        }
+
+        // Copy the strings if successful
+        class->instance = malloc(strlen(strlst[0]) + 1);
+        strcpy(class->instance, strlst[0]);
+
+        if (nstr > 1) {
+            class->general = malloc(strlen(strlst[1]) + 1);
+            strcpy(class->general, strlst[1]);
+        }
+
+        XFreeStringList(strlst);
+    }
+
     // Fetch the new window type
     for_components(it, em,
             COMPONENT_WINTYPE_CHANGE, COMPONENT_TRACKS_WINDOW, CQ_END) {
@@ -174,9 +223,9 @@ void xorgsystem_fill_wintype(Swiss* em, session_t* ps) {
         // _NET_WM_WINDOW_TYPE_NORMAL, otherwise as _NET_WM_WINDOW_TYPE_DIALOG.
         if (wintypeChanged->newType == WINTYPE_UNKNOWN) {
             if (w->override_redirect || !wid_has_prop(ps, cid, ps->atoms.atom_transient))
-                w->window_type = WINTYPE_NORMAL;
+                wintypeChanged->newType = WINTYPE_NORMAL;
             else
-                w->window_type = WINTYPE_DIALOG;
+                wintypeChanged->newType = WINTYPE_DIALOG;
         }
     }
 
@@ -194,6 +243,14 @@ void xorgsystem_fill_wintype(Swiss* em, session_t* ps) {
 }
 
 void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms, Vector2* canvas_size) {
+    for_components(it, em,
+            COMPONENT_WINTYPE_CHANGE, CQ_END) {
+        struct WintypeChangedComponent* wintypeChanged = swiss_getComponent(em, COMPONENT_WINTYPE_CHANGE, it.id);
+        struct _win* w = swiss_getComponent(em, COMPONENT_MUD, it.id);
+
+        w->window_type = wintypeChanged->newType;
+    }
+
     doMap(em, xcontext, atoms);
     doUnmap(em, xcontext, atoms);
 
@@ -203,7 +260,6 @@ void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms
         for_components(it, em,
                 COMPONENT_MUD, COMPONENT_TRACKS_WINDOW, COMPONENT_PHYSICAL, CQ_NOT, COMPONENT_REDIRECTED, CQ_END) {
             struct TracksWindowComponent* tracksWindow = swiss_getComponent(em, COMPONENT_TRACKS_WINDOW, it.id);
-            struct _win* win = swiss_getComponent(em, COMPONENT_MUD, it.id);
             struct PhysicalComponent* physical = swiss_getComponent(em, COMPONENT_PHYSICAL, it.id);
 
             if(win_mapped(em, it.id)) {
@@ -211,7 +267,7 @@ void xorgsystem_tick(Swiss* em, struct X11Context* xcontext, struct Atoms* atoms
                 // @HACK: I'm not quite sure why I need to add 2 times the
                 // border here. One makes sense since i'm subtracting that
                 // from the positioin in the X11 layer.
-                XFixesTranslateRegionH(xcontext->display, windowRegion, physical->position.x + win->border_size*2, physical->position.y + win->border_size*2);
+                XFixesTranslateRegionH(xcontext->display, windowRegion, physical->position.x + tracksWindow->border_size*2, physical->position.y + tracksWindow->border_size*2);
                 XFixesUnionRegionH(xcontext->display, newShape, newShape, windowRegion);
                 XFixesDestroyRegionH(xcontext->display, windowRegion);
             }

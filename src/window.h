@@ -50,6 +50,7 @@ struct ClassChangedComponent {
 };
 
 struct TracksWindowComponent {
+    float border_size;
     Window id;
 };
 
@@ -182,14 +183,11 @@ struct DebuggedComponent {
 
 /// Structure representing a top-level window compton manages.
 typedef struct _win {
-    float border_size;
     bool override_redirect;
 
     // Client window related members
     /// Type of the window.
     wintype_t window_type;
-
-    bool invert_color;
 } win;
 
 int window_zcmp(const void* a, const void* b, void* userdata);
