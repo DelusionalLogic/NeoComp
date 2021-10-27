@@ -7,7 +7,6 @@
 #include "assets/face.h"
 
 #include "systems/physical.h"
-#include "systems/fullscreen.h"
 #include "systems/state.h"
 #include "systems/blur.h"
 #include "windowlist.h"
@@ -1077,63 +1076,6 @@ struct TestResult commit_unmap__not_crash__window_with_destroy_event_has_no_stat
     statesystem_tick(&swiss);
 
     assertYes();
-}
-
-struct TestResult fullscreen_system__mark_window_fullscreen__window_is_extactly_monitor_size() {
-    Swiss swiss;
-    swiss_clearComponentSizes(&swiss);
-    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
-    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
-    swiss_init(&swiss, 1);
-
-    win_id wid = swiss_allocate(&swiss);
-    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
-    w->fullscreen = false;
-    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
-    physical->position = (Vector2){{0, 0}};
-    physical->size = (Vector2){{100, 100}};
-
-    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
-
-    assertEq(w->fullscreen, true);
-}
-
-struct TestResult fullscreen_system__not_mark_window_fullscreen__window_is_small_on_monitor() {
-    Swiss swiss;
-    swiss_clearComponentSizes(&swiss);
-    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
-    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
-    swiss_init(&swiss, 1);
-
-    win_id wid = swiss_allocate(&swiss);
-    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
-    w->fullscreen = false;
-    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
-    physical->position = (Vector2){{10, 10}};
-    physical->size = (Vector2){{25, 25}};
-
-    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
-
-    assertEq(w->fullscreen, false);
-}
-
-struct TestResult fullscreen_system__not_mark_window_fullscreen__window_is_large_off_monitor() {
-    Swiss swiss;
-    swiss_clearComponentSizes(&swiss);
-    swiss_setComponentSize(&swiss, COMPONENT_MUD, sizeof(win));
-    swiss_setComponentSize(&swiss, COMPONENT_PHYSICAL, sizeof(struct PhysicalComponent));
-    swiss_init(&swiss, 1);
-
-    win_id wid = swiss_allocate(&swiss);
-    win* w = swiss_addComponent(&swiss, COMPONENT_MUD, wid);
-    w->fullscreen = false;
-    struct PhysicalComponent* physical = swiss_addComponent(&swiss, COMPONENT_PHYSICAL, wid);
-    physical->position = (Vector2){{10, 10}};
-    physical->size = (Vector2){{100, 100}};
-
-    fullscreensystem_determine(&swiss, &(Vector2){{100, 100}});
-
-    assertEq(w->fullscreen, false);
 }
 
 // This should be in a header instead of 10 different files
@@ -3390,10 +3332,6 @@ int main(int argc, char** argv) {
     TEST(commit_unmap__not_transision__has_no_destroy_event);
     TEST(commit_unmap__transision_last_window__has_multiple_windows_and_last_has_destroy_event);
     TEST(commit_unmap__not_crash__window_with_destroy_event_has_no_state);
-
-    TEST(fullscreen_system__mark_window_fullscreen__window_is_extactly_monitor_size);
-    TEST(fullscreen_system__not_mark_window_fullscreen__window_is_small_on_monitor);
-    TEST(fullscreen_system__not_mark_window_fullscreen__window_is_large_off_monitor);
 
     TEST(fetch_sorted_windows__fetch_2_windows_in_insert_order__increasing_z_order);
     TEST(fetch_sorted_windows__exclude_window__one_window_without_component);

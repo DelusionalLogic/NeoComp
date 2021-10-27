@@ -185,23 +185,10 @@ typedef struct _win {
     float border_size;
     bool override_redirect;
 
-    /// Whether the window is painting excluded.
-    bool paint_excluded;
-
-    /// Is fullscreen
-    bool fullscreen;
-
     // Client window related members
     /// Type of the window.
     wintype_t window_type;
 
-    // Blacklist related members
-    /// Name of the window.
-    char *name;
-
-    bool fade;
-    bool shadow;
-    bool dim;
     bool invert_color;
 } win;
 
