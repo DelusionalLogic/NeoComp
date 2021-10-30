@@ -141,20 +141,6 @@ typedef struct {
   f_ReleaseTexImageEXT glXReleaseTexImageProc;
   /// Pointer to glXCopySubBufferMESA function.
   f_CopySubBuffer glXCopySubBufferProc;
-#ifdef CONFIG_GLX_SYNC
-  /// Pointer to the glFenceSync() function.
-  f_FenceSync glFenceSyncProc;
-  /// Pointer to the glIsSync() function.
-  f_IsSync glIsSyncProc;
-  /// Pointer to the glDeleteSync() function.
-  f_DeleteSync glDeleteSyncProc;
-  /// Pointer to the glClientWaitSync() function.
-  f_ClientWaitSync glClientWaitSyncProc;
-  /// Pointer to the glWaitSync() function.
-  f_WaitSync glWaitSyncProc;
-  /// Pointer to the glImportSyncEXT() function.
-  f_ImportSyncEXT glImportSyncEXT;
-#endif
   /// Current GLX Z value.
   int z;
   // Standard view matrix

@@ -192,27 +192,6 @@ glx_init(session_t *ps) {
   if (!psglx->glXBindTexImageProc || !psglx->glXReleaseTexImageProc) {
     printf_errf("(): Failed to acquire glXBindTexImageEXT() / glXReleaseTexImageEXT().");
     goto glx_init_end;
-
-#ifdef CONFIG_GLX_SYNC
-    psglx->glFenceSyncProc = (f_FenceSync)
-      glXGetProcAddress((const GLubyte *) "glFenceSync");
-    psglx->glIsSyncProc = (f_IsSync)
-      glXGetProcAddress((const GLubyte *) "glIsSync");
-    psglx->glDeleteSyncProc = (f_DeleteSync)
-      glXGetProcAddress((const GLubyte *) "glDeleteSync");
-    psglx->glClientWaitSyncProc = (f_ClientWaitSync)
-      glXGetProcAddress((const GLubyte *) "glClientWaitSync");
-    psglx->glWaitSyncProc = (f_WaitSync)
-      glXGetProcAddress((const GLubyte *) "glWaitSync");
-    psglx->glImportSyncEXT = (f_ImportSyncEXT)
-      glXGetProcAddress((const GLubyte *) "glImportSyncEXT");
-    if (!psglx->glFenceSyncProc || !psglx->glIsSyncProc || !psglx->glDeleteSyncProc
-        || !psglx->glClientWaitSyncProc || !psglx->glWaitSyncProc
-        || !psglx->glImportSyncEXT) {
-      printf_errf("(): Failed to acquire GLX sync functions.");
-      goto glx_init_end;
-    }
-#endif
   }
 
   // Render preparations
