@@ -122,18 +122,6 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-#ifdef DEBUG_EVENTS
-static int ev_serial(XEvent *ev);
-
-static const char * ev_name(session_t *ps, XEvent *ev);
-
-static Window ev_window(session_t *ps, XEvent *ev);
-#endif
-
-#if defined(DEBUG_EVENTS) || defined(DEBUG_RESTACK)
-static bool ev_window_name(session_t *ps, Window wid, char **name);
-#endif
-
 static void redir_start(session_t *ps);
 
 // }}}
@@ -418,89 +406,6 @@ static void damage_win(session_t *ps, struct Damage *ev) {
     swiss_ensureComponent(&ps->win_list, COMPONENT_CONTENTS_DAMAGED, wid);
 }
 
-#ifdef DEBUG_EVENTS
-static int
-ev_serial(XEvent *ev) {
-  if ((ev->type & 0x7f) != KeymapNotify) {
-    return ev->xany.serial;
-  }
-  return NextRequest(ev->xany.display);
-}
-
-static const char *
-ev_name(session_t *ps, XEvent *ev) {
-  static char buf[128];
-  switch (ev->type & 0x7f) {
-    CASESTRRET(CreateNotify);
-    CASESTRRET(ConfigureNotify);
-    CASESTRRET(DestroyNotify);
-    CASESTRRET(MapNotify);
-    CASESTRRET(UnmapNotify);
-    CASESTRRET(ReparentNotify);
-    CASESTRRET(CirculateNotify);
-    CASESTRRET(Expose);
-    CASESTRRET(PropertyNotify);
-    CASESTRRET(ClientMessage);
-  }
-
-  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_DAMAGE) >= XVERSION_YES
-          && xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_DAMAGE,  ev->type) == XDamageNotify)
-    return "Damage";
-
-  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SHAPE) >= XVERSION_YES
-          && xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_SHAPE,  ev->type) == ShapeNotify)
-    return "ShapeNotify";
-
-  if (xorgContext_version(&ps->xcontext.capabilities, PROTO_SYNC)  >= XVERSION_YES) {
-      o = xorgContext_convertEvent(&ps->xcontext.capabilities, PROTO_SYNC, ev->error_code);
-      int o = ev->type - ps->xsync_event;
-      switch (o) {
-          CASESTRRET(XSyncCounterNotify);
-          CASESTRRET(XSyncAlarmNotify);
-      }
-  }
-
-  sprintf(buf, "Event %d", ev->type);
-
-  return buf;
-}
-
-static const char *
-ev_focus_mode_name(XFocusChangeEvent* ev) {
-  switch (ev->mode) {
-    CASESTRRET(NotifyNormal);
-    CASESTRRET(NotifyWhileGrabbed);
-    CASESTRRET(NotifyGrab);
-    CASESTRRET(NotifyUngrab);
-  }
-
-  return "Unknown";
-}
-
-static const char *
-ev_focus_detail_name(XFocusChangeEvent* ev) {
-  switch (ev->detail) {
-    CASESTRRET(NotifyAncestor);
-    CASESTRRET(NotifyVirtual);
-    CASESTRRET(NotifyInferior);
-    CASESTRRET(NotifyNonlinear);
-    CASESTRRET(NotifyNonlinearVirtual);
-    CASESTRRET(NotifyPointer);
-    CASESTRRET(NotifyPointerRoot);
-    CASESTRRET(NotifyDetailNone);
-  }
-
-  return "Unknown";
-}
-
-static void
-ev_focus_report(XFocusChangeEvent* ev) {
-  printf("  { mode: %s, detail: %s }\n", ev_focus_mode_name(ev),
-      ev_focus_detail_name(ev));
-}
-
-#endif
-
 // === Events ===
 
 static void ev_destroy_notify(session_t *ps, Window window) {
@@ -639,8 +544,6 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
       (o = getopt_long(argc, argv, shortopts, longopts, &longopt_idx))) {
     if (256 == o)
       ps->o.config_file = mstrcpy(optarg);
-    else if ('d' == o)
-      ps->o.display = mstrcpy(optarg);
     else if (318 == o) {
       printf("%s\n", COMPTON_VERSION);
       exit(0);
@@ -750,11 +653,6 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
 
   // Other variables determined by options
-
-  // Determine whether we need to track focus changes
-  if (ps->o.inactive_opacity || ps->o.active_opacity || ps->o.inactive_dim) {
-    ps->o.track_focus = true;
-  }
 }
 
 bool vsync_init(session_t *ps) {
@@ -980,27 +878,6 @@ static bool pumpEvents(session_t *ps) {
     return false;
 }
 
-char* getDisplayName(Display* display) {
-  // Build a safe representation of display name
-    char *display_repr = DisplayString(display);
-    if (!display_repr)
-        display_repr = "unknown";
-    display_repr = mstrcpy(display_repr);
-
-    // Convert all special characters in display_repr name to underscore
-    {
-        char *pdisp = display_repr;
-
-        while (*pdisp) {
-            if (!isalnum(*pdisp))
-                *pdisp = '_';
-            ++pdisp;
-        }
-    }
-
-    return display_repr;
-}
-
 /**
  * Initialize a session.
  *
@@ -1022,7 +899,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     .reg_win = None,
     .o = {
       .config_file = NULL,
-      .display = NULL,
       .blur_level = 0,
       .benchmark = 0,
 
@@ -1038,9 +914,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
       .dim_fade_time = 1000.0,
 
       .wintype_focus = { false },
-
-      .track_focus = false,
-      .track_wdata = true,
     },
 
     .pfds_read = NULL,
@@ -1117,7 +990,7 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   // Open Display
   if (!ps->dpy) {
-    ps->dpy = XOpenDisplay(ps->o.display);
+    ps->dpy = XOpenDisplay(NULL);
     if (!ps->dpy) {
       printf_errfq(1, "(): Can't open display.");
     }
@@ -1145,8 +1018,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   ps->root_size = (Vector2) {{
       DisplayWidth(ps->dpy, ps->scr), DisplayHeight(ps->dpy, ps->scr)
   }};
-
-  ps->o.display_repr = getDisplayName(ps->dpy);
 
   // Also initializes the atoms
   if(!xorgContext_init(&ps->xcontext, ps->dpy, ps->scr, &ps->atoms)) {
@@ -1276,8 +1147,6 @@ void session_destroy(session_t *ps) {
   xtexture_delete(&ps->root_texture);
 
   free(ps->o.config_file);
-  free(ps->o.display);
-  free(ps->o.display_repr);
   free(ps->pfds_read);
   free(ps->pfds_write);
   free(ps->pfds_except);

@@ -80,17 +80,10 @@ typedef struct _options_t {
   char *config_file;
   /// Path to write PID to.
   char *write_pid_path;
-  /// The display name we used. NULL means we are using the value of the
-  /// <code>DISPLAY</code> environment variable.
-  char *display;
-  /// Safe representation of display name.
-  char *display_repr;
   /// Blur Level
   int blur_level;
   /// Number of cycles to paint in benchmark mode. 0 for disabled.
   int benchmark;
-  /// Whether to show all X errors.
-  bool show_all_xerrors;
 
   /// Shadow setting for window types
   bool wintype_shadow[NUM_WINTYPES];
@@ -122,12 +115,6 @@ typedef struct _options_t {
   // === Focus related ===
   /// Consider windows of specific types to be always focused.
   bool wintype_focus[NUM_WINTYPES];
-
-  // === Calculated ===
-  /// Whether compton needs to track focus changes.
-  bool track_focus;
-  /// Whether compton needs to track window name and class.
-  bool track_wdata;
 } options_t;
 
 
