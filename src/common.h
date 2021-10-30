@@ -8,8 +8,7 @@
  *
  */
 
-#ifndef COMPTON_COMMON_H
-#define COMPTON_COMMON_H
+#pragma once
 
 // === Options ===
 
@@ -212,46 +211,6 @@ typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
 /* typedef void (*GLDEBUGPROC) (GLenum source, GLenum type, */
 /*     GLuint id, GLenum severity, GLsizei length, const GLchar* message, */
 /*     GLvoid* userParam); */
-#ifdef CONFIG_GLX_SYNC
-// Looks like duplicate typedef of the same type is safe?
-typedef int64_t GLint64;
-typedef uint64_t GLuint64;
-typedef struct __GLsync *GLsync;
-
-#ifndef GL_SYNC_FLUSH_COMMANDS_BIT
-#define GL_SYNC_FLUSH_COMMANDS_BIT 0x00000001
-#endif
-
-#ifndef GL_TIMEOUT_IGNORED
-#define GL_TIMEOUT_IGNORED 0xFFFFFFFFFFFFFFFFull
-#endif
-
-#ifndef GL_ALREADY_SIGNALED
-#define GL_ALREADY_SIGNALED 0x911A
-#endif
-
-#ifndef GL_TIMEOUT_EXPIRED
-#define GL_TIMEOUT_EXPIRED 0x911B
-#endif
-
-#ifndef GL_CONDITION_SATISFIED
-#define GL_CONDITION_SATISFIED 0x911C
-#endif
-
-#ifndef GL_WAIT_FAILED
-#define GL_WAIT_FAILED 0x911D
-#endif
-
-typedef GLsync (*f_FenceSync) (GLenum condition, GLbitfield flags);
-typedef GLboolean (*f_IsSync) (GLsync sync);
-typedef void (*f_DeleteSync) (GLsync sync);
-typedef GLenum (*f_ClientWaitSync) (GLsync sync, GLbitfield flags,
-    GLuint64 timeout);
-typedef void (*f_WaitSync) (GLsync sync, GLbitfield flags,
-    GLuint64 timeout);
-typedef GLsync (*f_ImportSyncEXT) (GLenum external_sync_type,
-    GLintptr external_sync, GLbitfield flags);
-#endif
 
 /// @brief Wrapper of a binded GLX texture.
 struct _glx_texture {
@@ -879,154 +838,9 @@ vsync_deinit(session_t *ps);
 /** @name GLX
  */
 ///@{
-
-#ifdef CONFIG_GLX_SYNC
-void
-xr_glx_sync(session_t *ps, Drawable d, XSyncFence *pfence);
-#endif
-
 bool
 glx_init(session_t *ps);
 
 void
 glx_destroy(session_t *ps);
-
-void
-glx_on_root_change(session_t *ps);
-
-bool
-glx_init_blur(session_t *ps);
-
-void
-glx_release_pixmap(session_t *ps, glx_texture_t *ptex);
-
-void
-glx_paint_pre(session_t *ps);
-
-/**
- * Check if a texture is binded, or is binded to the given pixmap.
- */
-static inline bool
-glx_tex_binded(const glx_texture_t *ptex, Pixmap pixmap) {
-  return ptex && ptex->glpixmap && ptex->texture
-    && (!pixmap || pixmap == ptex->pixmap);
-}
-
-bool
-glx_blur_dst(session_t *ps, const Vector2* pos, const Vector2* size, float z,
-    GLfloat factor_center, glx_blur_cache_t *pbc, win* w);
-
-bool
-glx_dim_dst(session_t *ps, int dx, int dy, int width, int height, float z,
-    GLfloat factor);
-
-bool
-glx_render_(session_t *ps, const struct Texture* ptex,
-    int x, int y, int dx, int dy, int width, int height, int z,
-    double opacity, bool neg);
-
-#define \
-   glx_render(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg) \
-  glx_render_(ps, ptex, x, y, dx, dy, width, height, z, opacity, neg)
-
-void
-glx_swap_copysubbuffermesa(session_t *ps, XserverRegion reg);
-
-unsigned char *
-glx_take_screenshot(session_t *ps, int *out_length);
-
-GLuint
-glx_create_shader(GLenum shader_type, const char *shader_str);
-
-GLuint
-glx_create_program(const GLuint * const shaders, int nshaders, const bool isVertex);
-
-GLuint
-glx_create_program_from_str(const char *vert_shader_str,
-    const char *frag_shader_str);
-
-/**
- * Free a GLX texture.
- */
-static inline void
-free_texture_r(session_t *ps, GLuint *ptexture) {
-  if (*ptexture) {
-    assert(glx_has_context(ps));
-    glDeleteTextures(1, ptexture);
-    *ptexture = 0;
-  }
-}
-
-/**
- * Free a GLX Framebuffer object.
- */
-static inline void
-free_glx_fbo(session_t *ps, GLuint *pfbo) {
-  if (*pfbo) {
-    glDeleteFramebuffers(1, pfbo);
-    *pfbo = 0;
-  }
-  assert(!*pfbo);
-}
-
 ///@}
-
-
-/**
- * @brief Dump the given data to a file.
- */
-static inline bool
-write_binary_data(const char *path, const unsigned char *data, int length) {
-  if (!data)
-    return false;
-  FILE *f = fopen(path, "wb");
-  if (!f) {
-    printf_errf("(\"%s\"): Failed to open file for writing.", path);
-    return false;
-  }
-  int wrote_len = fwrite(data, sizeof(unsigned char), length, f);
-  fclose(f);
-  if (wrote_len != length) {
-    printf_errf("(\"%s\"): Failed to write all blocks: %d / %d", path,
-        wrote_len, length);
-    return false;
-  }
-  return true;
-}
-
-/**
- * @brief Dump raw bytes in HEX format.
- *
- * @param data pointer to raw data
- * @param len length of data
- */
-static inline void
-hexdump(const char *data, int len) {
-  static const int BYTE_PER_LN = 16;
-
-  if (len <= 0)
-    return;
-
-  // Print header
-  printf("%10s:", "Offset");
-  for (int i = 0; i < BYTE_PER_LN; ++i)
-    printf(" %2d", i);
-  putchar('\n');
-
-  // Dump content
-  for (int offset = 0; offset < len; ++offset) {
-    if (!(offset % BYTE_PER_LN))
-      printf("0x%08x:", offset);
-
-    printf(" %02hhx", data[offset]);
-
-    if ((BYTE_PER_LN - 1) == offset % BYTE_PER_LN)
-      putchar('\n');
-  }
-  if (len % BYTE_PER_LN)
-    putchar('\n');
-
-  fflush(stdout);
-}
-
-#endif
