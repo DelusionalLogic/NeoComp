@@ -960,10 +960,12 @@ static void fillBuffer(struct X11Context* xctx) {
             XDestroyWindowEvent* ev = (XDestroyWindowEvent *)&raw;
             zone_scope_extra(&ZONE_event_preprocess, "Destroy");
 
+
             Window frame = findRoot(xctx, ev->window);
             bool old_bypassed = isFrameBypassed(xctx, frame);
 
             Word_t rc;
+            J1U(rc, xctx->bypassed, ev->window);
             J1U(rc, xctx->mapped, ev->window);
 
             createDestroyWin(xctx, ev->window);
