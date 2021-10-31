@@ -720,6 +720,7 @@ static void redir_start(session_t *ps) {
 
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
     win_id wid = find_win(ps, ev->xid);
+	printf_dbgf("BYPASS %ld", ev->xid);
 
     if(swiss_hasComponent(&ps->win_list, COMPONENT_UNMAP, wid)) {
         swiss_removeComponent(&ps->win_list, COMPONENT_UNMAP, wid);
