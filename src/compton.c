@@ -122,8 +122,6 @@ static bool validate_pixmap(session_t *ps, Pixmap pxmap) {
             &rwid, &rhei, &rborder, &rdepth) && rwid && rhei;
 }
 
-static void redir_start(session_t *ps);
-
 // }}}
 
 /// Name strings for window types.
@@ -649,69 +647,9 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
 }
 
-bool vsync_init(session_t *ps) {
-    if(!glx_hasglext(ps, "EXT_swap_control")) {
-        printf_errf("No swap control extension, can't set the swap inteval. Expect no vsync");
-        return false;
-    }
-
-    // Get video sync functions
-    if (!ps->psglx->glXSwapIntervalProc) {
-        ps->psglx->glXSwapIntervalProc =
-            (f_SwapIntervalEXT) glXGetProcAddress ((const GLubyte *) "glXSwapIntervalEXT");
-    }
-    if (!ps->psglx->glXSwapIntervalProc) {
-        printf_errf("Failed to get EXT_swap_control function.");
-        return false;
-    }
-    ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 1);
-
-    return true;
-}
-
-void vsync_deinit(session_t *ps) {
-    // The standard says it doesn't accept 0, but in fact it probably does
-    if (glx_has_context(ps) && ps->psglx->glXSwapIntervalProc)
-        ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 0);
-}
-
-/**
- * Initialize X composite overlay window.
- */
-static bool init_overlay(session_t *ps) {
-    ps->overlay = XCompositeGetOverlayWindow(ps->dpy, ps->root);
-    if (ps->overlay) {
-        // Set window region of the overlay window, code stolen from
-        // compiz-0.8.8
-        XserverRegion region = XFixesCreateRegion(ps->dpy, NULL, 0);
-        XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0);
-        XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeInput, 0, 0, region);
-        XFixesDestroyRegion(ps->dpy, region);
-
-        // Listen to Expose events on the overlay
-        XSelectInput(ps->dpy, ps->overlay, ExposureMask);
-    } else {
-        printf_errf("Cannot get X Composite overlay window. Falling back to"
-                "painting on root window.\n");
-        exit(1);
-    }
-
-    return ps->overlay;
-}
-
 /**
  * Redirect all windows.
  */
-static void redir_start(session_t *ps) {
-    // Map overlay window. Done firstly according to this:
-    // https://bugzilla.gnome.org/show_bug.cgi?id=597014
-    if (ps->overlay)
-        XMapWindow(ps->dpy, ps->overlay);
-
-    // Must call XSync() here -- Why?
-    XSync(ps->dpy, False);
-}
-
 static void ev_bypass(session_t* ps, struct Bypass* ev) {
     win_id wid = find_win(ps, ev->xid);
 
@@ -1021,9 +959,26 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
   // Overlay must be initialized before double buffer, and before creation
   // of OpenGL context.
-  init_overlay(ps);
-  // @CLEANUP @HACK This probably shouldn't be done here.
-  ps->xcontext.overlay = ps->overlay;
+  {
+      ps->overlay = XCompositeGetOverlayWindow(ps->dpy, ps->root);
+      if (ps->overlay) {
+          // Set window region of the overlay window, code stolen from
+          // compiz-0.8.8
+          XserverRegion region = XFixesCreateRegion(ps->dpy, NULL, 0);
+          XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeBounding, 0, 0, 0);
+          XFixesSetWindowShapeRegion(ps->dpy, ps->overlay, ShapeInput, 0, 0, region);
+          XFixesDestroyRegion(ps->dpy, region);
+
+          // Listen to Expose events on the overlay
+          XSelectInput(ps->dpy, ps->overlay, ExposureMask);
+      } else {
+          printf_errf("Cannot get X Composite overlay window. Falling back to"
+                  "painting on root window.\n");
+          exit(1);
+      }
+      // @CLEANUP @HACK This probably shouldn't be done here.
+      ps->xcontext.overlay = ps->overlay;
+  }
 
   assets_init();
 
@@ -1046,8 +1001,24 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   }
 
   // Initialize VSync
-  if (!vsync_init(ps))
-    exit(1);
+  {
+      // Check if we have the vsync extension
+      if(!glx_hasglext(ps, "EXT_swap_control")) {
+          printf_errf("No swap control extension, can't set the swap inteval. Expect no vsync");
+          exit(1);
+      }
+
+      // Get video sync functions
+      ps->psglx->glXSwapIntervalProc =
+          (f_SwapIntervalEXT)glXGetProcAddress((const GLubyte *)"glXSwapIntervalEXT");
+      if (ps->psglx->glXSwapIntervalProc == NULL) {
+          printf_errf("Failed to get swap function.");
+          exit(1);
+      }
+
+      // Set the swap interval to enable vsync
+      ps->psglx->glXSwapIntervalProc(ps->xcontext.display, glXGetCurrentDrawable(), 1);
+  }
 
   char* debug_font_loc = assets_resolve_path("Roboto-Light.ttf");
   if(debug_font_loc != NULL) {
@@ -1067,7 +1038,14 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   xtexture_init(&ps->root_texture, &ps->xcontext);
 
   XGrabServer(ps->xcontext.display);
-  redir_start(ps);
+
+  // Map overlay window.
+  if (ps->overlay)
+      XMapWindow(ps->dpy, ps->overlay);
+
+  // We must call XSync here to ensure the window has gotten mapped
+  XSync(ps->dpy, False);
+
   xorg_beginEvents(&ps->xcontext);
   fds_insert(ps, ConnectionNumber(ps->xcontext.display), POLLIN);
   XUngrabServer(ps->xcontext.display);
@@ -1087,18 +1065,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
 
 DECLARE_ZONE(unredir);
 
-static void redir_stop(session_t *ps) {
-    zone_scope(&ZONE_unredir);
-
-    // Unmap overlay window
-    if (ps->overlay)
-        XUnmapWindow(ps->dpy, ps->overlay);
-
-    // Must call XSync() here -- Why?
-    XSync(ps->dpy, False);
-}
-
-
 /**
  * Destroy a session.
  *
@@ -1108,7 +1074,16 @@ static void redir_stop(session_t *ps) {
  * @param ps session to destroy
  */
 void session_destroy(session_t *ps) {
-  redir_stop(ps);
+  {
+      zone_scope(&ZONE_unredir);
+
+      // Unmap overlay window
+      if (ps->overlay)
+          XUnmapWindow(ps->dpy, ps->overlay);
+
+      // Must call XSync() here -- Why?
+      XSync(ps->dpy, False);
+  }
 
   // Stop listening to events on root window
   XSelectInput(ps->dpy, ps->root, 0);

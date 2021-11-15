@@ -829,12 +829,6 @@ free_winprop(winprop_t *pprop) {
 void
 force_repaint(session_t *ps);
 
-bool
-vsync_init(session_t *ps);
-
-void
-vsync_deinit(session_t *ps);
-
 /** @name GLX
  */
 ///@{
