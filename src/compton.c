@@ -618,11 +618,6 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
       case 280:
         ps->o.bg_opacity_fade_time = atof(optarg);
         break;
-      case 'n':
-      case 'a':
-      case 's':
-        printf_errfq(1, "(): -n, -a, and -s have been removed.");
-        break;
       // Long options
       case 256:
         // --config
@@ -642,6 +637,7 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
         usage(1);
         break;
 #undef P_CASEBOOL
+#undef P_CASELONG
     }
   }
 
@@ -651,8 +647,6 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
 
   // Range checking and option assignments
   ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
-
-  // Other variables determined by options
 }
 
 bool vsync_init(session_t *ps) {

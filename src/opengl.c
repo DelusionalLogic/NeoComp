@@ -23,64 +23,63 @@
 
 #include "renderutil.h"
 
-/**
- * Check if a word is in string.
- */
-static bool wd_is_in_str(const char *haystick, const char *needle) {
-  if (!haystick)
-    return false;
-
-  assert(*needle);
-
-  const char *pos = haystick - 1;
-  while ((pos = strstr(pos + 1, needle))) {
-    // Continue if it isn't a word boundary
-    if (((pos - haystick) && !isspace(*(pos - 1)))
-        || (strlen(pos) > strlen(needle) && !isspace(pos[strlen(needle)])))
-      continue;
-    return true;
-  }
-
-  return false;
-}
-
 static GLXFBConfig get_fbconfig_from_visualinfo(session_t *ps, const XVisualInfo *visualinfo) {
-  int nelements = 0;
-  GLXFBConfig *fbconfigs = glXGetFBConfigs(ps->dpy, visualinfo->screen,
-      &nelements);
-  for (int i = 0; i < nelements; ++i) {
-    int visual_id = 0;
-    if (Success == glXGetFBConfigAttrib(ps->dpy, fbconfigs[i], GLX_VISUAL_ID, &visual_id)
-        && visual_id == visualinfo->visualid)
-      return fbconfigs[i];
-  }
-  free(fbconfigs);
+    int nelements = 0;
+    GLXFBConfig *fbconfigs = glXGetFBConfigs(
+        ps->dpy,
+        visualinfo->screen,
+        &nelements
+    );
 
-  return NULL;
+    for (int i = 0; i < nelements; ++i) {
+        int visual_id = 0;
+        if(glXGetFBConfigAttrib(ps->dpy, fbconfigs[i], GLX_VISUAL_ID, &visual_id) != Success)
+            continue;
+        if(visual_id != visualinfo->visualid)
+            continue;
+
+        return fbconfigs[i];
+    }
+    free(fbconfigs);
+
+    return NULL;
 }
 
 static XVisualInfo * get_visualinfo_from_visual(session_t *ps, Visual *visual) {
-  XVisualInfo vreq = { .visualid = XVisualIDFromVisual(visual) };
-  int nitems = 0;
+    XVisualInfo vreq = { .visualid = XVisualIDFromVisual(visual) };
+    int nitems = 0;
 
-  return XGetVisualInfo(ps->dpy, VisualIDMask, &vreq, &nitems);
+    return XGetVisualInfo(ps->dpy, VisualIDMask, &vreq, &nitems);
 }
 
 /**
  * Check if a GLX extension exists.
  */
 static bool glx_hasglxext(session_t *ps, const char *ext) {
-  const char *glx_exts = glXQueryExtensionsString(ps->dpy, ps->scr);
-  if (!glx_exts) {
-    printf_errf("(): Failed get GLX extension list.");
-    return false;
-  }
+    assert(ext != NULL);
+    const char *glx_exts = glXQueryExtensionsString(ps->dpy, ps->scr);
+    if(glx_exts == NULL) {
+        printf_errf("Failed getting GLX extension list.");
+        return false;
+    }
 
-  bool found = wd_is_in_str(glx_exts, ext);
-  if (!found)
-    printf_errf("(): Missing GLX extension %s.", ext);
+    bool found = false;
+    const char *pos = glx_exts - 1;
+    while ((pos = strstr(pos + 1, ext))) {
+        // Continue if it isn't a word boundary
+        if((pos - glx_exts) && !isspace(*(pos - 1)))
+            continue;
+        if(strlen(pos) > strlen(ext) && !isspace(pos[strlen(ext)]))
+            continue;
 
-  return found;
+        found = true;
+        break;
+    }
+
+    if (!found)
+        printf_errf("(): Missing GLX extension %s.", ext);
+
+    return found;
 }
 
 /**
