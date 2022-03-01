@@ -32,12 +32,6 @@
 
 // Whether to enable parsing of configuration files using libconfig.
 // #define CONFIG_LIBCONFIG 1
-// Whether we are using a legacy version of libconfig (1.3.x).
-// #define CONFIG_LIBCONFIG_LEGACY 1
-// Whether to enable condition support.
-// #define CONFIG_C2 1
-// Whether to enable GLX Sync support.
-// #define CONFIG_GLX_XSYNC 1
 
 #ifndef COMPTON_VERSION
 #define COMPTON_VERSION "unknown"
@@ -149,10 +143,6 @@ typedef uint64_t win_id;
 #define US_PER_SEC 1000000L
 #define MS_PER_SEC 1000
 
-#define XRFILTER_CONVOLUTION  "convolution"
-#define XRFILTER_GAUSSIAN     "gaussian"
-#define XRFILTER_BINOMIAL     "binomial"
-
 /// @brief Maximum OpenGL buffer age.
 #define CGLX_MAX_BUFFER_AGE 5
 
@@ -167,44 +157,6 @@ typedef uint64_t win_id;
 
 typedef uint32_t opacity_t;
 
-// Or use cmemzero().
-#define MARGIN_INIT { 0, 0, 0, 0 }
-
-/// Structure representing needed window updates.
-typedef struct {
-  bool shadow       : 1;
-  bool fade         : 1;
-  bool focus        : 1;
-  bool invert_color : 1;
-} win_upd_t;
-
-enum wincond_target {
-  CONDTGT_NAME,
-  CONDTGT_CLASSI,
-  CONDTGT_CLASSG,
-  CONDTGT_ROLE,
-};
-
-enum wincond_type {
-  CONDTP_EXACT,
-  CONDTP_ANYWHERE,
-  CONDTP_FROMSTART,
-  CONDTP_WILDCARD,
-  CONDTP_REGEX_PCRE,
-};
-
-#define CONDF_IGNORECASE 0x0001
-
-/// @brief Possible swap methods.
-enum {
-  SWAPM_BUFFER_AGE = -1,
-  SWAPM_UNDEFINED = 0,
-  SWAPM_COPY = 1,
-  SWAPM_EXCHANGE = 2,
-};
-
-typedef struct _glx_texture glx_texture_t;
-
 typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
     GLXFBConfig config, GLXContext share_context, Bool direct,
     const int *attrib_list);
@@ -212,47 +164,11 @@ typedef GLXContext (*f_glXCreateContextAttribsARB) (Display *dpy,
 /*     GLuint id, GLenum severity, GLsizei length, const GLchar* message, */
 /*     GLvoid* userParam); */
 
-/// @brief Wrapper of a binded GLX texture.
-struct _glx_texture {
-  GLuint texture;
-  GLXPixmap glpixmap;
-  Pixmap pixmap;
-  GLenum target;
-  unsigned width;
-  unsigned height;
-  unsigned depth;
-  bool y_inverted;
-};
-
-typedef struct {
-  Pixmap pixmap;
-  Picture pict;
-  glx_texture_t *ptex;
-} paint_t;
-
 #define PAINT_INIT { .pixmap = None, .pict = None }
-
-typedef struct {
-  int size;
-  double *data;
-} conv;
-
-/// A representation of raw region data
-typedef struct {
-  XRectangle *rects;
-  int nrects;
-} reg_data_t;
 
 #define REG_DATA_INIT { NULL, 0 }
 
 struct _win;
-
-/// Enumeration for window event hints.
-typedef enum {
-  WIN_EVMODE_UNKNOWN,
-  WIN_EVMODE_FRAME,
-  WIN_EVMODE_CLIENT
-} win_evmode_t;
 
 extern session_t *ps_g;
 
@@ -388,9 +304,6 @@ mstrcpy(const char *src) {
 
   return str;
 }
-
-void
-force_repaint(session_t *ps);
 
 /** @name GLX
  */

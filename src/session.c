@@ -220,7 +220,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
     }
 
     config_init(&cfg);
-#ifndef CONFIG_LIBCONFIG_LEGACY
     {
         // dirname() could modify the original string, thus we must pass a
         // copy
@@ -232,7 +231,6 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
 
         free(path2);
     }
-#endif
 
     {
         int read_result = config_read(&cfg, f);

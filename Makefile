@@ -60,10 +60,6 @@ endif
 ifeq "$(NO_LIBCONFIG)" ""
   CFG += -DCONFIG_LIBCONFIG
   PACKAGES += libconfig
-
-  # libconfig-1.3* does not define LIBCONFIG_VER* macros, so we use
-  # pkg-config to determine its version here
-  CFG += $(shell pkg-config --atleast-version=1.4 libconfig || echo '-DCONFIG_LIBCONFIG_LEGACY')
 endif
 
 # === Version string ===
