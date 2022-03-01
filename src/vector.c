@@ -4,10 +4,15 @@
 #include <string.h>
 #include "logging.h"
 
+#include "profiler/zone.h"
+
+DECLARE_ZONE(vector_alloc);
+
 static void resize(Vector* vector, size_t newElem)
 {
     if(newElem + vector->size > vector->maxSize)
     {
+        zone_scope(&ZONE_vector_alloc);
         size_t newSize = newElem + vector->size;
         while(vector->maxSize < newSize) {
             vector->maxSize *= 2;

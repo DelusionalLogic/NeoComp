@@ -135,7 +135,7 @@ Status XResQueryClientResourcesH(Display* dpy,  XID xid,  int* num_types,  XResT
 void* atoms;
 int nextAtom = 1;
 
-Atom XInternAtomH(Display* dpy, char* name, Bool query) {
+Atom XInternAtomH(Display* dpy, const char* name, Bool query) {
     Atom* value;
     JSLI(value, atoms, name);
     if(*value == 0) {

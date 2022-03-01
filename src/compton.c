@@ -260,7 +260,7 @@ static bool add_win(session_t *ps, struct AddWin* ev) {
   }
   {
       struct TracksWindowComponent* window = swiss_addComponent(&ps->win_list, COMPONENT_TRACKS_WINDOW, slot);
-	  window->border_size = ev->border_size;
+      window->border_size = ev->border_size;
       window->id = ev->xid;
   }
 

@@ -95,10 +95,10 @@ void shadowsystem_tick(Swiss* em) {
         swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
     }
 
-    for_components(it, em,
-            COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
-        swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id);
-    }
+    /* for_components(it, em, */
+    /*         COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) { */
+    /*     swiss_ensureComponent(em, COMPONENT_SHADOW_DAMAGED, it.id); */
+    /* } */
 
     for_components(it, em,
             COMPONENT_RESIZE, COMPONENT_SHADOW, COMPONENT_CONTENTS_DAMAGED, CQ_END) {
