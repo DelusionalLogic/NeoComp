@@ -186,10 +186,6 @@ typedef struct _session_t {
     options_t o;
     /// File descriptors to check for reading.
     fd_set *pfds_read;
-    /// File descriptors to check for writing.
-    fd_set *pfds_write;
-    /// File descriptors to check for exceptions.
-    fd_set *pfds_except;
     /// Largest file descriptor in fd_set-s above.
     int nfds_max;
     /// Whether we have received an event in this cycle.

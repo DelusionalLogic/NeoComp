@@ -157,7 +157,7 @@ glx_init(session_t *ps) {
     }
 
     // Attach GLX context
-    if (!glXMakeCurrent(ps->dpy, get_tgt_window(ps), psglx->context)) {
+    if (!glXMakeCurrent(ps->dpy, ps->overlay, psglx->context)) {
       printf_errf("(): Failed to attach GLX context.");
       goto glx_init_end;
     }
@@ -202,7 +202,8 @@ glx_init(session_t *ps) {
   success = true;
 
 glx_init_end:
-  cxfree(pvis);
+  if(pvis)
+      XFree(pvis);
 
   if (!success)
     glx_destroy(ps);

@@ -197,7 +197,7 @@ static void assign_depth(Swiss* em, Vector* order) {
 
 static void map_win(session_t *ps, struct MapWin* ev) {
     win_id wid = find_win(ps, ev->xid);
-	if(wid == -1) {
+    if(wid == -1) {
         return;
     }
     assert(wid != -1);
@@ -505,6 +505,10 @@ parse_long(const char *s, long *dest) {
   return true;
 }
 
+static inline double __attribute__((const)) clamp_double(double d) {
+    return (d > 1.0 ? 1.0 : (d < 0.0 ? 0.0 : d));
+}
+
 /**
  * Process arguments and configuration files.
  */
@@ -605,10 +609,10 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
         break;
       case 'I':
         // --active-opacity
-        ps->o.active_opacity = (normalize_d(atof(optarg)) * 100.0);
+        ps->o.active_opacity = (clamp_double(atof(optarg)) * 100.0);
         break;
       case 'i':
-        ps->o.inactive_opacity = (normalize_d(atof(optarg)) * 100.0);
+        ps->o.inactive_opacity = (clamp_double(atof(optarg)) * 100.0);
         break;
       case 'T':
         ps->o.opacity_fade_time = atof(optarg);
@@ -644,7 +648,7 @@ get_cfg(session_t *ps, int argc, char *const *argv) {
   free(lc_numeric_old);
 
   // Range checking and option assignments
-  ps->o.inactive_dim = normalize_d(ps->o.inactive_dim) * 100;
+  ps->o.inactive_dim = clamp_double(ps->o.inactive_dim) * 100;
 }
 
 /**
@@ -803,7 +807,15 @@ static bool pumpEvents(session_t *ps) {
 
         {
             zone_scope(&ZONE_sleep);
-            fds_poll(ps, &tv);
+
+            // Copy fds
+            fd_set read;
+            if(ps->pfds_read) {
+                memcpy(&read, ps->pfds_read, sizeof(fd_set));
+            } else {
+                FD_ZERO(&read);
+            }
+            select(ps->nfds_max, &read, NULL, NULL, &tv);
         }
     }
 
@@ -849,8 +861,6 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
     },
 
     .pfds_read = NULL,
-    .pfds_write = NULL,
-    .pfds_except = NULL,
     .nfds_max = 0,
 
     .time_start = { 0, 0 },
@@ -1047,7 +1057,24 @@ session_t * session_init(session_t *ps_old, int argc, char **argv) {
   XSync(ps->dpy, False);
 
   xorg_beginEvents(&ps->xcontext);
-  fds_insert(ps, ConnectionNumber(ps->xcontext.display), POLLIN);
+
+  {
+      int fd = ConnectionNumber(ps->xcontext.display);
+      assert(fd <= FD_SETSIZE);
+
+      ps->nfds_max = ps->nfds_max < fd+1 ? fd+1 : ps->nfds_max;
+      if (!ps->pfds_read) {
+          if ((ps->pfds_read = malloc(sizeof(fd_set)))) {
+              FD_ZERO(ps->pfds_read);
+          }
+          else {
+              fprintf(stderr, "Failed to allocate memory for select() fdset.\n");
+              exit(1);
+          }
+      }
+      FD_SET(fd, ps->pfds_read);
+  }
+
   XUngrabServer(ps->xcontext.display);
   // ALWAYS flush after XUngrabServer()!
   XFlush(ps->dpy);
@@ -1117,8 +1144,6 @@ void session_destroy(session_t *ps) {
 
   free(ps->o.config_file);
   free(ps->pfds_read);
-  free(ps->pfds_write);
-  free(ps->pfds_except);
 
   xorgContext_delete(&ps->xcontext);
 
@@ -1309,9 +1334,9 @@ static void update_focused_state(Swiss* em, session_t* ps) {
     for_components(it, em,
             COMPONENT_STATEFUL, COMPONENT_DEBUGGED, CQ_END) {
         struct StatefulComponent* stateful = swiss_getComponent(em, COMPONENT_STATEFUL, it.id);
-        if(stateful->state == STATE_DEACTIVATING || 
-                stateful->state == STATE_HIDING || 
-                stateful->state == STATE_INACTIVE || 
+        if(stateful->state == STATE_DEACTIVATING ||
+                stateful->state == STATE_HIDING ||
+                stateful->state == STATE_INACTIVE ||
                 stateful->state == STATE_INVISIBLE) {
             /* swiss_removeComponent(em, COMPONENT_DEBUGGED, it.id); */
         }
@@ -1473,7 +1498,7 @@ void session_run(session_t *ps) {
         // Even non-opaque windows have some transparent elements (shadow).
         // Trying to draw something as transparent when it only has opaque
         // elements isn't a problem, so we just include everything.
-        fetchSortedWindowsWith(&ps->win_list, &transparent, 
+        fetchSortedWindowsWith(&ps->win_list, &transparent,
                 COMPONENT_MUD, COMPONENT_TEXTURED, /* COMPONENT_OPACITY, */ COMPONENT_PHYSICAL, CQ_END);
 
         Vector opaque_shadow;
@@ -1576,7 +1601,7 @@ void session_run(session_t *ps) {
         profilerWriter_emitFrame(&profSess, event_stream);
 #endif
 
-        glXSwapBuffers(ps->dpy, get_tgt_window(ps));
+        glXSwapBuffers(ps->dpy, ps->overlay);
         glFinish();
 
         lastTime = currentTime;

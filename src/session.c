@@ -109,13 +109,21 @@ open_config_file(char *cpath, char **ppath) {
 
   // Check user configuration file in $XDG_CONFIG_HOME firstly
   if (!((dir = getenv("XDG_CONFIG_HOME")) && strlen(dir))) {
-    if (!((home = getenv("HOME")) && strlen(home)))
-      return NULL;
+      if (!((home = getenv("HOME")) && strlen(home)))
+          return NULL;
 
-    path = mstrjoin3(home, config_home_suffix, config_filename);
+      path = cmalloc(strlen(home) + strlen(config_home_suffix)
+              + strlen(config_filename) + 1, char);
+
+      strcpy(path, home);
+      strcat(path, config_home_suffix);
+      strcat(path, config_filename);
+  } else {
+      path = cmalloc(strlen(dir) + strlen(config_filename) + 1, char);
+
+      strcpy(path, dir);
+      strcat(path, config_filename);
   }
-  else
-    path = mstrjoin(dir, config_filename);
 
   f = fopen(path, "r");
 
@@ -128,7 +136,9 @@ open_config_file(char *cpath, char **ppath) {
 
   // Then check user configuration file in $HOME
   if ((home = getenv("HOME")) && strlen(home)) {
-    path = mstrjoin(home, config_filename_legacy);
+    path = cmalloc(strlen(home) + strlen(config_filename_legacy) + 1, char);
+    strcpy(path, home);
+    strcat(path, config_filename_legacy);
     f = fopen(path, "r");
     if (f && ppath)
       *ppath = path;
@@ -142,7 +152,9 @@ open_config_file(char *cpath, char **ppath) {
   if ((dir = getenv("XDG_CONFIG_DIRS")) && strlen(dir)) {
     char *part = strtok(dir, ":");
     while (part) {
-      path = mstrjoin(part, config_filename);
+      path = cmalloc(strlen(home) + strlen(config_filename) + 1, char);
+      strcpy(path, home);
+      strcat(path, config_filename);
       f = fopen(path, "r");
       if (f && ppath)
         *ppath = path;
@@ -154,7 +166,9 @@ open_config_file(char *cpath, char **ppath) {
     }
   }
   else {
-    path = mstrjoin(config_system_dir, config_filename);
+    path = cmalloc(strlen(config_system_dir) + strlen(config_filename) + 1, char);
+    strcpy(path, config_system_dir);
+    strcat(path, config_filename);
     f = fopen(path, "r");
     if (f && ppath)
       *ppath = path;
@@ -176,6 +190,10 @@ static void lcfg_lookup_bool(const config_t *config, const char *path, bool *val
 
 static int lcfg_lookup_int(const config_t *config, const char *path, int *value) {
     return config_lookup_int(config, path, value);
+}
+
+static inline double __attribute__((const)) clamp_double(double d) {
+    return (d > 1.0 ? 1.0 : (d < 0.0 ? 0.0 : d));
 }
 
 /**
@@ -240,10 +258,10 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
 
     // -i (inactive_opacity)
     if (config_lookup_float(&cfg, "inactive-opacity", &dval))
-        ps->o.inactive_opacity = normalize_d(dval) * 100.0;
+        ps->o.inactive_opacity = clamp_double(dval) * 100.0;
     // -I (active_opacity)
     if (config_lookup_float(&cfg, "active-opacity", &dval))
-        ps->o.active_opacity = normalize_d(dval) * 100.0;
+        ps->o.active_opacity = clamp_double(dval) * 100.0;
     // --opacity-fade-time
     if (config_lookup_float(&cfg, "opacity-fade-time", &dval))
         ps->o.opacity_fade_time = dval;
@@ -264,7 +282,9 @@ void parse_config(session_t *ps, struct options_tmp *pcfgtmp) {
         wintype_t i;
 
         for (i = 0; i < NUM_WINTYPES; ++i) {
-            char *str = mstrjoin("wintypes.", WINTYPES[i]);
+            char* str = cmalloc(9 + strlen(WINTYPES[i]) + 1, char);
+            strcpy(str, "wintypes.");
+            strcat(str, WINTYPES[i]);
             config_setting_t *setting = config_lookup(&cfg, str);
             free(str);
             if (setting) {

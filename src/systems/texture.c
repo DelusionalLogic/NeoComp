@@ -68,8 +68,10 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
     // server until we are done with the textures. Experiments show that it
     // completely kills rendering performance for chrome and electron.
     // - Delusional 19/08-2018
+	// It also seems to kill performance in Dota2
+    // - Delusional 01/03-2022
     zone_enter(&ZONE_x_communication);
-    XGrabServer(xcontext->display);
+    // XGrabServer(xcontext->display);
     glXWaitX();
     zone_leave(&ZONE_x_communication);
 
@@ -151,7 +153,7 @@ static void update_window_textures(Swiss* em, struct X11Context* xcontext) {
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
     zone_enter(&ZONE_x_communication);
-    XUngrabServer(xcontext->display);
+    // XUngrabServer(xcontext->display);
     glXWaitX();
     zone_leave(&ZONE_x_communication);
 }
