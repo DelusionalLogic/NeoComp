@@ -95,7 +95,7 @@ void text_size(const struct Font* font, const char* text, const Vector2* scale, 
 
     size_t text_len = strlen(text);
     for(int i = 0; i < text_len; i++) {
-        const struct Character* ch = &font->characters[text[i]];
+        const struct Character* ch = &font->characters[(unsigned char)text[i]];
         size->x += ch->advance;
     }
 }
@@ -130,7 +130,7 @@ void text_draw_colored(const struct Font* font, const char* text, const Vector2*
     Vector2 pen = *position;
     size_t text_len = strlen(text);
     for(int i = 0; i < text_len; i++) {
-        const struct Character* letter = &font->characters[text[i]];
+        const struct Character* letter = &font->characters[(unsigned char)text[i]];
 
         texture_bind(&letter->texture, GL_TEXTURE0);
 

@@ -75,14 +75,6 @@ void usage(int ret) {
   exit(ret);
 }
 
-static void wintype_arr_enable(bool arr[]) {
-    wintype_t i;
-
-    for (i = 0; i < NUM_WINTYPES; ++i) {
-        arr[i] = true;
-    }
-}
-
 #ifdef CONFIG_LIBCONFIG
 /**
  * Get a file stream of the configuration file to read.
