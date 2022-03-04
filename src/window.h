@@ -203,7 +203,6 @@ void fade_keyframe_lead(struct Fading* fade, double opacity, double duration, do
 void fade_init(struct Fading* fade, double value);
 // @CLEANUP: Should this be here?
 bool fade_done(struct Fading* fade);
-double fade_remaining(struct Fading* fade);
 
 void win_draw(struct _session_t* ps, win* w, float z);
 void win_postdraw(struct _session_t* ps, win* w);

@@ -164,9 +164,6 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
     framebuffer_resetTarget(&framebuffer);
     framebuffer_bind(&framebuffer);
 
-    Vector blurDatas;
-    vector_init(&blurDatas, sizeof(struct TextureBlurData), ps->win_list.size);
-
     glDisable(GL_BLEND);
 
     glStencilMask(0xFF);
@@ -235,6 +232,19 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
 
     view = old_view;
 
+    size_t textures = swiss_countWhere(&ps->win_list, (const enum ComponentType[]) {
+        COMPONENT_MUD,
+        COMPONENT_TEXTURED,
+        COMPONENT_PHYSICAL,
+        COMPONENT_SHADOW_DAMAGED,
+        COMPONENT_SHADOW,
+        COMPONENT_SHAPED,
+        CQ_END,
+    });
+
+    Vector blurDatas;
+    vector_init(&blurDatas, sizeof(struct TextureBlurData), textures);
+
     // Setup the blur request data
     for_components(it, &ps->win_list,
         COMPONENT_MUD, COMPONENT_TEXTURED, COMPONENT_PHYSICAL, COMPONENT_SHADOW_DAMAGED, COMPONENT_SHADOW,
@@ -249,6 +259,7 @@ void shadowsystem_updateShadow(session_t* ps, Vector* paints) {
         };
         vector_putBack(&blurDatas, &blurData);
     }
+    assert(blurDatas.maxSize == textures);
 
     glDisable(GL_STENCIL_TEST);
 

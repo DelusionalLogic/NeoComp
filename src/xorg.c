@@ -954,6 +954,33 @@ static void fillBuffer(struct X11Context* xctx) {
                 // Watch for possible WM_STATE
                 XSelectInputH(xctx->display, ev->window, PropertyChangeMask);
             }
+
+            // If the frame was bypassed before we got to call SelectInput, we
+            // will never get the event.
+            // @HACK @COMPLETENESS This is technically also true for the other
+            // properties, so check if we have to do some work there
+            // - Delusional 02/03-2022
+
+            Window affected;
+            if(!findAffectedWindow(xctx, ev->window, &affected)) {
+                break;
+            }
+
+            if(xBypassState(xctx, ev->window) == 1) {
+                Word_t rc;
+                J1S(rc, xctx->bypassed, ev->window);
+                if(rc == 0) {
+                    break;
+                }
+
+                if(isWindowMapped(xctx, affected)) {
+                    struct Event event = {
+                        .type = ET_BYPASS,
+                        .bypass.xid = affected,
+                    };
+                    pushEvent(xctx, event);
+                }
+            }
             break;
         }
         case DestroyNotify: {

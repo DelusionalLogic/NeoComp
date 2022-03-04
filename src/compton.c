@@ -1174,13 +1174,37 @@ void session_destroy(session_t *ps) {
 bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
     bool skip_poll = false;
 
+    size_t num_fades = 0;
+    {
+        num_fades += swiss_countWhere(em, (const enum ComponentType[]) {
+            COMPONENT_FADES_OPACITY, CQ_END
+        });
+        num_fades += swiss_countWhere(em, (const enum ComponentType[]) {
+            COMPONENT_FADES_BGOPACITY, CQ_END
+        });
+        num_fades += swiss_countWhere(em, (const enum ComponentType[]) {
+            COMPONENT_FADES_DIM, CQ_END
+        });
+    }
+
     Vector fadeable;
-    vector_init(&fadeable, sizeof(struct Fading*), 128);
+    vector_init(&fadeable, sizeof(struct Fading*), num_fades);
 
     // Collect everything fadeable
     {
         zone_scope(&ZONE_collect_fade);
-        opacity_collect_fades(em, &fadeable);
+        for_components(it, em,
+            COMPONENT_FADES_OPACITY, CQ_END) {
+            struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
+            struct Fading* fade = &fo->fade;
+            vector_putBack(&fadeable, &fade);
+        }
+        for_components(it, em,
+            COMPONENT_FADES_BGOPACITY, CQ_END) {
+            struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
+            struct Fading* fade = &fo->fade;
+            vector_putBack(&fadeable, &fade);
+        }
         for_components(it, em,
             COMPONENT_FADES_DIM, CQ_END) {
             struct FadesDimComponent* fo = swiss_getComponent(em, COMPONENT_FADES_DIM, it.id);
@@ -1188,6 +1212,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
             vector_putBack(&fadeable, &fade);
         }
     }
+    assert(fadeable.maxSize == num_fades);
 
     {
         zone_scope(&ZONE_calculate_fade);
@@ -1198,7 +1223,7 @@ bool do_win_fade(struct Bezier* curve, double dt, Swiss* em) {
             struct Fading* fade = *fade_ptr;
             fade->value = fade->keyframes[fade->head].target;
 
-            if(!fade_done(fade)) {
+            if(fade->head != fade->tail) {
                 // @CLEANUP: Maybe a while loop?
                 for(size_t i = fade->head; i != fade->tail; ) {
                     // Increment before the body to skip head and process tail

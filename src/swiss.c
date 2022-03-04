@@ -61,12 +61,11 @@ static uint64_t makeBucket(const Swiss* index, const enum ComponentType* types, 
             flip = true;
             continue;
         }
-        uint64_t* freelist = index->freelist[types[i]];
+        uint64_t freelist = index->freelist[types[i]][bucket];
 
-        uint64_t value = flip ? ~freelist[bucket] : freelist[bucket];
-        flip = false;
-
+        uint64_t value = flip ? ~freelist : freelist;
         finalKey &= value;
+        flip = false;
     }
 
     return finalKey;
@@ -391,6 +390,22 @@ void swiss_ensureComponentWhere(Swiss* index, const enum ComponentType type, con
     }
 }
 
+size_t swiss_countWhere(Swiss* index, const enum ComponentType* keys) {
+    size_t count = 0;
+
+    size_t numBuckets = freelist_numBuckets(index->capacity);
+    for(size_t i = 0; i < numBuckets; i++) {
+        uint64_t key = makeBucket(index, keys, i);
+
+        if(key == 0)
+            continue;
+
+        count += __builtin_popcountll(key);
+    }
+
+    return count;
+}
+
 struct SwissIterator swiss_getFirstInit(const Swiss* index, const enum ComponentType* types) {
     struct SwissIterator it;
     swiss_getFirst(index, types, &it);
@@ -410,8 +425,8 @@ void swiss_getFirst(const Swiss* index, const enum ComponentType* types, struct 
     }
 
     size_t ibucket = 0;
-    it->bucket = makeBucket(index, types, 0);
 
+    it->bucket = makeBucket(index, types, ibucket);
     while(it->bucket == 0) {
         ibucket++;
         if(ibucket >= numBuckets) {

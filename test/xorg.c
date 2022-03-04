@@ -193,23 +193,35 @@ struct windowProperty {
     struct xcb_get_property_reply_t reply;
     char value[];
 };
+struct windowProperty nullProperty = {
+    .reply = {
+        .type = None,
+        .format = 0,
+        .length = sizeof(xcb_get_property_reply),
+        .value_len = 0,
+    },
+    .value = {0, 0, 0, 0},
+};
 void* winProp;
 void* reqs;
 uint64_t nextSeq = 0;
 xcb_get_property_cookie_t xcb_get_propertyH(xcb_connection_t* conn, uint8_t _delete, xcb_window_t window, xcb_atom_t property, xcb_atom_t type, uint32_t long_offset, uint32_t long_length) {
     void** perWindow;
     JLG(perWindow, winProp, window);
-    assert(perWindow != NULL);
 
-    struct windowProperty** value;
-    JLG(value, *perWindow, property);
-    assert(value != NULL);
+    struct windowProperty** value = NULL;
+    if(perWindow != NULL)
+        JLG(value, *perWindow, property);
 
     struct windowProperty** requestPtr;
     JLI(requestPtr, reqs, nextSeq);
     assert(requestPtr != NULL);
 
-    *requestPtr = *value;
+    if(value != NULL) {
+        *requestPtr = *value;
+    } else {
+        *requestPtr = &nullProperty;
+    }
 
     return (xcb_get_property_cookie_t) {
         .sequence = nextSeq++
@@ -223,8 +235,8 @@ xcb_get_property_reply_t* xcb_get_property_replyH(xcb_connection_t* conn, xcb_ge
     JLG(value, reqs, cookie.sequence);
     assert(value != NULL);
 
-    struct windowProperty* ret = malloc(sizeof(struct windowProperty) + (*value)->reply.value_len);
-    memcpy(ret, *value, sizeof(struct windowProperty) + (*value)->reply.value_len);
+    struct windowProperty* ret = malloc(sizeof(struct windowProperty) + (*value)->reply.value_len * 4);
+    memcpy(ret, *value, sizeof(struct windowProperty) + (*value)->reply.value_len * 4);
 
     return &ret->reply;
 }
@@ -264,7 +276,7 @@ void setProperty(Window win, Atom atom, uint32_t value) {
 
     struct windowProperty** propPtr;
     JLI(propPtr, *perWindow, atom);
-    assert(value != NULL);
+    assert(propPtr != NULL);
 
     *propPtr = prop;
 }

@@ -121,14 +121,6 @@ bool fade_done(struct Fading* fade) {
     return fade->tail == fade->head;
 }
 
-double fade_remaining(struct Fading* fade) {
-    if(fade_done(fade))
-        return 0;
-
-    struct FadeKeyframe last = fade->keyframes[fade->tail];
-    return last.duration - last.time;
-}
-
 #if 0
 static void win_draw_debug(session_t* ps, win* w) {
     win_id wid = swiss_indexOfPointer(&ps->win_list, COMPONENT_MUD, w);

@@ -80,6 +80,10 @@ else
   # CFLAGS += -Weverything -Wno-disabled-macro-expansion -Wno-padded -Wno-gnu
 endif
 
+ifeq "$(PROFILE)" "prof"
+    CFLAGS += -pg
+endif
+
 LIBS += $(shell pkg-config --libs $(PACKAGES))
 INCS += $(shell pkg-config --cflags $(PACKAGES))
 

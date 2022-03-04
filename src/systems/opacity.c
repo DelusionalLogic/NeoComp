@@ -73,21 +73,6 @@ static void calculate_window_opacity(session_t* ps, Swiss* em) {
     start_focus_fade(&ps->win_list, ps->o.opacity_fade_time, ps->o.bg_opacity_fade_time, ps->o.dim_fade_time);
 }
 
-void opacity_collect_fades(Swiss* em, Vector* fadeable) {
-    for_components(it, em,
-        COMPONENT_FADES_OPACITY, CQ_END) {
-        struct FadesOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_OPACITY, it.id);
-        struct Fading* fade = &fo->fade;
-        vector_putBack(fadeable, &fade);
-    }
-    for_components(it, em,
-        COMPONENT_FADES_BGOPACITY, CQ_END) {
-        struct FadesBgOpacityComponent* fo = swiss_getComponent(em, COMPONENT_FADES_BGOPACITY, it.id);
-        struct Fading* fade = &fo->fade;
-        vector_putBack(fadeable, &fade);
-    }
-}
-
 static void commit_opacity_change(Swiss* em, double fade_time, double bg_fade_time) {
     zone_scope(&ZONE_commit_opacity);
     for_components(it, em,

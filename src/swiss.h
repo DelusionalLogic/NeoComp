@@ -132,6 +132,7 @@ size_t swiss_indexOfPointer(Swiss* vector, const enum ComponentType type, void* 
 void swiss_setComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
 void swiss_removeComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
 void swiss_ensureComponentWhere(Swiss* index, const enum ComponentType type, const enum ComponentType* keys);
+size_t swiss_countWhere(Swiss* index, const enum ComponentType* keys);
 
 struct SwissIterator {
     win_id id;

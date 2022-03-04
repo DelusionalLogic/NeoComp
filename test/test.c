@@ -560,6 +560,43 @@ static struct TestResult swiss__iterate_elements__there_are_100_elements() {
     assertEqArray(order, check, 101);
 }
 
+static struct TestResult swiss__count_components__there_are_2() {
+    Swiss swiss;
+    swiss_clearComponentSizes(&swiss);
+    /* swiss_setComponentSize(&swiss, COMPONENT_MUD, 0); */
+    /* swiss_setComponentSize(&swiss, COMPONENT_SHADOW, 0); */
+    swiss_init(&swiss, 4);
+
+    {
+        win_id id = swiss_allocate(&swiss);
+        swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        swiss_addComponent(&swiss, COMPONENT_SHADOW, id);
+    }
+
+    {
+        win_id id = swiss_allocate(&swiss);
+        swiss_addComponent(&swiss, COMPONENT_MUD, id);
+    }
+
+    {
+        win_id id = swiss_allocate(&swiss);
+        swiss_addComponent(&swiss, COMPONENT_MUD, id);
+        swiss_addComponent(&swiss, COMPONENT_SHADOW, id);
+    }
+
+    {
+        win_id id = swiss_allocate(&swiss);
+        swiss_addComponent(&swiss, COMPONENT_SHADOW, id);
+    }
+
+    size_t count = swiss_countWhere(&swiss, (const enum ComponentType[]) {
+        COMPONENT_MUD,
+        COMPONENT_SHADOW,
+        CQ_END,
+    });
+    assertEq(count, 2);
+}
+
 
 struct TestResult bezier__not_crash__initializing_bezier_curve() {
     struct Bezier b;
@@ -2190,7 +2227,6 @@ struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
-    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2202,6 +2238,7 @@ struct TestResult xorg__emit_bypass__mapped_frame_requests_bypass() {
     });
     readAllEvents(&ctx);
 
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XPropertyEvent){
         .type = PropertyNotify,
         .window = 1,
@@ -2225,7 +2262,6 @@ struct TestResult xorg__emit_nothing__bypassed_frame_requests_bypass() {
         .class = InputOutput,
     };
     setWindowAttr(1, &attr);
-    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -2235,6 +2271,7 @@ struct TestResult xorg__emit_nothing__bypassed_frame_requests_bypass() {
         .type = MapNotify,
         .window = 1,
     });
+    setProperty(1, atoms.atom_bypass, 1);
     vector_putBack(&eventQ, &(XPropertyEvent){
         .type = PropertyNotify,
         .window = 1,
@@ -2447,6 +2484,37 @@ struct TestResult xorg__emit_bypass__bypassed_frame_is_mapped() {
     );
 }
 
+struct TestResult xorg__emit_bypass__mapped_frame_already_has_bypass_atom() {
+    struct X11Context ctx;
+    struct Atoms atoms;
+    Display* dpy = (void*)0x01;
+    xorgContext_init(&ctx, dpy, 0, &atoms);
+
+    XWindowAttributes attr = {
+        .class = InputOutput,
+    };
+    setWindowAttr(1, &attr);
+    setProperty(1, atoms.atom_bypass, 1);
+    vector_putBack(&eventQ, &(XCreateWindowEvent){
+        .type = CreateNotify,
+        .window = 1,
+        .parent = 0,
+    });
+    // The PropertyChange event is never delivered because property is set
+    // before the SelectInput call goes through
+    readAllEvents(&ctx);
+
+    vector_putBack(&eventQ, &(XMapEvent){
+        .type = MapNotify,
+        .window = 1,
+    });
+    Vector* events = readAllEvents(&ctx);
+
+    assertEvents(events,
+        (struct Event){.type = ET_BYPASS, .bypass.xid = 1}
+    );
+}
+
 struct TestResult xorg__emit_nothing__bypassed_window_is_destroyed_and_reused() {
     struct X11Context ctx;
     struct Atoms atoms;
@@ -2474,6 +2542,8 @@ struct TestResult xorg__emit_nothing__bypassed_window_is_destroyed_and_reused() 
         .serial = 1,
         .window = 1,
     });
+    readAllEvents(&ctx);
+    setProperty(1, atoms.atom_bypass, 0);
     vector_putBack(&eventQ, &(XCreateWindowEvent){
         .type = CreateNotify,
         .window = 1,
@@ -3336,6 +3406,7 @@ int main(int argc, char** argv) {
     TEST(swiss__skip_entities_missing_components__iterating_forward);
     TEST(swiss__include_entities_with_components_not_required__iterating_forward);
     TEST(swiss__iterate_elements__there_are_100_elements);
+    TEST(swiss__count_components__there_are_2);
 
     TEST(bezier__not_crash__initializing_bezier_curve);
     TEST(bezier__get_identical_y_for_x__querying_on_linear_curve);
@@ -3423,6 +3494,7 @@ int main(int argc, char** argv) {
     TEST(xorg__emit_map__bypassed_mapped_frame_requests_compositing);
     TEST(xorg__emit_map__mapped_frame_loses_bypassed_client);
     TEST(xorg__emit_bypass__bypassed_frame_is_mapped);
+    TEST(xorg__emit_bypass__mapped_frame_already_has_bypass_atom);
     TEST(xorg__emit_bypass__bypassed_window_becomes_client);
     TEST(xorg__emit_nothing__bypassed_window_is_destroyed_and_reused);
     TEST(xorg__emit_nothing__bypassed_unmapped_window_requests_compositing);
